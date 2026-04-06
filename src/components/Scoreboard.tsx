@@ -142,7 +142,7 @@ export default function Scoreboard({ G, onOpenSheetWindow }: Props) {
       )} */}
       {onOpenSheetWindow && (
         <button className="sb-sheet-btn" onClick={onOpenSheetWindow} title="새 창으로 열기">
-          <span>↗ 새창</span>
+          <span>기록지 보기</span>
         </button>
       )}
     </div>
