@@ -30,8 +30,7 @@ export default function InputPanel({
 }: Props) {
   const pb = G.pendingBatter;
   const curLU = G.half === 'top' ? G.awayLineup : G.homeLineup;
-  const batter = curLU[G.curBatterOrder - 1];
-
+  
   return (
     <div className="ip" id="ip">
       {/* Pitcher section — grid layout */}
