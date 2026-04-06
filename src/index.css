@@ -771,9 +771,11 @@ button {
 .sc-pitches {
   display: flex;
   flex-direction: column;
-  width: 14px;
-  min-width: 14px;
-  max-width: 14px;
+  flex-wrap: wrap;
+  width: 28px;
+  min-width: 28px;
+  max-width: 28px;
+  height: 84px;
   border-right: 1px solid #e5e7eb;
   padding: 2px 1px 0;
   overflow: hidden;
