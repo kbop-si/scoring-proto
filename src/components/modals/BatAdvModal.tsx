@@ -80,16 +80,8 @@ function Btn({ label, sel, onClick, disabled, style }: {
   );
 }
 
-function fieldHint(result: string | null): string {
-  if (!result) return '우측에서 진루 결과를 먼저 선택하세요';
-  if (NEEDS_HIT.has(result)) return `① 수비 번호 클릭  ② 방향 클릭  ③ 구질 선택 → 자동 완료`;
-  if (NEEDS_FIELDER.has(result)) return `실책 수비수 번호를 필드에서 클릭하면 바로 기록`;
-  return `관련 수비수를 클릭해 리스트에 추가 → 확인`;
-}
-
 export default function BatAdvModal({
-  open, selected, onSelect: _onSelect, onConfirm: _onConfirm,
-  onAutoConfirm, onClose, selectedHit: _selectedHit, onSelectHit,
+  open, onAutoConfirm, onClose, onSelectHit,
   defLU = [],
 }: Props) {
   const [pendingResult, setPendingResult] = useState<string | null>(null);

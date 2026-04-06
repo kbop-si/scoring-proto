@@ -114,67 +114,10 @@ function forceWalk(runners: Runners, batter: Runner): Runners {
   return r;
 }
 
-// Returns { runners, scored: Runner | null }
-function placeRunnerChain(
-  runners: Runners,
-  dest: string,
-  runner: Runner,
-): { runners: Runners; scored: Runner | null } {
-  if (dest === 'HOME') {
-    return { runners, scored: runner };
-  }
-  const r = { ...runners };
-  let scored: Runner | null = null;
-  if (r[dest as Base]) {
-    const chain: Record<string, string> = { '1B': '2B', '2B': '3B', '3B': 'HOME' };
-    const next = chain[dest];
-    const res = placeRunnerChain(r, next, r[dest as Base]!);
-    r[dest as Base] = undefined;
-    Object.assign(r, res.runners);
-    if (res.scored) scored = res.scored;
-  }
-  r[dest as Base] = runner;
-  return { runners: r, scored };
-}
-
-function addRunnerCausedNote(
-  cells: Record<string, CellData>,
-  runners: Runners,
-  causerOrder: number,
-  half: Half,
-): Record<string, CellData> {
-  const newCells = { ...cells };
-
-  // 1B는 note를 찍지 않음. 후속 타자에 의한 진루 표시는 2B, 3B만.
-  (['3B', '2B'] as Base[]).forEach((base) => {
-    const r = runners[base];
-    if (!r || !r.inning) return;
-
-    let rKey: string | null = null;
-    for (let app = 0; app <= 5; app++) {
-      const k = cellKey(r.inning, r.order, app, r.half || half);
-      if (newCells[k]) {
-        rKey = k;
-        break;
-      }
-    }
-    if (!rKey) return;
-
-    const cell = { ...newCells[rKey] };
-    cell.runnerNotes = [...(cell.runnerNotes || [])];
-
-    if (!cell.runnerNotes.find((n) => n.base === base && n.causedBy === causerOrder)) {
-      cell.runnerNotes.push({ causedBy: causerOrder, base });
-    }
-
-    newCells[rKey] = cell;
-  });
-
-  return newCells;
-}
 
 function advanceInning(s: GameState, cells: Record<string, CellData>): GameState {
-  let { half, inning, awayInn, homeInn } = s;
+  const { awayInn, homeInn } = s;
+  let { half, inning } = s;
   const prevInn = [...awayInn];
   const prevHome = [...homeInn];
 
@@ -263,7 +206,6 @@ function nextBatterState(s: GameState): Partial<GameState> {
 function ensureCell(
   cells: Record<string, CellData>,
   key: string,
-  s: GameState,
 ): Record<string, CellData> {
   if (cells[key]) return cells;
   const [shf, si, so, sa] = parseKey(key);
@@ -453,7 +395,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
     case 'PITCH': {
       const { pitchType } = action;
       const key = state.selCellKey;
-      let cells = ensureCell(state.cells, key, state);
+      let cells = ensureCell(state.cells, key);
       const cell = { ...cells[key] };
       if (cell.result) return state;
 
@@ -560,7 +502,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
     case 'BAT_ADV': {
       const { ballType } = action;
       const key = state.selCellKey;
-      let cells = ensureCell(state.cells, key, state);
+      let cells = ensureCell(state.cells, key);
 
       let result: string;
       let cellUpdate: Partial<CellData>;
@@ -720,7 +662,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
     case 'BAT_OUT': {
       const { result, dp: isDP, tp: isTP } = action;
       const key = state.selCellKey;
-      let cells = ensureCell(state.cells, key, state);
+      let cells = ensureCell(state.cells, key);
       cells = {
         ...cells,
         [key]: {
@@ -997,7 +939,8 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
 
     // ── NEXT_INNING ──────────────────────────────────────────────────────────
     case 'NEXT_INNING': {
-      let { half, inning, awayInn, homeInn } = state;
+      const { awayInn, homeInn } = state;
+      let { half, inning } = state;
       const prevInn = [...awayInn];
       const prevHome = [...homeInn];
 
@@ -1085,7 +1028,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
 
       const na = mx + 1;
       const bk = cellKey(inning, curBatterOrder, 0, half);
-      let cells = ensureCell(state.cells, bk, state);
+      let cells = ensureCell(state.cells, bk);
       const nk = cellKey(inning, curBatterOrder, na, half);
 
       cells = {
@@ -1210,7 +1153,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
 
       // 현재 타석 셀 초기화 (새 타자로)
       const key = state.selCellKey;
-      let cells = { ...state.cells };
+      const cells = { ...state.cells };
       if (cells[key] && !cells[key].result) {
         delete cells[key];
       }
@@ -1227,7 +1170,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
     case 'STRIKEOUT': {
       const { result, pitchType } = action;
       const key = state.selCellKey;
-      let cells = ensureCell(state.cells, key, state);
+      let cells = ensureCell(state.cells, key);
       const cell = { ...cells[key] };
       if (cell.result) return state;
 

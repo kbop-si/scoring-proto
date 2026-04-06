@@ -32,11 +32,6 @@ function getValidDests(from: Base | null): (Base | 'HOME')[] {
 
 const DEST_LABEL: Record<string, string> = { '2B': '2루', '3B': '3루', HOME: '홈(득점)' };
 
-const FIELDER_ROWS = [
-  [1, '투'], [2, '포'], [3, '1루'],
-  [4, '2루'], [5, '3루'], [6, '유'],
-  [7, '좌'], [8, '중'], [9, '우'],
-] as [number, string][];
 
 function Btn({ label, sel, onClick, disabled, style }: {
   label: string; sel?: boolean; onClick: () => void; disabled?: boolean; style?: React.CSSProperties;
@@ -55,8 +50,8 @@ function Btn({ label, sel, onClick, disabled, style }: {
 
 export default function RunAdvModal({
   open, runnerBase, runnerName,
-  selectedReason, selectedDest, earned, rbi, pitcher, pitcherList, fielder, defLU,
-  onSelectReason, onSelectDest, onSetEarned, onSetRbi, onSetPitcher, onSelectFielder,
+  selectedReason, selectedDest, earned, rbi, pitcher, pitcherList,
+  onSelectReason, onSelectDest, onSetEarned, onSetRbi, onSetPitcher,
   onConfirm, onClose,
 }: Props) {
   const validDests = getValidDests(runnerBase);

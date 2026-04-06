@@ -9,7 +9,7 @@ interface Props {
   onPitcherChange: () => void;
 }
 
-export default function ContextMenu({ ctx, hasFielder: _, onClose, onSubst, onPitcherChange }: Props) {
+export default function ContextMenu({ ctx, onClose, onSubst, onPitcherChange }: Props) {
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {

@@ -860,9 +860,6 @@ export default function ScoreSheet({ G, onSelCell }: Props) {
 
                   return Array.from({ length: maxRows }, (_, app) => {
                     const isCurBat = half === G.half && ord === G.curBatterOrder;
-                    const key = cellKey(G.inning, ord, app, half);
-                    const cell = G.cells[key] || null;
-
                     return (
                       <tr
                         key={`${ord}-${app}`}

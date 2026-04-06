@@ -1,5 +1,5 @@
 import type { GameState, Base, BaseTargetState } from '../types';
-import { BASE_XY, FPOS_XY, POS_NAME } from '../data/constants';
+import { BASE_XY, FPOS_XY } from '../data/constants';
 
 interface Props {
   G: GameState;

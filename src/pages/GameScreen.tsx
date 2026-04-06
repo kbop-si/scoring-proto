@@ -1,4 +1,4 @@
-import { useReducer, useState, useCallback, useEffect, useRef, ReactNode } from 'react';
+import { useReducer, useState, useCallback, useEffect, useRef } from 'react';
 import type {
   GameSetup, UIState, Base, BaseTargetState, ContextMenuState,
   PitchType, Player, Runner,
@@ -99,10 +99,6 @@ export default function GameScreen({ setup, onEnd }: Props) {
     setToastVisible(true);
     clearTimeout(toastTimerRef.current);
     toastTimerRef.current = setTimeout(() => setToastVisible(false), 2200);
-  }, []);
-
-  const showBaseTargets = useCallback((fromBase: string, cb: (dest: string) => void) => {
-    setBaseTargets({ active: true, fromBase, onSelect: cb });
   }, []);
 
   const clearBaseTargets = useCallback(() => {
@@ -238,34 +234,6 @@ export default function GameScreen({ setup, onEnd }: Props) {
     if (hasFielderSeq) { setDefListResult(result); setDefListOpen(true); }
   }, [G, dispatch, showToast]);
 
-  const confirmBatOut = useCallback(() => {
-    if (!UI.batOutType) { showToast('아웃 유형 선택'); return; }
-    setUI((p) => ({ ...p, batOutOpen: false }));
-    const noFielder = ['if_fly', 'ip', 'hit_ball'];
-    if (noFielder.includes(UI.batOutType)) {
-      const m: Record<string, string> = { if_fly: 'IF', ip: 'IP', hit_ball: 'x2' };
-      applyBatOutResult(m[UI.batOutType] || 'OUT');
-    } else {
-      openFielderModal('수비수 선택 (송구 순서대로)', () => {
-        const seq = UI.fielderSeq;
-        const isDP = UI.batOutType === 'dp';
-        const isTP = UI.batOutType === 'tp';
-        let r = '';
-        if (UI.batOutType === 'fly')        r = 'F' + (seq[0] || '');
-        else if (UI.batOutType === 'pfoul') r = 'f' + (seq[0] || '');
-        else if (UI.batOutType === 'liner') r = 'L' + (seq[0] || '');
-        else if (isDP)                      r = (seq.length >= 2 ? seq.map(String).join('-') : String(seq[0] || ''));
-        else if (isTP)                      r = (seq.length >= 2 ? seq.map(String).join('-') : String(seq[0] || ''));
-        else if (UI.batOutType === 'sac')   r = 'SH' + (seq.length >= 2 ? seq.map(String).join('-') : String(seq[0] || ''));
-        else if (UI.batOutType === 'bunt_out') r = 'BU' + (seq.length >= 2 ? seq.map(String).join('-') : String(seq[0] || ''));
-        else if (seq.length >= 2)           r = seq.map(String).join('-');
-        else if (seq.length === 1)          r = String(seq[0]) + 'A';
-        else                               r = 'GO';
-        applyBatOutResult(r, isDP, isTP);
-      });
-    }
-  }, [UI, applyBatOutResult]); // eslint-disable-line react-hooks/exhaustive-deps
-
   // ── Runner Advance ────────────────────────────────────────────────────────
   const openRunAdv = useCallback(() => {
     if (!UI.selRunnerBase || !G.runners[UI.selRunnerBase]) {
@@ -334,11 +302,6 @@ export default function GameScreen({ setup, onEnd }: Props) {
   }, [UI, G, dispatch, showToast]);
 
   // ── Fielder Modal ─────────────────────────────────────────────────────────
-  const openFielderModal = useCallback((title: string, cb: () => void) => {
-    fielderCbRef.current = cb;
-    setUI((p) => ({ ...p, fielderOpen: true, fielderTitle: title, fielderSeq: [] }));
-  }, []);
-
   const confirmFielder = useCallback(() => {
     setUI((p) => ({ ...p, fielderOpen: false }));
     if (fielderCbRef.current) fielderCbRef.current();

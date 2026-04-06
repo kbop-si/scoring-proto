@@ -25,11 +25,10 @@ interface Props {
 
 export default function InputPanel({
   G, selRunnerBadge,
-  onPitch, onBatAdv, onBatOut, onRunAdv, onRunOut, onDefl, onMoundVisit, onBatterTimeout, onPitcherLeave, onPitcherChange,
-  onNextBatter, onNextInning, onUndo, onClear, onOverflow, onPlaceBatter, onEnd, onToast,
+  onPitch, onBatAdv, onBatOut, onRunAdv, onRunOut, onMoundVisit, onBatterTimeout, onPitcherLeave,
+  onNextBatter, onNextInning, onUndo, onClear, onPlaceBatter, onEnd, onToast,
 }: Props) {
   const pb = G.pendingBatter;
-  const curLU = G.half === 'top' ? G.awayLineup : G.homeLineup;
   
   return (
     <div className="ip" id="ip">

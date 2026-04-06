@@ -32,7 +32,7 @@ function parseFielders(result: string): number[] {
   return [...new Set(digits)]; // unique positions in order
 }
 
-function makeInitialRows(positions: number[], defLU: Player[]): FielderRow[] {
+function makeInitialRows(positions: number[]): FielderRow[] {
   return positions.map((pos, i) => ({
     pos,
     assist: i < positions.length - 1,  // all but last get assist by default
@@ -46,16 +46,16 @@ function makeInitialRows(positions: number[], defLU: Player[]): FielderRow[] {
 }
 
 export default function DefenseListModal({ open, result, defLU, onClose }: Props) {
-  const positions = parseFielders(result);
   const [rows, setRows] = useState<FielderRow[]>([]);
   const [수비시정, set수비시정] = useState(false);
 
   useEffect(() => {
     if (open) {
-      setRows(makeInitialRows(positions, defLU));
+      const positions = parseFielders(result);
+      setRows(makeInitialRows(positions));
       set수비시정(false);
     }
-  }, [open, result]);
+  }, [open, result, defLU]);
 
   const update = (i: number, patch: Partial<FielderRow>) => {
     setRows((prev) => prev.map((r, idx) => idx === i ? { ...r, ...patch } : r));

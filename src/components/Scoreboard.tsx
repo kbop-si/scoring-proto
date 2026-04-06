@@ -10,7 +10,7 @@ interface Props {
 
 const MAX_INN = 15;
 
-export default function Scoreboard({ G, showSheet, onToggleSheet, onOpenSheetWindow }: Props) {
+export default function Scoreboard({ G, onOpenSheetWindow }: Props) {
   const inns = Array.from({ length: MAX_INN }, (_, i) => i + 1);
 
   // Compute per-inning runs from cells
