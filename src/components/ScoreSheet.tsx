@@ -155,7 +155,7 @@ function ScoreCell({
             <PitchMark code={p} size={12} />
           </span>
         ))}
-        {result && (
+        {result && !['B', 'IB', 'IB2', 'HP', '#', 'ob', 'K', 'K3B', 'KW', 'KP', 'KE'].includes(result) && (
           <span
             title={`타격완료: ${result}`}
             style={{
