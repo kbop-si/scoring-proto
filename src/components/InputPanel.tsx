@@ -24,12 +24,26 @@ interface Props {
 }
 
 export default function InputPanel({
-  G, selRunnerBadge,
-  onPitch, onBatAdv, onBatOut, onRunAdv, onRunOut, onMoundVisit, onBatterTimeout, onPitcherLeave,
-  onNextBatter, onNextInning, onUndo, onClear, onPlaceBatter, onEnd, onToast,
+  G,
+  selRunnerBadge,
+  onPitch,
+  onBatAdv,
+  onBatOut,
+  onRunAdv,
+  onRunOut,
+  onMoundVisit,
+  onBatterTimeout,
+  onPitcherLeave,
+  onNextBatter,
+  onNextInning,
+  onUndo,
+  onClear,
+  onPlaceBatter,
+  onEnd,
+  onToast,
 }: Props) {
   const pb = G.pendingBatter;
-  
+
   return (
     <div className="ip" id="ip">
       {/* Pitcher section — grid layout */}
@@ -37,18 +51,18 @@ export default function InputPanel({
         {/* Left: Info card (pitcher info) */}
         <div className="ip-info-card">
           <div className="info-row">
-            <span className="info-lbl">투수  :</span>
+            <span className="info-lbl">투수 :</span>
             <span className="info-val">{G.pitcher.name || '—'}</span>
           </div>
           <div className="info-row">
-            <span className="info-lbl">투구  :</span>
+            <span className="info-lbl">투구 :</span>
             <span className="info-val">{G.pitcher.pitchCount || 0}</span>
           </div>
-            <div className="info-row">
+          <div className="info-row">
             <span className="info-val">
               (B:{G.pitchBalls} S:{G.pitchStrikes})
             </span>
-           </div>
+          </div>
         </div>
 
         {/* Right: BSO card */}
@@ -56,19 +70,25 @@ export default function InputPanel({
           <div className="bso-line">
             <div className="bso-big-lbl">B</div>
             <div className="bso-big-dots">
-              {[0, 1, 2].map((i) => <span key={i} className={`dot${i < G.balls ? ' b' : ''}`} />)}
+              {[0, 1, 2].map((i) => (
+                <span key={i} className={`dot${i < G.balls ? ' b' : ''}`} />
+              ))}
             </div>
           </div>
           <div className="bso-line">
             <div className="bso-big-lbl">S</div>
             <div className="bso-big-dots">
-              {[0, 1].map((i) => <span key={i} className={`dot${i < G.strikes ? ' s' : ''}`} />)}
+              {[0, 1].map((i) => (
+                <span key={i} className={`dot${i < G.strikes ? ' s' : ''}`} />
+              ))}
             </div>
           </div>
           <div className="bso-line">
             <div className="bso-big-lbl">O</div>
             <div className="bso-big-dots">
-              {[0, 1].map((i) => <span key={i} className={`dot${i < G.outs ? ' o' : ''}`} />)}
+              {[0, 1].map((i) => (
+                <span key={i} className={`dot${i < G.outs ? ' o' : ''}`} />
+              ))}
             </div>
           </div>
         </div>
@@ -76,13 +96,33 @@ export default function InputPanel({
 
       {/* 타자 배치 대기 배너 */}
       {pb && (
-        <div style={{ background: '#fef3c7', borderBottom: '1px solid #f59e0b', padding: '6px 10px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+        <div
+          style={{
+            background: '#fef3c7',
+            borderBottom: '1px solid #f59e0b',
+            padding: '6px 10px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: 8,
+          }}
+        >
           <span style={{ fontSize: 11, color: '#92400e', fontWeight: 700 }}>
             {pb.runner.name} → {pb.dest} 대기 중 | 주자 이동 후 배치
           </span>
           <button
             onClick={onPlaceBatter}
-            style={{ background: '#d97706', color: '#fff', border: 'none', padding: '4px 12px', fontSize: 11, fontWeight: 700, borderRadius: 2, cursor: 'pointer', animation: 'cell-pulse 1s step-start infinite' }}
+            style={{
+              background: '#d97706',
+              color: '#fff',
+              border: 'none',
+              padding: '4px 12px',
+              fontSize: 11,
+              fontWeight: 700,
+              borderRadius: 2,
+              cursor: 'pointer',
+              animation: 'cell-pulse 1s step-start infinite',
+            }}
           >
             ▶ 타자 배치
           </button>
@@ -118,7 +158,9 @@ export default function InputPanel({
           </button>
         </div>
         <div style={{ borderTop: '1px solid var(--border2)', paddingTop: 4, marginTop: 5 }}>
-          <div style={{ fontSize: 12, fontWeight: 'bold', color: 'var(--text3)', marginBottom: 3 }}>피치클락</div>
+          <div style={{ fontSize: 12, fontWeight: 'bold', color: 'var(--text3)', marginBottom: 3 }}>
+            피치클락
+          </div>
           <div className="ip-g3 ip-g2-special">
             <button className="ip-btn b-S" onClick={() => onPitch('PC1')}>
               <span className="ip-lbl">투수위반 볼</span>
@@ -127,7 +169,8 @@ export default function InputPanel({
               <span className="ip-lbl">포수위반 볼</span>
             </button>
             <button className="ip-btn b-S" onClick={() => onPitch('PC3')}>
-              <span className="ip-lbl">타자위반</span><span className="ip-sub">스트라이크</span>
+              <span className="ip-lbl">타자위반</span>
+              <span className="ip-sub">스트라이크</span>
             </button>
           </div>
         </div>
@@ -139,17 +182,28 @@ export default function InputPanel({
           <div style={{ flex: 1 }}>
             <div className="ta-lbl">타자</div>
             <div className="ta-row">
-              <button className="ta-btn adv" onClick={onBatAdv}>진루</button>
-              <button className="ta-btn out" onClick={onBatOut}>아웃</button>
+              <button className="ta-btn adv" onClick={onBatAdv}>
+                진루
+              </button>
+              <button className="ta-btn out" onClick={onBatOut}>
+                아웃
+              </button>
             </div>
           </div>
           <div style={{ flex: 1 }}>
             <div className="ta-lbl">
-              주자 <span style={{ fontSize: 9, color: 'var(--blue)', fontWeight: 700 }}>{selRunnerBadge}</span>
+              주자{' '}
+              <span style={{ fontSize: 9, color: 'var(--blue)', fontWeight: 700 }}>
+                {selRunnerBadge}
+              </span>
             </div>
             <div className="ta-row">
-              <button className="ta-btn adv" onClick={onRunAdv}>진루</button>
-              <button className="ta-btn out" onClick={onRunOut}>아웃</button>
+              <button className="ta-btn adv" onClick={onRunAdv}>
+                진루
+              </button>
+              <button className="ta-btn out" onClick={onRunOut}>
+                아웃
+              </button>
             </div>
           </div>
         </div>
@@ -181,11 +235,25 @@ export default function InputPanel({
       <div className="ip-sec">
         <div className="ip-sec-t">타순 / 이닝 / 기록</div>
         <div className="act-row">
-          <button className="act-btn a-next" onClick={onNextBatter}>다음타자</button>
-          <button className="act-btn a-inn" onClick={onNextInning}>다음이닝</button>
-          <button className="act-btn a-undo" onClick={onUndo}>되돌리기</button>
-          <button className="act-btn a-clear" onClick={onClear}>타석지우기</button>
-          <button className="act-btn" style={{ background: 'var(--red)', borderColor: 'var(--red)' }} onClick={onEnd}>게임종료</button>
+          <button className="act-btn a-next" onClick={onNextBatter}>
+            다음타자
+          </button>
+          <button className="act-btn a-inn" onClick={onNextInning}>
+            다음이닝
+          </button>
+          <button className="act-btn a-undo" onClick={onUndo}>
+            되돌리기
+          </button>
+          <button className="act-btn a-clear" onClick={onClear}>
+            타석지우기
+          </button>
+          <button
+            className="act-btn"
+            style={{ background: 'var(--red)', borderColor: 'var(--red)' }}
+            onClick={onEnd}
+          >
+            게임종료
+          </button>
         </div>
       </div>
     </div>

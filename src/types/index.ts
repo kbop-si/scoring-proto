@@ -23,17 +23,17 @@ export interface RunnerNote {
   causedBy: number;
   base: Base | 'HOME';
   rbi?: boolean;
-  steal?: boolean;   // 도루에 의한 진루 (통계용)
-  advCode?: string;  // 진루 사유 코드 표시 — S/(S)/W/(W)/P/(P)/BK/(BK)/✓BK/✓(BK)
+  steal?: boolean; // 도루에 의한 진루 (통계용)
+  advCode?: string; // 진루 사유 코드 표시 — S/(S)/W/(W)/P/(P)/BK/(BK)/✓BK/✓(BK)
 }
 
 export interface HitData {
-  zone: number;        // 1-9 fielder zone
-  dirRow: number;      // 0-2 (0=deep/top, 1=mid, 2=near/bottom of 3x3 grid)
-  dirCol: number;      // 0-2 (0=left, 1=center, 2=right)
+  zone: number; // 1-9 fielder zone
+  dirRow: number; // 0-2 (0=deep/top, 1=mid, 2=near/bottom of 3x3 grid)
+  dirCol: number; // 0-2 (0=left, 1=center, 2=right)
   ballType: '땅' | '뜬' | '라';
   deflection: boolean;
-  bases: 0 | 1 | 2 | 3 | 4;  // 0=out, 1=single, 2=double, 3=triple, 4=HR
+  bases: 0 | 1 | 2 | 3 | 4; // 0=out, 1=single, 2=double, 3=triple, 4=HR
 }
 
 export interface CellData {
@@ -81,7 +81,7 @@ export interface PitcherChange {
   inning: number;
   half: Half;
   order: number; // 교체 시점 타자 순서
-  name: string;  // 새 투수 이름
+  name: string; // 새 투수 이름
 }
 
 export interface PitcherStats {
@@ -265,7 +265,17 @@ export type GameAction =
   | { type: 'BAT_ADV'; result: string; ballType?: '땅' | '뜬' | '라'; hitData?: HitData }
   | { type: 'BAT_OUT'; result: string; dp?: boolean; tp?: boolean }
   | { type: 'STRIKEOUT'; result: 'K' | 'KW' | 'KP' | 'KE'; pitchType: PitchType }
-  | { type: 'RUN_ADV'; base: Base; runner: Runner; dest: string; earned: boolean | 'half'; rbi?: boolean; scorePitcher?: string; steal?: boolean; advCode?: string }
+  | {
+      type: 'RUN_ADV';
+      base: Base;
+      runner: Runner;
+      dest: string;
+      earned: boolean | 'half';
+      rbi?: boolean;
+      scorePitcher?: string;
+      steal?: boolean;
+      advCode?: string;
+    }
   | { type: 'RUN_OUT'; base: Base; result: string }
   | { type: 'NEXT_BATTER' }
   | { type: 'NEXT_INNING' }
@@ -284,7 +294,13 @@ export type GameAction =
   | { type: 'DELETE_LU_PLAYER'; team: 'away' | 'home'; idx: number }
   | { type: 'ADD_PITCHER_SLOT'; team: 'away' | 'home' }
   | { type: 'RESTORE_LINEUP' }
-  | { type: 'SET_LINEUPS'; awayLineup: Player[]; homeLineup: Player[]; awayBench: Player[]; homeBench: Player[] }
+  | {
+      type: 'SET_LINEUPS';
+      awayLineup: Player[];
+      homeLineup: Player[];
+      awayBench: Player[];
+      homeBench: Player[];
+    }
   | { type: 'SET_GAME_INFO'; awayTeam: string; homeTeam: string; date: string; league: string }
   | { type: 'INIT_GAME'; setup: GameSetup }
   | { type: 'GAME_EVENT'; eventType: 'mound' | 'batter_timeout' | 'pitcher_leave'; detail?: string }

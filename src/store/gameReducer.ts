@@ -1,6 +1,17 @@
 import type {
-  GameState, GameAction, Player, Runner, Runners,
-  CellData, HistorySnapshot, Half, Base, PitchType, HitData, RunnerNote, PitcherStats,
+  GameState,
+  GameAction,
+  Player,
+  Runner,
+  Runners,
+  CellData,
+  HistorySnapshot,
+  Half,
+  Base,
+  PitchType,
+  HitData,
+  RunnerNote,
+  PitcherStats,
 } from '../types';
 import { SAMPLE } from '../data/constants';
 
@@ -20,24 +31,61 @@ export function isOut(r: string | null): boolean {
   // KT[pos] = 삼진 후 태그 아웃, K[seq] = 삼진 후 송구 아웃 (e.g. K2-3)
   if (r.startsWith('KT') && r !== 'KT') return true;
   if (r.startsWith('K') && r.length > 1 && /^\d/.test(r.slice(1))) return true;
-  return r === 'K' || r === 'K3B' || r === 'A'
-    || (r.startsWith('SH') && r !== 'SH진루') || r.startsWith('BU') || r.startsWith('SF')
-    || /^\d([-→]\d)*(T|U|R)?$/.test(r) || /^[fFL]/.test(r) || /^IF/.test(r)
-    || r === 'x2' || r === 'xB' || r === 'xBU' || r === 'IP' || r === 'IP0';
+  return (
+    r === 'K' ||
+    r === 'K3B' ||
+    r === 'A' ||
+    (r.startsWith('SH') && r !== 'SH진루') ||
+    r.startsWith('BU') ||
+    r.startsWith('SF') ||
+    /^\d([-→]\d)*(T|U|R)?$/.test(r) ||
+    /^[fFL]/.test(r) ||
+    /^IF/.test(r) ||
+    r === 'x2' ||
+    r === 'xB' ||
+    r === 'xBU' ||
+    r === 'IP' ||
+    r === 'IP0'
+  );
 }
 
 export function isOnBase(r: string | null): boolean {
   if (!r) return false;
-  if (/^\/[789]$/.test(r)) return true;   // 단타 /7 /8 /9
+  if (/^\/[789]$/.test(r)) return true; // 단타 /7 /8 /9
   if (/^>[789](-[789])?$/.test(r)) return true; // 2루타 >7 >7-8 >8-9 >9
-  if (/^>>>[789]$/.test(r)) return true;  // 3루타 >>>7 >>>8 >>>9
-  if (/^E\d$/.test(r)) return true;       // 실책 진루 E6, E5 등
-  if (/^E번트\d$/.test(r)) return true;   // 번트 실책 E번트6 등
-  if (/^KE\d$/.test(r)) return true;      // 낫아웃 수비실책 KE2 등
-  return ['B', 'IB', 'IB2', 'HP', '#', 'ob', 'E', 'FC',
-    'INT', 'BUNT', 'HR', 'GHR', 'GCW', 'KW', 'KP', 'KE',
-    'FC번트', 'E번트', 'SH진루', 'DP_E', 'TP_E',
-    '/hit', '>hit', '>>>hit', 'H1', 'H2', 'H3'].includes(r);
+  if (/^>>>[789]$/.test(r)) return true; // 3루타 >>>7 >>>8 >>>9
+  if (/^E\d$/.test(r)) return true; // 실책 진루 E6, E5 등
+  if (/^E번트\d$/.test(r)) return true; // 번트 실책 E번트6 등
+  if (/^KE\d$/.test(r)) return true; // 낫아웃 수비실책 KE2 등
+  return [
+    'B',
+    'IB',
+    'IB2',
+    'HP',
+    '#',
+    'ob',
+    'E',
+    'FC',
+    'INT',
+    'BUNT',
+    'HR',
+    'GHR',
+    'GCW',
+    'KW',
+    'KP',
+    'KE',
+    'FC번트',
+    'E번트',
+    'SH진루',
+    'DP_E',
+    'TP_E',
+    '/hit',
+    '>hit',
+    '>>>hit',
+    'H1',
+    'H2',
+    'H3',
+  ].includes(r);
 }
 
 export function findPitcher(lu: Player[]): { name: string; num: string; pitchCount: number } {
@@ -53,12 +101,18 @@ function savePitcherStats(
   map: Record<string, PitcherStats>,
   pitcher: { name: string; num: string; pitchCount: number },
   pitchBalls: number,
-  pitchStrikes: number,
+  pitchStrikes: number
 ): Record<string, PitcherStats> {
-  return { ...map, [pitcherKey(pitcher)]: { pitchCount: pitcher.pitchCount, pitchBalls, pitchStrikes } };
+  return {
+    ...map,
+    [pitcherKey(pitcher)]: { pitchCount: pitcher.pitchCount, pitchBalls, pitchStrikes },
+  };
 }
 
-function loadPitcherStats(map: Record<string, PitcherStats>, pitcher: { name: string; num: string }): PitcherStats {
+function loadPitcherStats(
+  map: Record<string, PitcherStats>,
+  pitcher: { name: string; num: string }
+): PitcherStats {
   return map[pitcherKey(pitcher)] ?? { pitchCount: 0, pitchBalls: 0, pitchStrikes: 0 };
 }
 
@@ -114,7 +168,6 @@ function forceWalk(runners: Runners, batter: Runner): Runners {
   return r;
 }
 
-
 function advanceInning(s: GameState, cells: Record<string, CellData>): GameState {
   const { awayInn, homeInn } = s;
   let { half, inning } = s;
@@ -128,11 +181,14 @@ function advanceInning(s: GameState, cells: Record<string, CellData>): GameState
   let homeNextOrder = s.homeNextOrder;
 
   if (half === 'top') {
-    prevInn[inning - 1] = s.awayR - (inning > 1 ? awayInn.slice(0, inning - 1).reduce((sum: number, v) => sum + (v || 0), 0) : 0);
+    prevInn[inning - 1] =
+      s.awayR -
+      (inning > 1 ? awayInn.slice(0, inning - 1).reduce((sum: number, v) => sum + (v || 0), 0) : 0);
     awayNextOrder = finishedOrder;
     half = 'bottom';
   } else {
-    prevHome[inning - 1] = s.homeR - (homeInn.slice(0, inning - 1).reduce((sum: number, v) => sum + (v || 0), 0));
+    prevHome[inning - 1] =
+      s.homeR - homeInn.slice(0, inning - 1).reduce((sum: number, v) => sum + (v || 0), 0);
     homeNextOrder = finishedOrder;
     half = 'top';
     inning++;
@@ -142,10 +198,9 @@ function advanceInning(s: GameState, cells: Record<string, CellData>): GameState
   // 새 half에서 타석을 시작할 타자
   const leadOff = half === 'top' ? awayNextOrder : homeNextOrder;
 
-  const nextPitcherBase = half === 'top'
-    ? findPitcher(s.homeLineup)
-    : findPitcher(s.awayLineup);
-  const pitcherChanged = nextPitcherBase.name !== s.pitcher.name || nextPitcherBase.num !== s.pitcher.num;
+  const nextPitcherBase = half === 'top' ? findPitcher(s.homeLineup) : findPitcher(s.awayLineup);
+  const pitcherChanged =
+    nextPitcherBase.name !== s.pitcher.name || nextPitcherBase.num !== s.pitcher.num;
 
   let pitcherStatsMap = s.pitcherStatsMap;
   let pitchBalls: number;
@@ -192,7 +247,9 @@ function nextBatterState(s: GameState): Partial<GameState> {
   const next = (s.curBatterOrder % 9) + 1;
   // 해당 타자가 현재 이닝에 이미 결과를 낸 타석이 있으면 자동으로 다음 appearance 사용
   const usedApps = Object.values(s.cells)
-    .filter((c) => c.half === s.half && c.inning === s.inning && c.order === next && c.result !== null)
+    .filter(
+      (c) => c.half === s.half && c.inning === s.inning && c.order === next && c.result !== null
+    )
     .reduce((m, c) => Math.max(m, c.appearance + 1), 0);
 
   return {
@@ -203,15 +260,20 @@ function nextBatterState(s: GameState): Partial<GameState> {
   };
 }
 
-function ensureCell(
-  cells: Record<string, CellData>,
-  key: string,
-): Record<string, CellData> {
+function ensureCell(cells: Record<string, CellData>, key: string): Record<string, CellData> {
   if (cells[key]) return cells;
   const [shf, si, so, sa] = parseKey(key);
   return {
     ...cells,
-    [key]: { half: shf, inning: si, order: so, appearance: sa, pitches: [], result: null, runnerNotes: [] },
+    [key]: {
+      half: shf,
+      inning: si,
+      order: so,
+      appearance: sa,
+      pitches: [],
+      result: null,
+      runnerNotes: [],
+    },
   };
 }
 
@@ -243,8 +305,14 @@ export const initialGameState: GameState = {
   awayBench: [],
   homeBench: [],
   pitcher: { name: '—', num: '', pitchCount: 0 },
-  awayR: 0, awayH: 0, awayE: 0, awayER: 0,
-  homeR: 0, homeH: 0, homeE: 0, homeER: 0,
+  awayR: 0,
+  awayH: 0,
+  awayE: 0,
+  awayER: 0,
+  homeR: 0,
+  homeH: 0,
+  homeE: 0,
+  homeER: 0,
   awayInn: Array(15).fill(null),
   homeInn: Array(15).fill(null),
   history: [],
@@ -256,7 +324,6 @@ export const initialGameState: GameState = {
 
 export function gameReducer(state: GameState, action: GameAction): GameState {
   switch (action.type) {
-
     // ── INIT ────────────────────────────────────────────────────────────────
     case 'INIT_GAME': {
       const { setup } = action;
@@ -300,7 +367,13 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
 
     // ── SET_GAME_INFO ────────────────────────────────────────────────────────
     case 'SET_GAME_INFO': {
-      return { ...state, awayTeam: action.awayTeam, homeTeam: action.homeTeam, date: action.date, league: action.league };
+      return {
+        ...state,
+        awayTeam: action.awayTeam,
+        homeTeam: action.homeTeam,
+        date: action.date,
+        league: action.league,
+      };
     }
 
     // ── SET_LINEUPS ──────────────────────────────────────────────────────────
@@ -357,7 +430,9 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
       const lu = [...state[luKey]];
       const bench = [...state[benchKey]];
       const [removed] = lu.splice(action.idx, 1);
-      lu.forEach((p, i) => { p.order = i + 1; });
+      lu.forEach((p, i) => {
+        p.order = i + 1;
+      });
       bench.push(removed);
       return { ...state, [luKey]: lu, [benchKey]: bench };
     }
@@ -403,16 +478,45 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
 
       let { balls, strikes, pitchBalls, pitchStrikes } = state;
       switch (pitchType) {
-        case 'S':   strikes++; pitchStrikes++; break;
-        case 'SW':  strikes++; pitchStrikes++; break;
-        case 'B':   balls++;   pitchBalls++;   break;
-        case 'F':   if (strikes < 2) strikes++; pitchStrikes++; break;
-        case 'FE':  if (strikes < 2) strikes++; break;
-        case 'BS':  strikes++; pitchStrikes++; break;
-        case 'BF':  strikes++; pitchStrikes++; break; // 번트파울: 2스트라이크에서도 추가 → K3B
-        case 'PC1': balls++;   pitchBalls++;   break; // 피치클락 두수위반볼
-        case 'PC2': balls++;   pitchBalls++;   break; // 피치클락 포수위반볼
-        case 'PC3': strikes++; pitchStrikes++; break; // 피치클락 타자위반스트라이크
+        case 'S':
+          strikes++;
+          pitchStrikes++;
+          break;
+        case 'SW':
+          strikes++;
+          pitchStrikes++;
+          break;
+        case 'B':
+          balls++;
+          pitchBalls++;
+          break;
+        case 'F':
+          if (strikes < 2) strikes++;
+          pitchStrikes++;
+          break;
+        case 'FE':
+          if (strikes < 2) strikes++;
+          break;
+        case 'BS':
+          strikes++;
+          pitchStrikes++;
+          break;
+        case 'BF':
+          strikes++;
+          pitchStrikes++;
+          break; // 번트파울: 2스트라이크에서도 추가 → K3B
+        case 'PC1':
+          balls++;
+          pitchBalls++;
+          break; // 피치클락 두수위반볼
+        case 'PC2':
+          balls++;
+          pitchBalls++;
+          break; // 피치클락 포수위반볼
+        case 'PC3':
+          strikes++;
+          pitchStrikes++;
+          break; // 피치클락 타자위반스트라이크
       }
 
       const pitcher = { ...state.pitcher, pitchCount: (state.pitcher.pitchCount || 0) + 1 };
@@ -529,14 +633,43 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
       };
 
       const BASE_MAP: Record<string, string> = {
-        '/7': '1B', '/8': '1B', '/9': '1B', INT: '1B', BUNT: '1B', '/hit': '1B', H1: '1B',
-        '>7': '2B', '>7-8': '2B', '>8-9': '2B', '>9': '2B', '>hit': '2B', H2: '2B',
-        '>>>7': '3B', '>>>8': '3B', '>>>9': '3B', '>>>hit': '3B', H3: '3B',
-        HR: 'HOME', GHR: 'HOME', GCW: 'HOME',
-        B: '1B', IB: '1B', IB2: '1B', HP: '1B', '#': '1B', ob: '1B',
-        E: '1B', FC: '1B',
-        KW: '1B', KP: '1B', KE: '1B',
-        'FC번트': '1B', 'E번트': '1B', 'SH진루': '1B', 'DP_E': '1B', 'TP_E': '1B',
+        '/7': '1B',
+        '/8': '1B',
+        '/9': '1B',
+        INT: '1B',
+        BUNT: '1B',
+        '/hit': '1B',
+        H1: '1B',
+        '>7': '2B',
+        '>7-8': '2B',
+        '>8-9': '2B',
+        '>9': '2B',
+        '>hit': '2B',
+        H2: '2B',
+        '>>>7': '3B',
+        '>>>8': '3B',
+        '>>>9': '3B',
+        '>>>hit': '3B',
+        H3: '3B',
+        HR: 'HOME',
+        GHR: 'HOME',
+        GCW: 'HOME',
+        B: '1B',
+        IB: '1B',
+        IB2: '1B',
+        HP: '1B',
+        '#': '1B',
+        ob: '1B',
+        E: '1B',
+        FC: '1B',
+        KW: '1B',
+        KP: '1B',
+        KE: '1B',
+        FC번트: '1B',
+        E번트: '1B',
+        SH진루: '1B',
+        DP_E: '1B',
+        TP_E: '1B',
       };
       const dest = BASE_MAP[result] || '1B';
       const forceTypes = ['B', 'IB', 'IB2', 'HP', '#', 'ob'];
@@ -585,17 +718,42 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
       }
 
       const hitTypes = new Set([
-        '/7', '/8', '/9', 'INT', 'BUNT', '/hit', 'H1',
-        '>7', '>7-8', '>8-9', '>9', '>hit', 'H2',
-        '>>>7', '>>>8', '>>>9', '>>>hit', 'H3',
-        'HR', 'GHR', 'GCW',
+        '/7',
+        '/8',
+        '/9',
+        'INT',
+        'BUNT',
+        '/hit',
+        'H1',
+        '>7',
+        '>7-8',
+        '>8-9',
+        '>9',
+        '>hit',
+        'H2',
+        '>>>7',
+        '>>>8',
+        '>>>9',
+        '>>>hit',
+        'H3',
+        'HR',
+        'GHR',
+        'GCW',
       ]);
       const awayH = hitTypes.has(result) && state.half === 'top' ? state.awayH + 1 : state.awayH;
       const homeH = hitTypes.has(result) && state.half === 'bottom' ? state.homeH + 1 : state.homeH;
 
-      const isErrorResult = /^E\d$/.test(result) || /^E번트\d$/.test(result) || /^KE\d$/.test(result)
-        || result === 'DP_E' || result === 'TP_E';
-      const earnedDiff = isErrorResult ? 0 : (state.half === 'top' ? awayR - state.awayR : homeR - state.homeR);
+      const isErrorResult =
+        /^E\d$/.test(result) ||
+        /^E번트\d$/.test(result) ||
+        /^KE\d$/.test(result) ||
+        result === 'DP_E' ||
+        result === 'TP_E';
+      const earnedDiff = isErrorResult
+        ? 0
+        : state.half === 'top'
+          ? awayR - state.awayR
+          : homeR - state.homeR;
       const awayER = state.half === 'top' ? state.awayER + earnedDiff : state.awayER;
       const homeER = state.half === 'bottom' ? state.homeER + earnedDiff : state.homeER;
 
@@ -693,7 +851,17 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
             for (let app = 0; app <= 5; app++) {
               const rk = cellKey(runner.inning, runner.order, app, runner.half || state.half);
               if (cells[rk]) {
-                cells = { ...cells, [rk]: { ...cells[rk], runOut: runOutSeq, runOutBase: base, runOutNum, runOutInning: state.inning, isDPRunner: true } };
+                cells = {
+                  ...cells,
+                  [rk]: {
+                    ...cells[rk],
+                    runOut: runOutSeq,
+                    runOutBase: base,
+                    runOutNum,
+                    runOutInning: state.inning,
+                    isDPRunner: true,
+                  },
+                };
                 break;
               }
             }
@@ -720,7 +888,15 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
           }
         }
         const batPitcher = { ...state.pitcher, pitchCount: (state.pitcher.pitchCount || 0) + 1 };
-        return advanceInning({ ...state, pitcher: batPitcher, pitchCount: state.pitchCount + 1, pitchStrikes: state.pitchStrikes + 1 }, cells);
+        return advanceInning(
+          {
+            ...state,
+            pitcher: batPitcher,
+            pitchCount: state.pitchCount + 1,
+            pitchStrikes: state.pitchStrikes + 1,
+          },
+          cells
+        );
       }
 
       // θ 타격완료 → S 집계 (아웃 타구는 항상 타격 접촉)
@@ -729,7 +905,19 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
       const batPitchStrikes = state.pitchStrikes + 1;
 
       const next = nextBatterState({ ...state, outs });
-      return { ...state, cells, runners, outs, balls: 0, strikes: 0, ...next, pitcher: batPitcher, pitchCount: batPitchCount, pitchStrikes: batPitchStrikes, history: saveHist(state) };
+      return {
+        ...state,
+        cells,
+        runners,
+        outs,
+        balls: 0,
+        strikes: 0,
+        ...next,
+        pitcher: batPitcher,
+        pitchCount: batPitchCount,
+        pitchStrikes: batPitchStrikes,
+        history: saveHist(state),
+      };
     }
 
     // ── RUN_ADV ──────────────────────────────────────────────────────────────
@@ -768,7 +956,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
               };
 
               const runnerNotes = existing.find(
-                (n) => n.base === 'HOME' && n.causedBy === state.curBatterOrder,
+                (n) => n.base === 'HOME' && n.causedBy === state.curBatterOrder
               )
                 ? existing
                 : [...existing, homeNote];
@@ -823,12 +1011,27 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
             const rk = cellKey(runner.inning, runner.order, app, runner.half || state.half);
             if (cells[rk]) {
               const existing = cells[rk].runnerNotes || [];
-              if (!existing.find((n) => n.base === dest && n.causedBy === state.curBatterOrder && n.steal === action.steal)) {
+              if (
+                !existing.find(
+                  (n) =>
+                    n.base === dest &&
+                    n.causedBy === state.curBatterOrder &&
+                    n.steal === action.steal
+                )
+              ) {
                 cells = {
                   ...cells,
                   [rk]: {
                     ...cells[rk],
-                    runnerNotes: [...existing, { causedBy: state.curBatterOrder, base: dest as Base, steal: action.steal, advCode: action.advCode }],
+                    runnerNotes: [
+                      ...existing,
+                      {
+                        causedBy: state.curBatterOrder,
+                        base: dest as Base,
+                        steal: action.steal,
+                        advCode: action.advCode,
+                      },
+                    ],
                   },
                 };
               }
@@ -856,7 +1059,16 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
         for (let app = 0; app <= 5; app++) {
           const rk = cellKey(runner.inning, runner.order, app, runner.half);
           if (cells[rk]) {
-            cells = { ...cells, [rk]: { ...cells[rk], runOut: action.result, runOutBase: action.base, runOutNum, runOutInning: state.inning } };
+            cells = {
+              ...cells,
+              [rk]: {
+                ...cells[rk],
+                runOut: action.result,
+                runOutBase: action.base,
+                runOutNum,
+                runOutInning: state.inning,
+              },
+            };
             found = true;
             break;
           }
@@ -867,7 +1079,16 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
           for (let app = 0; app <= 5; app++) {
             const rk = cellKey(runner.inning, runner.order, app, otherHalf);
             if (cells[rk]) {
-              cells = { ...cells, [rk]: { ...cells[rk], runOut: action.result, runOutBase: action.base, runOutNum, runOutInning: state.inning } };
+              cells = {
+                ...cells,
+                [rk]: {
+                  ...cells[rk],
+                  runOut: action.result,
+                  runOutBase: action.base,
+                  runOutNum,
+                  runOutInning: state.inning,
+                },
+              };
               found = true;
               break;
             }
@@ -900,13 +1121,20 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
             let found = false;
             for (let app = 0; app <= 5; app++) {
               const rk = cellKey(rem.inning, rem.order, app, rem.half || state.half);
-              if (cells[rk]) { cells = { ...cells, [rk]: { ...cells[rk], lobCell: true } }; found = true; break; }
+              if (cells[rk]) {
+                cells = { ...cells, [rk]: { ...cells[rk], lobCell: true } };
+                found = true;
+                break;
+              }
             }
             if (!found) {
               const otherHalf: Half = (rem.half || state.half) === 'top' ? 'bottom' : 'top';
               for (let app = 0; app <= 5; app++) {
                 const rk = cellKey(rem.inning, rem.order, app, otherHalf);
-                if (cells[rk]) { cells = { ...cells, [rk]: { ...cells[rk], lobCell: true } }; break; }
+                if (cells[rk]) {
+                  cells = { ...cells, [rk]: { ...cells[rk], lobCell: true } };
+                  break;
+                }
               }
             }
           }
@@ -949,11 +1177,14 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
       let homeNextOrder = state.homeNextOrder;
 
       if (half === 'top') {
-        prevInn[inning - 1] = state.awayR - (inning > 1 ? (awayInn.slice(0, inning - 1).reduce((s: number, v) => s + (v || 0), 0)) : 0);
+        prevInn[inning - 1] =
+          state.awayR -
+          (inning > 1 ? awayInn.slice(0, inning - 1).reduce((s: number, v) => s + (v || 0), 0) : 0);
         awayNextOrder = finishedOrder;
         half = 'bottom';
       } else {
-        prevHome[inning - 1] = state.homeR - (homeInn.slice(0, inning - 1).reduce((s: number, v) => s + (v || 0), 0));
+        prevHome[inning - 1] =
+          state.homeR - homeInn.slice(0, inning - 1).reduce((s: number, v) => s + (v || 0), 0);
         homeNextOrder = finishedOrder;
         half = 'top';
         inning++;
@@ -961,16 +1192,21 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
 
       const leadOff = half === 'top' ? awayNextOrder : homeNextOrder;
 
-      const nextPitcherBase = half === 'top'
-        ? findPitcher(state.homeLineup)
-        : findPitcher(state.awayLineup);
-      const pitcherChanged = nextPitcherBase.name !== state.pitcher.name || nextPitcherBase.num !== state.pitcher.num;
+      const nextPitcherBase =
+        half === 'top' ? findPitcher(state.homeLineup) : findPitcher(state.awayLineup);
+      const pitcherChanged =
+        nextPitcherBase.name !== state.pitcher.name || nextPitcherBase.num !== state.pitcher.num;
       let pitcherStatsMap = state.pitcherStatsMap;
       let pitchBalls: number;
       let pitchStrikes: number;
       let pitcher: typeof state.pitcher;
       if (pitcherChanged) {
-        pitcherStatsMap = savePitcherStats(pitcherStatsMap, state.pitcher, state.pitchBalls, state.pitchStrikes);
+        pitcherStatsMap = savePitcherStats(
+          pitcherStatsMap,
+          state.pitcher,
+          state.pitchBalls,
+          state.pitchStrikes
+        );
         const saved = loadPitcherStats(pitcherStatsMap, nextPitcherBase);
         pitchBalls = saved.pitchBalls;
         pitchStrikes = saved.pitchStrikes;
@@ -1033,7 +1269,15 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
 
       cells = {
         ...cells,
-        [nk]: { half, inning, order: curBatterOrder, appearance: na, pitches: [], result: null, runnerNotes: [] },
+        [nk]: {
+          half,
+          inning,
+          order: curBatterOrder,
+          appearance: na,
+          pitches: [],
+          result: null,
+          runnerNotes: [],
+        },
       };
 
       return { ...state, cells, selCellKey: nk };
@@ -1082,7 +1326,12 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
         bench.splice(bench.indexOf(player), 1);
       }
 
-      const newStatsMap = savePitcherStats(state.pitcherStatsMap, state.pitcher, state.pitchBalls, state.pitchStrikes);
+      const newStatsMap = savePitcherStats(
+        state.pitcherStatsMap,
+        state.pitcher,
+        state.pitchBalls,
+        state.pitchStrikes
+      );
       const incoming = loadPitcherStats(newStatsMap, player);
 
       return {
@@ -1095,7 +1344,12 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
         pitcherStatsMap: newStatsMap,
         pitcherChanges: [
           ...state.pitcherChanges,
-          { inning: state.inning, half: state.half, order: state.curBatterOrder, name: player.name },
+          {
+            inning: state.inning,
+            half: state.half,
+            order: state.curBatterOrder,
+            name: player.name,
+          },
         ],
       };
     }
@@ -1190,7 +1444,10 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
             if (runner) {
               for (let app = 0; app <= 5; app++) {
                 const rk = cellKey(runner.inning, runner.order, app, runner.half || state.half);
-                if (cells[rk]) { cells = { ...cells, [rk]: { ...cells[rk], lobCell: true } }; break; }
+                if (cells[rk]) {
+                  cells = { ...cells, [rk]: { ...cells[rk], lobCell: true } };
+                  break;
+                }
               }
             }
           }
@@ -1222,7 +1479,8 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
         inning: state.inning,
       };
 
-      const hasExistingRunners = Object.keys(state.runners).filter((k) => state.runners[k as Base]).length > 0;
+      const hasExistingRunners =
+        Object.keys(state.runners).filter((k) => state.runners[k as Base]).length > 0;
       if (hasExistingRunners) {
         return {
           ...state,
@@ -1273,7 +1531,12 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
 
     // ── GAME_EVENT ────────────────────────────────────────────────────────────
     case 'GAME_EVENT': {
-      const ev = { inning: state.inning, half: state.half, type: action.eventType, detail: action.detail };
+      const ev = {
+        inning: state.inning,
+        half: state.half,
+        type: action.eventType,
+        detail: action.detail,
+      };
       return { ...state, gameEvents: [...state.gameEvents, ev] };
     }
 

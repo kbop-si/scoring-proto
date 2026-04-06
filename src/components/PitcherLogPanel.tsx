@@ -2,26 +2,26 @@ import { useState } from 'react';
 import type { GameState, PitchType } from '../types';
 
 const PITCH_LABEL: Record<PitchType, string> = {
-  S:   'S',
-  SW:  'SW',
-  B:   'B',
-  F:   'F',
-  FE:  'FE',
-  BS:  'BS',
-  BF:  'BF',
+  S: 'S',
+  SW: 'SW',
+  B: 'B',
+  F: 'F',
+  FE: 'FE',
+  BS: 'BS',
+  BF: 'BF',
   PC1: 'PC볼',
   PC2: 'PC볼',
   PC3: 'PCS',
 };
 
 const PITCH_COLOR: Record<PitchType, string> = {
-  S:   '#1e40af',
-  SW:  '#1e40af',
-  B:   '#15803d',
-  F:   '#92400e',
-  FE:  '#92400e',
-  BS:  '#1e40af',
-  BF:  '#92400e',
+  S: '#1e40af',
+  SW: '#1e40af',
+  B: '#15803d',
+  F: '#92400e',
+  FE: '#92400e',
+  BS: '#1e40af',
+  BF: '#92400e',
   PC1: '#15803d',
   PC2: '#15803d',
   PC3: '#1e40af',
@@ -29,7 +29,7 @@ const PITCH_COLOR: Record<PitchType, string> = {
 
 function buildPitcherLog(G: GameState) {
   const cells = Object.values(G.cells)
-    .filter(c => c.pitches.length > 0 || c.result)
+    .filter((c) => c.pitches.length > 0 || c.result)
     .sort((a, b) => {
       if (a.inning !== b.inning) return a.inning - b.inning;
       if (a.half !== b.half) return a.half === 'top' ? -1 : 1;
@@ -37,14 +37,14 @@ function buildPitcherLog(G: GameState) {
       return a.appearance - b.appearance;
     });
 
-  const topInit = G.homeLineup.find(p => p.pos === 1)?.name || '—';
-  const botInit = G.awayLineup.find(p => p.pos === 1)?.name || '—';
+  const topInit = G.homeLineup.find((p) => p.pos === 1)?.name || '—';
+  const botInit = G.awayLineup.find((p) => p.pos === 1)?.name || '—';
   const topCh = G.pitcherChanges
-    .filter(c => c.half === 'top')
-    .sort((a, b) => a.inning !== b.inning ? a.inning - b.inning : a.order - b.order);
+    .filter((c) => c.half === 'top')
+    .sort((a, b) => (a.inning !== b.inning ? a.inning - b.inning : a.order - b.order));
   const botCh = G.pitcherChanges
-    .filter(c => c.half === 'bottom')
-    .sort((a, b) => a.inning !== b.inning ? a.inning - b.inning : a.order - b.order);
+    .filter((c) => c.half === 'bottom')
+    .sort((a, b) => (a.inning !== b.inning ? a.inning - b.inning : a.order - b.order));
 
   const pitcherNoMap: Record<string, number> = {};
   const rows: {
@@ -63,11 +63,11 @@ function buildPitcherLog(G: GameState) {
 
   for (const cell of cells) {
     const battingLU = cell.half === 'top' ? G.awayLineup : G.homeLineup;
-    const batter = battingLU.find(p => p.order === cell.order);
+    const batter = battingLU.find((p) => p.order === cell.order);
     const changes = cell.half === 'top' ? topCh : botCh;
     const initPitcher = cell.half === 'top' ? topInit : botInit;
-    const applicable = changes.filter(ch =>
-      ch.inning < cell.inning || (ch.inning === cell.inning && ch.order <= cell.order)
+    const applicable = changes.filter(
+      (ch) => ch.inning < cell.inning || (ch.inning === cell.inning && ch.order <= cell.order)
     );
     const pitcher = applicable.length > 0 ? applicable[applicable.length - 1].name : initPitcher;
     const batterName = batter?.name || `${cell.order}번`;
@@ -127,7 +127,7 @@ export default function PitcherLogPanel({ G }: { G: GameState }) {
     }
   }
 
-  const filtered = selInning ? rows.filter(r => r.inningKey === selInning) : rows;
+  const filtered = selInning ? rows.filter((r) => r.inningKey === selInning) : rows;
 
   return (
     <div className="plp">
@@ -136,12 +136,21 @@ export default function PitcherLogPanel({ G }: { G: GameState }) {
           <div style={{ padding: '4px 6px', borderBottom: '1px solid var(--border)' }}>
             <select
               value={selInning ?? ''}
-              onChange={e => setSelInning(e.target.value || null)}
-              style={{ fontSize: 11, padding: '2px 4px', borderRadius: 3, border: '1px solid var(--border)', width: '100%', cursor: 'pointer' }}
+              onChange={(e) => setSelInning(e.target.value || null)}
+              style={{
+                fontSize: 11,
+                padding: '2px 4px',
+                borderRadius: 3,
+                border: '1px solid var(--border)',
+                width: '100%',
+                cursor: 'pointer',
+              }}
             >
-              <option value=''>전체</option>
-              {inningKeys.map(key => (
-                <option key={key} value={key}>{inningLabels[key]}</option>
+              <option value="">전체</option>
+              {inningKeys.map((key) => (
+                <option key={key} value={key}>
+                  {inningLabels[key]}
+                </option>
               ))}
             </select>
           </div>
@@ -157,7 +166,9 @@ export default function PitcherLogPanel({ G }: { G: GameState }) {
       </div>
       <div className="plp-body">
         {filtered.length === 0 ? (
-          <div style={{ padding: '20px 0', textAlign: 'center', color: '#94a3b8', fontSize: 11 }}>기록 없음</div>
+          <div style={{ padding: '20px 0', textAlign: 'center', color: '#94a3b8', fontSize: 11 }}>
+            기록 없음
+          </div>
         ) : (
           filtered.map((r, i) => (
             <div
@@ -168,12 +179,27 @@ export default function PitcherLogPanel({ G }: { G: GameState }) {
                 background: r.isResult ? '#f5f3ff' : undefined,
               }}
             >
-              <div className="plp-cell" style={{ color: '#94a3b8' }}>{r.no}</div>
+              <div className="plp-cell" style={{ color: '#94a3b8' }}>
+                {r.no}
+              </div>
               <div className="plp-cell">{r.paStart ? r.inning : ''}</div>
-              <div className="plp-cell" style={{ fontWeight: 600 }}>{r.paStart ? r.pitcher : ''}</div>
-              <div className="plp-cell" style={{ color: r.isResult ? '#7c3aed' : '#64748b', fontWeight: r.isResult ? 700 : 400 }}>{r.pitchNum}</div>
+              <div className="plp-cell" style={{ fontWeight: 600 }}>
+                {r.paStart ? r.pitcher : ''}
+              </div>
+              <div
+                className="plp-cell"
+                style={{
+                  color: r.isResult ? '#7c3aed' : '#64748b',
+                  fontWeight: r.isResult ? 700 : 400,
+                }}
+              >
+                {r.pitchNum}
+              </div>
               <div className="plp-cell">{r.paStart ? r.batter : ''}</div>
-              <div className="plp-cell" style={{ fontWeight: 700, color: r.isResult ? '#7c3aed' : r.color }}>
+              <div
+                className="plp-cell"
+                style={{ fontWeight: 700, color: r.isResult ? '#7c3aed' : r.color }}
+              >
                 {r.paResult ?? r.label}
               </div>
             </div>

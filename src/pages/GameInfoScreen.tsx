@@ -124,11 +124,7 @@ export default function GameInfoScreen({ setup, onConfirm, onBack }: Props) {
     <tr key={label}>
       <td style={tdLabel}>{label}</td>
       <td style={tdInput}>
-        <select
-          value={value}
-          onChange={(e) => setter(e.target.value)}
-          style={selectSt}
-        >
+        <select value={value} onChange={(e) => setter(e.target.value)} style={selectSt}>
           <option value="">선택</option>
           {officialOptions
             .filter((name) => name !== '')
@@ -206,13 +202,22 @@ export default function GameInfoScreen({ setup, onConfirm, onBack }: Props) {
                   <tr>
                     <td style={tdLabel}>차전</td>
                     <td style={tdInput}>
-                      <input value={gameNum} onChange={(e) => setGameNum(e.target.value)} style={inputSt} />
+                      <input
+                        value={gameNum}
+                        onChange={(e) => setGameNum(e.target.value)}
+                        style={inputSt}
+                      />
                     </td>
                   </tr>
                   <tr>
                     <td style={tdLabel}>구장명</td>
                     <td style={tdInput}>
-                      <input value={stadium} onChange={(e) => setStadium(e.target.value)} style={inputSt} placeholder="구장 입력" />
+                      <input
+                        value={stadium}
+                        onChange={(e) => setStadium(e.target.value)}
+                        style={inputSt}
+                        placeholder="구장 입력"
+                      />
                     </td>
                   </tr>
                 </tbody>
@@ -230,19 +235,34 @@ export default function GameInfoScreen({ setup, onConfirm, onBack }: Props) {
                   <tr>
                     <td style={tdLabel}>시합개시</td>
                     <td style={tdInput}>
-                      <input value={startTime} onChange={(e) => setStartTime(e.target.value)} style={inputSt} placeholder="HH:MM" />
+                      <input
+                        value={startTime}
+                        onChange={(e) => setStartTime(e.target.value)}
+                        style={inputSt}
+                        placeholder="HH:MM"
+                      />
                     </td>
                   </tr>
                   <tr>
                     <td style={tdLabel}>경기종료</td>
                     <td style={tdInput}>
-                      <input value={endTime} onChange={(e) => setEndTime(e.target.value)} style={inputSt} placeholder="HH:MM" />
+                      <input
+                        value={endTime}
+                        onChange={(e) => setEndTime(e.target.value)}
+                        style={inputSt}
+                        placeholder="HH:MM"
+                      />
                     </td>
                   </tr>
                   <tr>
                     <td style={tdLabel}>관중수</td>
                     <td style={tdInput}>
-                      <input value={attendance} onChange={(e) => setAttendance(e.target.value)} style={inputSt} placeholder="명" />
+                      <input
+                        value={attendance}
+                        onChange={(e) => setAttendance(e.target.value)}
+                        style={inputSt}
+                        placeholder="명"
+                      />
                     </td>
                   </tr>
                 </tbody>
@@ -254,25 +274,45 @@ export default function GameInfoScreen({ setup, onConfirm, onBack }: Props) {
                   <tr>
                     <td style={tdLabel}>온도</td>
                     <td style={tdInput}>
-                      <input value={temperature} onChange={(e) => setTemperature(e.target.value)} style={inputSt} placeholder="℃" />
+                      <input
+                        value={temperature}
+                        onChange={(e) => setTemperature(e.target.value)}
+                        style={inputSt}
+                        placeholder="℃"
+                      />
                     </td>
                   </tr>
                   <tr>
                     <td style={tdLabel}>습도</td>
                     <td style={tdInput}>
-                      <input value={humidity} onChange={(e) => setHumidity(e.target.value)} style={inputSt} placeholder="%" />
+                      <input
+                        value={humidity}
+                        onChange={(e) => setHumidity(e.target.value)}
+                        style={inputSt}
+                        placeholder="%"
+                      />
                     </td>
                   </tr>
                   <tr>
                     <td style={tdLabel}>바람방향</td>
                     <td style={tdInput}>
-                      <input value={windDir} onChange={(e) => setWindDir(e.target.value)} style={inputSt} placeholder="예: 북동" />
+                      <input
+                        value={windDir}
+                        onChange={(e) => setWindDir(e.target.value)}
+                        style={inputSt}
+                        placeholder="예: 북동"
+                      />
                     </td>
                   </tr>
                   <tr>
                     <td style={tdLabel}>풍속</td>
                     <td style={tdInput}>
-                      <input value={windSpeed} onChange={(e) => setWindSpeed(e.target.value)} style={inputSt} placeholder="m/s" />
+                      <input
+                        value={windSpeed}
+                        onChange={(e) => setWindSpeed(e.target.value)}
+                        style={inputSt}
+                        placeholder="m/s"
+                      />
                     </td>
                   </tr>
                 </tbody>

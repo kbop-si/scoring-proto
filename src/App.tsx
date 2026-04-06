@@ -28,7 +28,7 @@ export default function App() {
 
   const gotoLineupWithDefaults = (
     teams: { awayTeam: string; homeTeam: string; date: string; league: string },
-    extra?: Partial<GameSetup>,
+    extra?: Partial<GameSetup>
   ) => {
     updateSetup({
       ...teams,
@@ -51,19 +51,20 @@ export default function App() {
     awayLineup: Player[],
     homeLineup: Player[],
     awayBench: Player[],
-    homeBench: Player[],
+    homeBench: Player[]
   ) => {
     updateSetup({ awayLineup, homeLineup, awayBench, homeBench });
   };
 
   return (
     <>
-      {screen === 'splash' && (
-        <SplashScreen onStart={() => setScreen('league')} />
-      )}
+      {screen === 'splash' && <SplashScreen onStart={() => setScreen('league')} />}
       {screen === 'league' && (
         <LeagueScreen
-          onSelect={(league) => { updateSetup({ league }); setScreen('create'); }}
+          onSelect={(league) => {
+            updateSetup({ league });
+            setScreen('create');
+          }}
           onBack={() => setScreen('splash')}
         />
       )}
@@ -91,12 +92,7 @@ export default function App() {
           onStart={() => setScreen('game')}
         />
       )}
-      {screen === 'game' && (
-        <GameScreen
-          setup={setup}
-          onEnd={() => setScreen('splash')}
-        />
-      )}
+      {screen === 'game' && <GameScreen setup={setup} onEnd={() => setScreen('splash')} />}
     </>
   );
 }

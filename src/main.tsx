@@ -7,7 +7,5 @@ import SheetWindow from './pages/SheetWindow';
 const isSheet = new URLSearchParams(window.location.search).has('sheet');
 
 createRoot(document.getElementById('root')!).render(
-  <StrictMode>
-    {isSheet ? <SheetWindow /> : <App />}
-  </StrictMode>
+  <StrictMode>{isSheet ? <SheetWindow /> : <App />}</StrictMode>
 );

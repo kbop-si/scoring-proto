@@ -16,7 +16,8 @@ export default function Scoreboard({ G, onOpenSheetWindow }: Props) {
   // Compute per-inning runs from cells
   const awayInnRuns = Array(MAX_INN).fill(null) as (number | null)[];
   const homeInnRuns = Array(MAX_INN).fill(null) as (number | null)[];
-  let awayBB = 0, homeBB = 0;
+  let awayBB = 0,
+    homeBB = 0;
   Object.values(G.cells).forEach((c) => {
     if (c.scored) {
       if (c.half === 'top') awayInnRuns[c.inning - 1] = (awayInnRuns[c.inning - 1] || 0) + 1;
@@ -35,9 +36,15 @@ export default function Scoreboard({ G, onOpenSheetWindow }: Props) {
   return (
     <div className="scoreboard">
       <div className="sb-flag">
-        {TEAM_FLAG[G.awayTeam]
-          ? <img src={TEAM_FLAG[G.awayTeam]} alt={G.awayTeam} style={{ width: 42, height: 42, objectFit: 'contain' }} />
-          : '⚾'}
+        {TEAM_FLAG[G.awayTeam] ? (
+          <img
+            src={TEAM_FLAG[G.awayTeam]}
+            alt={G.awayTeam}
+            style={{ width: 42, height: 42, objectFit: 'contain' }}
+          />
+        ) : (
+          '⚾'
+        )}
       </div>
       <div className="sb-team">
         <div className="sb-team-name">{G.awayTeam || '원정'}</div>
@@ -50,20 +57,29 @@ export default function Scoreboard({ G, onOpenSheetWindow }: Props) {
           <div className="sb-inn-row">
             <div className="sb-inn-cell hd">팀</div>
             {inns.map((i) => (
-              <div key={i} className={`sb-inn-cell hd${i === G.inning ? ' cur' : ''}`}>{i}</div>
+              <div key={i} className={`sb-inn-cell hd${i === G.inning ? ' cur' : ''}`}>
+                {i}
+              </div>
             ))}
             {['R', 'H', 'E', 'B'].map((l) => (
-              <div key={l} className="sb-inn-cell hd" style={{ color: '#fbbf24' }}>{l}</div>
+              <div key={l} className="sb-inn-cell hd" style={{ color: '#fbbf24' }}>
+                {l}
+              </div>
             ))}
           </div>
           {/* Away row */}
           <div className="sb-inn-row">
-            <div className="sb-inn-cell" style={{ fontSize: 9, color: '#94a3b8', fontWeight: 700 }}>원</div>
+            <div className="sb-inn-cell" style={{ fontSize: 9, color: '#94a3b8', fontWeight: 700 }}>
+              원
+            </div>
             {inns.map((i) => {
               const val = awayInnRuns[i - 1];
               const isCur = i === G.inning && G.half === 'top';
               return (
-                <div key={i} className={`sb-inn-cell${isCur ? ' cur' : ''}${val !== null ? ' score' : ''}`}>
+                <div
+                  key={i}
+                  className={`sb-inn-cell${isCur ? ' cur' : ''}${val !== null ? ' score' : ''}`}
+                >
                   {val !== null ? val : '—'}
                 </div>
               );
@@ -75,12 +91,17 @@ export default function Scoreboard({ G, onOpenSheetWindow }: Props) {
           </div>
           {/* Home row */}
           <div className="sb-inn-row">
-            <div className="sb-inn-cell" style={{ fontSize: 9, color: '#94a3b8', fontWeight: 700 }}>홈</div>
+            <div className="sb-inn-cell" style={{ fontSize: 9, color: '#94a3b8', fontWeight: 700 }}>
+              홈
+            </div>
             {inns.map((i) => {
               const val = homeInnRuns[i - 1];
               const isCur = i === G.inning && G.half === 'bottom';
               return (
-                <div key={i} className={`sb-inn-cell${isCur ? ' cur' : ''}${val !== null ? ' score' : ''}`}>
+                <div
+                  key={i}
+                  className={`sb-inn-cell${isCur ? ' cur' : ''}${val !== null ? ' score' : ''}`}
+                >
                   {val !== null ? val : '—'}
                 </div>
               );
@@ -94,9 +115,15 @@ export default function Scoreboard({ G, onOpenSheetWindow }: Props) {
       </div>
 
       <div className="sb-flag">
-        {TEAM_FLAG[G.homeTeam]
-          ? <img src={TEAM_FLAG[G.homeTeam]} alt={G.homeTeam} style={{ width: 42, height: 42, objectFit: 'contain' }} />
-          : '⚾'}
+        {TEAM_FLAG[G.homeTeam] ? (
+          <img
+            src={TEAM_FLAG[G.homeTeam]}
+            alt={G.homeTeam}
+            style={{ width: 42, height: 42, objectFit: 'contain' }}
+          />
+        ) : (
+          '⚾'
+        )}
       </div>
       <div className="sb-team">
         <div className="sb-team-name">{G.homeTeam || '홈팀'}</div>

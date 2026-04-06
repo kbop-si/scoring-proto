@@ -11,7 +11,16 @@ interface Props {
   onClose: () => void;
 }
 
-export default function DeflModal({ open, deflFielder, deflType, defLU, onSelFielder, onSelType, onConfirm, onClose }: Props) {
+export default function DeflModal({
+  open,
+  deflFielder,
+  deflType,
+  defLU,
+  onSelFielder,
+  onSelType,
+  onConfirm,
+  onClose,
+}: Props) {
   return (
     <div className={`ov${open ? ' open' : ''}`} id="ov-defl">
       <div className="ov-card">
@@ -32,22 +41,32 @@ export default function DeflModal({ open, deflFielder, deflType, defLU, onSelFie
             );
           })}
         </div>
-        <div style={{ padding: '0 12px', fontSize: 11, color: 'var(--text2)', marginBottom: 4 }}>타구 유형</div>
+        <div style={{ padding: '0 12px', fontSize: 11, color: 'var(--text2)', marginBottom: 4 }}>
+          타구 유형
+        </div>
         <div style={{ padding: '0 12px 12px', display: 'flex', gap: 6 }}>
           {['라이나', '땅볼', '뜬공'].map((t) => (
             <button
               key={t}
               className={`btn-sm${deflType === t ? ' sel' : ''}`}
               onClick={() => onSelType(t)}
-              style={deflType === t ? { background: 'var(--blue)', color: '#fff', borderColor: 'var(--blue)' } : {}}
+              style={
+                deflType === t
+                  ? { background: 'var(--blue)', color: '#fff', borderColor: 'var(--blue)' }
+                  : {}
+              }
             >
               {t}
             </button>
           ))}
         </div>
         <div className="modal-footer">
-          <button className="btn-ok" onClick={onConfirm}>확인</button>
-          <button className="btn-cancel" onClick={onClose}>취소</button>
+          <button className="btn-ok" onClick={onConfirm}>
+            확인
+          </button>
+          <button className="btn-cancel" onClick={onClose}>
+            취소
+          </button>
         </div>
       </div>
     </div>

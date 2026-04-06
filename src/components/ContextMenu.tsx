@@ -30,22 +30,25 @@ export default function ContextMenu({ ctx, onClose, onSubst, onPitcherChange }: 
       <div className="ctx-t">{ctx.title}</div>
       <div
         className="ctx-item"
-        onClick={() => { onClose(); onSubst(ctx.pos); }}
+        onClick={() => {
+          onClose();
+          onSubst(ctx.pos);
+        }}
       >
         교체
       </div>
       {ctx.pos === 1 && (
         <div
           className="ctx-item"
-          onClick={() => { onClose(); onPitcherChange(); }}
+          onClick={() => {
+            onClose();
+            onPitcherChange();
+          }}
         >
           투수 교체
         </div>
       )}
-      <div
-        className="ctx-item"
-        onClick={() => onClose()}
-      >
+      <div className="ctx-item" onClick={() => onClose()}>
         선수 정보
       </div>
     </div>

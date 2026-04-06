@@ -85,10 +85,10 @@ export default function LeagueScreen({ onSelect, onBack }: Props) {
                 {l === 'KBO'
                   ? 'KBO 리그'
                   : l === '퓨처스'
-                  ? '퓨처스리그'
-                  : l === '소프트뱅크'
-                  ? '소프트뱅크'
-                  : '국제대회'}
+                    ? '퓨처스리그'
+                    : l === '소프트뱅크'
+                      ? '소프트뱅크'
+                      : '국제대회'}
               </button>
             );
           })}

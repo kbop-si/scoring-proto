@@ -21,8 +21,15 @@ function getNextBases(from: string): string[] {
 }
 
 export default function Diamond({
-  G, selRunnerBase, baseTargets, onRunnerToggle, onBaseTargetClick, onRunnerDestClick,
-  onFielderClick, onRunnerContextMenu, onBatterContextMenu,
+  G,
+  selRunnerBase,
+  baseTargets,
+  onRunnerToggle,
+  onBaseTargetClick,
+  onRunnerDestClick,
+  onFielderClick,
+  onRunnerContextMenu,
+  onBatterContextMenu,
 }: Props) {
   const curLU = G.half === 'top' ? G.awayLineup : G.homeLineup;
   const defLU = G.half === 'top' ? G.homeLineup : G.awayLineup;
@@ -32,21 +39,31 @@ export default function Diamond({
   const pct = (v: number) => `${(v / 200) * 100}%`;
 
   const availBases = baseTargets.active ? getNextBases(baseTargets.fromBase) : [];
-  const runnerDestBases: string[] = (!baseTargets.active && selRunnerBase)
-    ? getNextBases(selRunnerBase)
-    : [];
+  const runnerDestBases: string[] =
+    !baseTargets.active && selRunnerBase ? getNextBases(selRunnerBase) : [];
 
   return (
     <div className="dp">
       <div className="dp-title">
         <span>{G.half === 'top' ? G.homeTeam : G.awayTeam} 수비</span>
-        <span style={{ fontSize: 9, color: '#94a3b8' }}>{G.inning}회 {G.half === 'top' ? '초' : '말'}</span>
+        <span style={{ fontSize: 9, color: '#94a3b8' }}>
+          {G.inning}회 {G.half === 'top' ? '초' : '말'}
+        </span>
       </div>
 
       <div className="dp-field" id="dp-field">
         {/* SVG field */}
-        <svg style={{ width: '100%', height: '100%' }} viewBox="0 0 200 200" preserveAspectRatio="none">
-          <path d="M100,195 L0,70 Q100,2 200,70 Z" fill="#4a7c4a" stroke="#2d5a2d" strokeWidth="1" />
+        <svg
+          style={{ width: '100%', height: '100%' }}
+          viewBox="0 0 200 200"
+          preserveAspectRatio="none"
+        >
+          <path
+            d="M100,195 L0,70 Q100,2 200,70 Z"
+            fill="#4a7c4a"
+            stroke="#2d5a2d"
+            strokeWidth="1"
+          />
           <circle cx="100" cy="140" r="62" fill="#b8956a" opacity=".5" />
           <polygon points="100,85 145,130 100,175 55,130" fill="#5a8f5a" />
           <line x1="100" y1="85" x2="145" y2="130" stroke="#fff" strokeWidth="1.5" />
@@ -58,20 +75,42 @@ export default function Diamond({
           <rect x="138" y="123" width="14" height="14" rx="1" fill="#fff" />
           <rect x="93" y="78" width="14" height="14" rx="1" fill="#fff" />
           <rect x="48" y="123" width="14" height="14" rx="1" fill="#fff" />
-          <line x1="100" y1="175" x2="0" y2="70" stroke="#fff" strokeWidth="1" strokeDasharray="4,3" opacity=".5" />
-          <line x1="100" y1="175" x2="200" y2="70" stroke="#fff" strokeWidth="1" strokeDasharray="4,3" opacity=".5" />
+          <line
+            x1="100"
+            y1="175"
+            x2="0"
+            y2="70"
+            stroke="#fff"
+            strokeWidth="1"
+            strokeDasharray="4,3"
+            opacity=".5"
+          />
+          <line
+            x1="100"
+            y1="175"
+            x2="200"
+            y2="70"
+            stroke="#fff"
+            strokeWidth="1"
+            strokeDasharray="4,3"
+            opacity=".5"
+          />
           {/* Fielder click zones */}
           {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((pos) => {
             const fp = FPOS_XY[pos];
             return (
               <circle
                 key={pos}
-                cx={fp.x} cy={fp.y}
+                cx={fp.x}
+                cy={fp.y}
                 r={pos <= 2 ? 12 : 10}
                 fill="rgba(255,255,255,.07)"
                 style={{ cursor: 'pointer' }}
                 onClick={(e) => onFielderClick(e, pos)}
-                onContextMenu={(e) => { e.preventDefault(); onFielderClick(e, pos); }}
+                onContextMenu={(e) => {
+                  e.preventDefault();
+                  onFielderClick(e, pos);
+                }}
               />
             );
           })}
@@ -82,10 +121,25 @@ export default function Diamond({
             if (!fp) return null;
             return (
               <g key={p.pos} pointerEvents="none">
-                <text x={fp.x} y={fp.y > 180 ? fp.y - 14 : fp.y} textAnchor="middle" fontSize="9" fill="#fff" fontWeight="700" style={{ fontFamily: 'monospace' }}>
+                <text
+                  x={fp.x}
+                  y={fp.y > 180 ? fp.y - 14 : fp.y}
+                  textAnchor="middle"
+                  fontSize="9"
+                  fill="#fff"
+                  fontWeight="700"
+                  style={{ fontFamily: 'monospace' }}
+                >
                   {p.num}
                 </text>
-                <text x={fp.x} y={fp.y > 180 ? fp.y - 4 : fp.y + 10} textAnchor="middle" fontSize="7" fill="#ddd" style={{ fontFamily: 'sans-serif' }}>
+                <text
+                  x={fp.x}
+                  y={fp.y > 180 ? fp.y - 4 : fp.y + 10}
+                  textAnchor="middle"
+                  fontSize="7"
+                  fill="#ddd"
+                  style={{ fontFamily: 'sans-serif' }}
+                >
                   {p.name}
                 </text>
               </g>
@@ -101,11 +155,21 @@ export default function Diamond({
             style={{
               left: pct(BASE_XY.HOME.x + (batter.hitType === 2 ? 14 : -14)),
               top: pct(BASE_XY.HOME.y + 16),
-              width: 'auto', minWidth: 32, padding: '0 4px',
-              borderRadius: 4, fontSize: 10, whiteSpace: 'nowrap',
+              width: 'auto',
+              minWidth: 32,
+              padding: '0 4px',
+              borderRadius: 4,
+              fontSize: 10,
+              whiteSpace: 'nowrap',
             }}
-            onClick={(e) => { e.stopPropagation(); }}
-            onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); onBatterContextMenu?.(); }}
+            onClick={(e) => {
+              e.stopPropagation();
+            }}
+            onContextMenu={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              onBatterContextMenu?.();
+            }}
           >
             {batter.num} {batter.name}
           </div>
@@ -122,9 +186,25 @@ export default function Diamond({
               key={base}
               className={`runner${selRunnerBase === base ? ' hl' : ''}${isPending ? ' pending-move' : ''}`}
               title={`${r.name}(${base}) — 클릭: 선택/취소, 우클릭: 대주자 교체`}
-              style={{ left: pct(pos.x), top: pct(pos.y), width: 'auto', minWidth: 32, padding: '0 4px', borderRadius: 4, fontSize: 10, whiteSpace: 'nowrap' }}
-              onClick={(e) => { e.stopPropagation(); onRunnerToggle(base); }}
-              onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); onRunnerContextMenu?.(base); }}
+              style={{
+                left: pct(pos.x),
+                top: pct(pos.y),
+                width: 'auto',
+                minWidth: 32,
+                padding: '0 4px',
+                borderRadius: 4,
+                fontSize: 10,
+                whiteSpace: 'nowrap',
+              }}
+              onClick={(e) => {
+                e.stopPropagation();
+                onRunnerToggle(base);
+              }}
+              onContextMenu={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                onRunnerContextMenu?.(base);
+              }}
             >
               {r.num} {r.name}
             </div>
@@ -132,38 +212,43 @@ export default function Diamond({
         })}
 
         {/* 대기 중인 타자 (목적지 베이스에 반투명 표시) */}
-        {G.pendingBatter && (() => {
-          const pos = BASE_XY[G.pendingBatter.dest];
-          return (
-            <div
-              className="batter-dot pending-batter"
-              title={`${G.pendingBatter.runner.name} → ${G.pendingBatter.dest} 대기중`}
-              style={{ left: pct(pos.x), top: pct(pos.y) }}
-            >
-              {G.pendingBatter.runner.num}
-            </div>
-          );
-        })()}
+        {G.pendingBatter &&
+          (() => {
+            const pos = BASE_XY[G.pendingBatter.dest];
+            return (
+              <div
+                className="batter-dot pending-batter"
+                title={`${G.pendingBatter.runner.name} → ${G.pendingBatter.dest} 대기중`}
+                style={{ left: pct(pos.x), top: pct(pos.y) }}
+              >
+                {G.pendingBatter.runner.num}
+              </div>
+            );
+          })()}
 
         {/* Base targets (pendingBatter) */}
-        {baseTargets.active && availBases.map((base) => {
-          const pos = BASE_XY[base];
-          if (!pos) return null;
-          return (
-            <div
-              key={base}
-              className="base-target"
-              style={{
-                left: pct(pos.x),
-                top: pct(pos.y),
-                ...(base === 'HOME' ? { background: 'rgba(220,38,38,.5)' } : {}),
-              }}
-              onClick={(e) => { e.stopPropagation(); onBaseTargetClick(base); }}
-            >
-              {base === 'HOME' ? '홈' : base}
-            </div>
-          );
-        })}
+        {baseTargets.active &&
+          availBases.map((base) => {
+            const pos = BASE_XY[base];
+            if (!pos) return null;
+            return (
+              <div
+                key={base}
+                className="base-target"
+                style={{
+                  left: pct(pos.x),
+                  top: pct(pos.y),
+                  ...(base === 'HOME' ? { background: 'rgba(220,38,38,.5)' } : {}),
+                }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onBaseTargetClick(base);
+                }}
+              >
+                {base === 'HOME' ? '홈' : base}
+              </div>
+            );
+          })}
 
         {/* 주자 선택 후 목적지 루 클릭 → 진루 팝업 */}
         {runnerDestBases.map((base) => {
@@ -178,7 +263,10 @@ export default function Diamond({
                 top: pct(pos.y),
                 background: base === 'HOME' ? 'rgba(220,38,38,.6)' : 'rgba(37,99,235,.6)',
               }}
-              onClick={(e) => { e.stopPropagation(); onRunnerDestClick?.(base as Base | 'HOME'); }}
+              onClick={(e) => {
+                e.stopPropagation();
+                onRunnerDestClick?.(base as Base | 'HOME');
+              }}
             >
               {base === 'HOME' ? '홈' : base}
             </div>

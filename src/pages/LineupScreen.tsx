@@ -42,7 +42,7 @@ export default function LineupScreen({ setup, onUpdateLineups, onStart }: Props)
     .filter(
       ({ p }) =>
         (!srchName || p.name.toLowerCase().includes(srchName.toLowerCase())) &&
-        (!srchNum || String(p.num).includes(srchNum)),
+        (!srchNum || String(p.num).includes(srchNum))
     );
 
   const updateLU = (newLu: Player[]) => setLs((s) => ({ ...s, [luKey]: newLu }));
@@ -60,15 +60,15 @@ export default function LineupScreen({ setup, onUpdateLineups, onStart }: Props)
   };
 
   const validateLineup = (teamName: string, lineup: Player[]) => {
-  const missing = getMissingPositions(lineup);
+    const missing = getMissingPositions(lineup);
 
-  if (missing.length > 0) {
-    const message = missing.map((pos) => `${posLabel(pos)}가 없습니다`).join('\n');
-    alert(`${teamName} 라인업에 ${message}`);
-    return false;
-  }
+    if (missing.length > 0) {
+      const message = missing.map((pos) => `${posLabel(pos)}가 없습니다`).join('\n');
+      alert(`${teamName} 라인업에 ${message}`);
+      return false;
+    }
 
-  return true;
+    return true;
   };
 
   const handleChangePOS = (idx: number, pos: number) => {
@@ -138,10 +138,16 @@ export default function LineupScreen({ setup, onUpdateLineups, onStart }: Props)
       setBenchSelIdx(null);
       updateBoth(newLu, newBench);
     } else {
-      updateLU([...lu, {
-        name: '투수', num: 'P', pos: 1, order: 0,
-        hitType: 0
-      }]);
+      updateLU([
+        ...lu,
+        {
+          name: '투수',
+          num: 'P',
+          pos: 1,
+          order: 0,
+          hitType: 0,
+        },
+      ]);
     }
   };
 
@@ -419,18 +425,25 @@ export default function LineupScreen({ setup, onUpdateLineups, onStart }: Props)
           <div className="lu-mid" style={panelStyle}>
             <div style={sectionTitleStyle}>선수 검색</div>
 
-            <button style={{ ...smallBtn(false), width: '100%', marginBottom: 12 }} onClick={handleRestore}>
+            <button
+              style={{ ...smallBtn(false), width: '100%', marginBottom: 12 }}
+              onClick={handleRestore}
+            >
               원래대로
             </button>
 
-            <div style={{ fontSize: 12, color: BLUE, fontWeight: 700, marginBottom: 4 }}>선수명</div>
+            <div style={{ fontSize: 12, color: BLUE, fontWeight: 700, marginBottom: 4 }}>
+              선수명
+            </div>
             <input
               style={{ ...inputStyle, marginBottom: 10 }}
               value={srchName}
               onChange={(e) => setSrchName(e.target.value)}
             />
 
-            <div style={{ fontSize: 12, color: BLUE, fontWeight: 700, marginBottom: 4 }}>등번호</div>
+            <div style={{ fontSize: 12, color: BLUE, fontWeight: 700, marginBottom: 4 }}>
+              등번호
+            </div>
             <input
               style={{ ...inputStyle, marginBottom: 12 }}
               value={srchNum}
@@ -470,7 +483,9 @@ export default function LineupScreen({ setup, onUpdateLineups, onStart }: Props)
                   return (
                     <tr
                       key={originalIndex}
-                      onClick={() => setBenchSelIdx(benchSelIdx === originalIndex ? null : originalIndex)}
+                      onClick={() =>
+                        setBenchSelIdx(benchSelIdx === originalIndex ? null : originalIndex)
+                      }
                       onDoubleClick={() => handleAddBench(originalIndex, luSelIdx)}
                       style={{
                         background: isSel ? 'rgba(16,44,87,0.08)' : '#ffffff',

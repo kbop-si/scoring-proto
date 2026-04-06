@@ -8,12 +8,20 @@ export default function SheetWindow() {
   useEffect(() => {
     const raw = localStorage.getItem('kbo_sheet_state');
     if (raw) {
-      try { setG(JSON.parse(raw)); } catch { /* ignore */ }
+      try {
+        setG(JSON.parse(raw));
+      } catch {
+        /* ignore */
+      }
     }
 
     const onStorage = (e: StorageEvent) => {
       if (e.key === 'kbo_sheet_state' && e.newValue) {
-        try { setG(JSON.parse(e.newValue)); } catch { /* ignore */ }
+        try {
+          setG(JSON.parse(e.newValue));
+        } catch {
+          /* ignore */
+        }
       }
     };
     window.addEventListener('storage', onStorage);

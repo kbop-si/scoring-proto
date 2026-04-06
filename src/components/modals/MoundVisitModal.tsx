@@ -22,7 +22,12 @@ export default function MoundVisitModal({ open, onConfirm, onClose }: Props) {
   };
 
   const btnStyle = (v: Visitor): React.CSSProperties => ({
-    flex: 1, padding: '9px 4px', fontWeight: 700, fontSize: 12, borderRadius: 3, cursor: 'pointer',
+    flex: 1,
+    padding: '9px 4px',
+    fontWeight: 700,
+    fontSize: 12,
+    borderRadius: 3,
+    cursor: 'pointer',
     border: `2px solid ${visitor === v ? 'var(--blue)' : 'var(--border)'}`,
     background: visitor === v ? 'var(--blue)' : '#fff',
     color: visitor === v ? '#fff' : 'var(--text)',
@@ -42,8 +47,12 @@ export default function MoundVisitModal({ open, onConfirm, onClose }: Props) {
           </div>
         </div>
         <div className="modal-footer">
-          <button className="btn-ok" onClick={handle}>확인</button>
-          <button className="btn-cancel" onClick={handleClose}>취소</button>
+          <button className="btn-ok" onClick={handle}>
+            확인
+          </button>
+          <button className="btn-cancel" onClick={handleClose}>
+            취소
+          </button>
         </div>
       </div>
     </div>

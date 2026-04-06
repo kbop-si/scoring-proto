@@ -11,7 +11,15 @@ interface Props {
   onClose: () => void;
 }
 
-export default function PlayersModal({ open, title, playerList, selectedIdx, onSelect, onConfirm, onClose }: Props) {
+export default function PlayersModal({
+  open,
+  title,
+  playerList,
+  selectedIdx,
+  onSelect,
+  onConfirm,
+  onClose,
+}: Props) {
   return (
     <div className={`ov${open ? ' open' : ''}`} id="ov-players">
       <div className="ov-card">
@@ -19,15 +27,15 @@ export default function PlayersModal({ open, title, playerList, selectedIdx, onS
         <div className="pl-list">
           <table className="pl-tbl">
             <thead>
-              <tr><th>선수명</th><th>등번호</th><th>포지션</th></tr>
+              <tr>
+                <th>선수명</th>
+                <th>등번호</th>
+                <th>포지션</th>
+              </tr>
             </thead>
             <tbody>
               {playerList.map((p, i) => (
-                <tr
-                  key={i}
-                  className={selectedIdx === i ? 'sel' : ''}
-                  onClick={() => onSelect(i)}
-                >
+                <tr key={i} className={selectedIdx === i ? 'sel' : ''} onClick={() => onSelect(i)}>
                   <td>{p.name}</td>
                   <td>{p.num}</td>
                   <td>{POS_ABBR[p.pos] || ''}</td>
@@ -37,8 +45,12 @@ export default function PlayersModal({ open, title, playerList, selectedIdx, onS
           </table>
         </div>
         <div className="modal-footer">
-          <button className="btn-ok" onClick={onConfirm}>확인</button>
-          <button className="btn-cancel" onClick={onClose}>취소</button>
+          <button className="btn-ok" onClick={onConfirm}>
+            확인
+          </button>
+          <button className="btn-cancel" onClick={onClose}>
+            취소
+          </button>
         </div>
       </div>
     </div>
