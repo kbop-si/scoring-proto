@@ -57,13 +57,13 @@ function makeInitialRows(positions: number[]): FielderRow[] {
 }
 
 export default function DefenseListModal({ open, result, defLU, onClose }: Props) {
+  const positions = parseFielders(result);
   const [rows, setRows] = useState<FielderRow[]>([]);
   const [수비시정, set수비시정] = useState(false);
 
   useEffect(() => {
     if (open) {
-      const positions = parseFielders(result);
-      setRows(makeInitialRows(positions));
+      setRows(makeInitialRows(parseFielders(result)));
       set수비시정(false);
     }
   }, [open, result, defLU]);

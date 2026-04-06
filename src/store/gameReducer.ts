@@ -441,7 +441,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
       const luKey = action.team === 'away' ? 'awayLineup' : 'homeLineup';
       const lu = [...state[luKey]];
       if (lu.length >= 10) return state;
-      lu.push({ name: '투수', num: 'P', pos: 1, order: 0 });
+      lu.push({ name: '투수', num: 'P', pos: 1, order: 0, hitType: 1 });
       return { ...state, [luKey]: lu };
     }
 
