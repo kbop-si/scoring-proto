@@ -743,7 +743,7 @@ button {
   display: flex;
   align-items: center;
   cursor: pointer;
-  overflow: hidden;
+  overflow: visible;
   transition: background 0.08s;
 }
 .sc:hover {
@@ -771,16 +771,18 @@ button {
 .sc-pitches {
   display: flex;
   flex-direction: column;
-  flex-wrap: wrap;
+  flex-wrap: wrap-reverse;
   width: 18px;
   min-width: 18px;
   max-width: 18px;
   height: 84px;
   border-right: 1px solid #e5e7eb;
   padding: 2px 1px 0;
-  overflow: hidden;
+  overflow: visible;
   align-items: center;
   gap: 1px;
+  z-index: 1;
+  position: relative;
 }
 .pm {
   font-size: 8px;
