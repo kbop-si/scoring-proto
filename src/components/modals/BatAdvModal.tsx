@@ -485,7 +485,7 @@ export default function BatAdvModal({
                 <table style={{ width: '100%', borderCollapse: 'collapse', background: '#fff' }}>
                   <thead>
                     <tr>
-                      {['수비', '선수명', '보살', '자살', '실책'].map((h) => (
+                      {['수비', '선수명', '보살', '자살', '실책', ''].map((h) => (
                         <th
                           key={h}
                           style={{
@@ -568,6 +568,29 @@ export default function BatAdvModal({
                               checked={row.error}
                               onChange={() => toggle('error')}
                             />
+                          </td>
+                          <td
+                            style={{
+                              border: '1px solid var(--border2)',
+                              padding: '2px 4px',
+                              textAlign: 'center',
+                            }}
+                          >
+                            <button
+                              onClick={() => setDefSeq((prev) => prev.filter((_, j) => j !== i))}
+                              style={{
+                                fontSize: 12,
+                                lineHeight: 1,
+                                padding: '1px 5px',
+                                border: '1px solid #f87171',
+                                background: '#fff',
+                                color: '#ef4444',
+                                cursor: 'pointer',
+                                borderRadius: 2,
+                              }}
+                            >
+                              ×
+                            </button>
                           </td>
                         </tr>
                       );

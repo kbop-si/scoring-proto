@@ -10,15 +10,15 @@ interface Props {
 
 // 수비 위치 SVG 좌표 (viewBox 0 0 200 210)
 const FPOS: { pos: number; x: number; y: number }[] = [
-  { pos: 8, x: 100, y: 22 },
-  { pos: 7, x: 25, y: 52 },
-  { pos: 9, x: 175, y: 52 },
-  { pos: 6, x: 72, y: 105 },
-  { pos: 4, x: 128, y: 105 },
-  { pos: 5, x: 36, y: 125 },
-  { pos: 3, x: 164, y: 125 },
-  { pos: 1, x: 100, y: 128 },
-  { pos: 2, x: 100, y: 193 },
+  { pos: 8, x: 100, y: 32 },
+  { pos: 7, x: 30, y: 45 },
+  { pos: 9, x: 170, y: 45 },
+  { pos: 6, x: 68, y: 100 },
+  { pos: 4, x: 132, y: 100 },
+  { pos: 5, x: 46, y: 126 },
+  { pos: 3, x: 154, y: 126 },
+  { pos: 1, x: 100, y: 122 },
+  { pos: 2, x: 100, y: 190 },
 ];
 
 const POS_NAME: Record<number, string> = {
@@ -97,12 +97,12 @@ function FieldPicker({
   return (
     <svg
       viewBox="0 0 200 210"
-      style={{ width: '100%', maxWidth: 200, display: 'block', margin: '0 auto' }}
+      style={{ width: '100%', maxWidth: 300, display: 'block', margin: '0 auto' }}
     >
       {/* 외야 배경 */}
-      <path d="M100,175 L5,60 Q100,0 195,60 Z" fill="#3a7a3a" />
+      <path d="M100,175 L5,50 Q100,0 195,50 Z" fill="#3a7a3a" />
       {/* 내야 흙 */}
-      <circle cx="100" cy="140" r="55" fill="#7a5c38" opacity=".45" />
+      <circle cx="100" cy="135" r="68" fill="#7a5c38" opacity=".45" />
       {/* 파울 라인 */}
       <line
         x1="100"
@@ -257,15 +257,15 @@ export default function BatOutModal({ open, defLU, onResult, onClose }: Props) {
 
   return (
     <div className={`ov${open ? ' open' : ''}`} id="ov-bat-out">
-      <div className="ov-card" style={{ minWidth: 480 }}>
+      <div className="ov-card" style={{ minWidth: 660 }}>
         <div className="modal-title">타자 아웃</div>
 
         <div style={{ display: 'flex', gap: 0 }}>
           {/* 좌측: 다이아몬드 + 순서 표시 */}
-          <div style={{ width: 220, borderRight: '1px solid var(--border2)', padding: '10px 8px' }}>
+          <div style={{ width: 320, borderRight: '1px solid var(--border2)', padding: '10px 8px' }}>
             <div
               style={{
-                fontSize: 10,
+                fontSize: 20,
                 fontWeight: 700,
                 color: 'var(--text3)',
                 marginBottom: 4,
