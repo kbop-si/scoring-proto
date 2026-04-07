@@ -112,7 +112,7 @@ export default function GameScreen({ setup, onEnd }: Props) {
     }
   }, [G]);
   const [defListOpen, setDefListOpen] = useState(false);
-  const [defListResult, setDefListResult] = useState('');
+  const [defListResult] = useState('');
   const [moundOpen, setMoundOpen] = useState(false);
   const [toastMsg, setToastMsg] = useState('');
   const [toastVisible, setToastVisible] = useState(false);
