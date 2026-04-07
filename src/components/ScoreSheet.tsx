@@ -79,8 +79,9 @@ function ScoreCell({
   const outLbl = outNum ? ['Ⅰ', 'Ⅱ', 'Ⅲ'][outNum - 1] : '';
   const onBase = isOnBase(result) && !runOutNum;
   const fill = onBase ? '#eee' : 'none';
-  const strokeC = '#111';
-  const strokeW = isSel ? '1.8' : '1';
+  const strokeC = '#888';
+  const strokeW = isSel ? '1.5' : '0.8';
+  const strokeDash = '3,3';
   const rcol = RESULT_COL[result || ''] || '#111';
   const isWalk = result === 'B' || result === 'IB' || result === 'IB2';
   const lines = !isWalk ? BASE_LINES[result || ''] || [] : [];
@@ -96,7 +97,7 @@ function ScoreCell({
 
   const cls = ['sc', isSel ? 'sel' : '', isCur ? 'cur-bat' : ''].filter(Boolean).join(' ');
 
-  const DIAMOND_SIZE = 58;
+  const DIAMOND_SIZE = 48;
   const NOTE_GROUP_WIDTH = 28;
   const NOTE_GROUP_HEIGHT = 18;
 
@@ -155,24 +156,25 @@ function ScoreCell({
             <PitchMark code={p} size={12} />
           </span>
         ))}
-        {result && !['B', 'IB', 'IB2', 'HP', '#', 'ob', 'K', 'K3B', 'KW', 'KP', 'KE'].includes(result) && (
-          <span
-            title={`타격완료: ${result}`}
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              width: 12,
-              height: 12,
-              fontSize: 10,
-              color: '#111',
-              fontWeight: 700,
-              lineHeight: 1,
-            }}
-          >
-            θ
-          </span>
-        )}
+        {result &&
+          !['B', 'IB', 'IB2', 'HP', '#', 'ob', 'K', 'K3B', 'KW', 'KP', 'KE'].includes(result) && (
+            <span
+              title={`타격완료: ${result}`}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                width: 12,
+                height: 12,
+                fontSize: 10,
+                color: '#111',
+                fontWeight: 700,
+                lineHeight: 1,
+              }}
+            >
+              θ
+            </span>
+          )}
 
         {sideNotes.map((n, i) => {
           const note = String(n).trim();
@@ -285,6 +287,7 @@ function ScoreCell({
         <div style={{ position: 'relative', width: DIAMOND_SIZE, height: DIAMOND_SIZE }}>
           <svg
             viewBox="0 0 40 40"
+            overflow="visible"
             style={{
               position: 'absolute',
               top: 0,
@@ -298,9 +301,44 @@ function ScoreCell({
               fill={fill}
               stroke={strokeC}
               strokeWidth={strokeW}
+              strokeDasharray={strokeDash}
             />
-            <line x1="20" y1="2" x2="20" y2="38" stroke="#e5e7eb" strokeWidth=".5" />
-            <line x1="2" y1="20" x2="38" y2="20" stroke="#e5e7eb" strokeWidth=".5" />
+            <line
+              x1="20"
+              y1="2"
+              x2="20"
+              y2="-25"
+              stroke="#888"
+              strokeWidth="0.5"
+              strokeDasharray="3,3"
+            />
+            <line
+              x1="38"
+              y1="20"
+              x2="65"
+              y2="20"
+              stroke="#888"
+              strokeWidth="0.5"
+              strokeDasharray="3,3"
+            />
+            <line
+              x1="20"
+              y1="38"
+              x2="20"
+              y2="65"
+              stroke="#888"
+              strokeWidth="0.5"
+              strokeDasharray="3,3"
+            />
+            <line
+              x1="2"
+              y1="20"
+              x2="-25"
+              y2="20"
+              stroke="#888"
+              strokeWidth="0.5"
+              strokeDasharray="3,3"
+            />
 
             {lines.map((l, i) => (
               <line
@@ -959,7 +997,7 @@ export default function ScoreSheet({ G, onSelCell }: Props) {
                                   textAlign: 'center',
                                   padding: 2,
                                   fontSize: 10,
-                                  color: 'var(--blue)',
+                                  color: '#111',
                                   fontWeight: 900,
                                   fontFamily: 'monospace',
                                 }}
@@ -969,8 +1007,7 @@ export default function ScoreSheet({ G, onSelCell }: Props) {
                             </td>
                             <td style={{ minWidth: 80 }} rowSpan={maxRows}>
                               <div className="ss-player-col">
-                                <div className="ss-num">{p.num}</div>
-                                <div style={{ fontSize: 10, fontWeight: 500 }}>{p.name}</div>
+                                <div style={{ fontSize: 20, fontWeight: 600 }}>{p.name}</div>
                               </div>
                             </td>
                             <td rowSpan={maxRows}>
@@ -1004,9 +1041,7 @@ export default function ScoreSheet({ G, onSelCell }: Props) {
                                 width: 80,
                                 minWidth: 80,
                                 borderBottom:
-                                  oNum === 3 || c?.runOutNum === 3
-                                    ? '2px solid #1d4ed8'
-                                    : undefined,
+                                  oNum === 3 || c?.runOutNum === 3 ? '2px solid #111' : undefined,
                               }}
                             >
                               <ScoreCell
