@@ -299,11 +299,7 @@ export default function GameScreen({ setup, onEnd }: Props) {
         showToast(
           `3아웃! ${G.inning}회 ${G.half === 'top' ? '초' : '말'} 종료 — [다음이닝] 버튼 클릭`
         );
-      const hasFielderSeq = /\d(-\d)+/.test(result) || /^[fFLS]+\d/.test(result);
-      if (hasFielderSeq) {
-        setDefListResult(result);
-        setDefListOpen(true);
-      }
+      // 수비 리스트는 BatOutModal 내에서 처리
     },
     [G, dispatch, showToast]
   );
