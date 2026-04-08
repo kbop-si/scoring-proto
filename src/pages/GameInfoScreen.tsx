@@ -136,7 +136,7 @@ export default function GameInfoScreen({
 }) {
   // 1. 상태값 (원본 HTML 기반)
   const [gameNum, setGameNum] = useState('1');
-  const [dh, setDh] = useState(setup.doubleHeader ?? '--------');
+  const [dh] = useState(setup.doubleHeader ?? '--------');
   const [stadium, setStadium] = useState('');
   const [spectators, setSpectators] = useState('');
   const [startH, setStartH] = useState('');
