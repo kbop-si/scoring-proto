@@ -1275,7 +1275,7 @@ button {
   z-index: 10;
   transform: translate(-50%, -50%);
   animation: b-pulse 1.2s ease-in-out infinite;
-  pointer-events: none;
+  cursor: pointer;
 }
 @keyframes b-pulse {
   0%,

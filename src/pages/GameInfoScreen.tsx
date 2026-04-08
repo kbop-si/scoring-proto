@@ -4,7 +4,7 @@ import type { GameSetup } from '../types';
 
 const BLUE = '#102C57';
 
-// --- 공통 스타일 ---
+// --- 스타일 정의 ---
 const sectionTitleStyle: CSSProperties = {
   fontSize: 12,
   fontWeight: 700,
@@ -33,12 +33,7 @@ const inputSt: CSSProperties = {
   outline: 'none',
   fontSize: 12,
 };
-const readonlySt: CSSProperties = {
-  ...inputSt,
-  background: '#f1f5f9',
-  color: '#102C57',
-  opacity: 0.8,
-};
+const readonlySt: CSSProperties = { ...inputSt, background: '#f1f5f9', opacity: 0.8 };
 const timeInputSt: CSSProperties = {
   width: 45,
   height: 30,
@@ -48,7 +43,6 @@ const timeInputSt: CSSProperties = {
   outline: 'none',
 };
 
-// --- 심판/기록원 검색용 컴포넌트 ---
 const SearchableInput = ({
   label,
   value,
@@ -134,9 +128,7 @@ export default function GameInfoScreen({
   onConfirm: (extra: Partial<GameSetup>) => void;
   onBack: () => void;
 }) {
-  // 1. 상태값 (원본 HTML 기반)
   const [gameNum, setGameNum] = useState('1');
-  const [dh] = useState(setup.doubleHeader ?? '--------');
   const [stadium, setStadium] = useState('');
   const [spectators, setSpectators] = useState('');
   const [startH, setStartH] = useState('');
@@ -147,15 +139,15 @@ export default function GameInfoScreen({
   const [endM, setEndM] = useState('');
   const [isExtra, setIsExtra] = useState(false);
   const [delayRegManual, setDelayRegManual] = useState('0');
+  const [delayExt, setDelayExt] = useState('0');
   const [temp, setTemp] = useState('');
   const [hum, setHum] = useState('');
+  const [weatherLog, setWeatherLog] = useState('');
   const [windDir, setWindDir] = useState('');
   const [windSpeed, setWindSpeed] = useState('');
-  const [weatherLog, setWeatherLog] = useState('');
   const [indoorEnabled, setIndoorEnabled] = useState(false);
   const [indoorTemp, setIndoorTemp] = useState('');
 
-  // 2. 검색 대상 인원 상태
   const [uHome, setUHome] = useState('');
   const [u1B, setU1B] = useState('');
   const [u2B, setU2B] = useState('');
@@ -187,7 +179,6 @@ export default function GameInfoScreen({
     []
   );
 
-  const [delayExt, setDelayExt] = useState('0');
   const [isSuspended, setIsSuspended] = useState(false);
   const [suspendedTime, setSuspendedTime] = useState('');
   const [isRegSuspended, setIsRegSuspended] = useState(false);
@@ -195,7 +186,14 @@ export default function GameInfoScreen({
 
   const toMin = (h: string, m: string) => (parseInt(h) || 0) * 60 + (parseInt(m) || 0);
 
-  // 소요시간: (경기종료 - 시합개시) - (정규지연 + 연장지연)
+  // 게임키 생성 (날짜 반영)
+  const gameKey = useMemo(() => {
+    const datePart = setup.date ? setup.date.replace(/[^0-9]/g, '').slice(0, 8) : '00000000';
+    const dhSuffix =
+      setup.doubleHeader === '1차전' ? '1' : setup.doubleHeader === '2차전' ? '2' : '0';
+    return `${datePart}${setup.awayTeam || ''}${setup.homeTeam || ''}${dhSuffix}`;
+  }, [setup.date, setup.awayTeam, setup.homeTeam, setup.doubleHeader]);
+
   const totalDurationStr = useMemo(() => {
     if (!startH || !endH) return '0 : 00';
     const sT = toMin(startH, startM);
@@ -206,7 +204,6 @@ export default function GameInfoScreen({
     return `${Math.floor(m / 60)} : ${String(m % 60).padStart(2, '0')}`;
   }, [startH, startM, endH, endM, delayRegManual, delayExt]);
 
-  // 정규이닝 소요시간: (정규이닝종료 - 시합개시) - 정규지연
   const regDurationStr = useMemo(() => {
     if (!startH || !regEndH) return '0 : 00';
     const sT = toMin(startH, startM);
@@ -253,7 +250,7 @@ export default function GameInfoScreen({
           style={{ padding: '16px 20px 12px', overflowY: 'auto', maxHeight: 'calc(100vh - 100px)' }}
         >
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 20 }}>
-            {/* 1열: 명칭, 시간 */}
+            {/* 1열 */}
             <div>
               <div style={sectionTitleStyle}>명칭</div>
               <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: 14 }}>
@@ -261,7 +258,7 @@ export default function GameInfoScreen({
                   <tr>
                     <td style={tdLabel}>게임키</td>
                     <td style={tdInput}>
-                      <input readOnly value="20260408KI한화0" style={readonlySt} />
+                      <input readOnly value={gameKey} style={readonlySt} />
                     </td>
                   </tr>
                   <tr>
@@ -277,7 +274,7 @@ export default function GameInfoScreen({
                   <tr>
                     <td style={tdLabel}>더블헤더</td>
                     <td style={tdInput}>
-                      <input readOnly value={dh} style={readonlySt} />
+                      <input readOnly value={setup.doubleHeader || '--------'} style={readonlySt} />
                     </td>
                   </tr>
                 </tbody>
@@ -286,9 +283,9 @@ export default function GameInfoScreen({
               <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                 <tbody>
                   <tr>
-                    <td style={tdLabel}>서기</td>
+                    <td style={tdLabel}>날짜</td>
                     <td style={tdInput}>
-                      <input readOnly value="2026년 04월 08일 (수)" style={readonlySt} />
+                      <input readOnly value={setup.date || ''} style={readonlySt} />
                     </td>
                   </tr>
                   <tr>
@@ -326,7 +323,7 @@ export default function GameInfoScreen({
                         onChange={(e) => setRegEndM(e.target.value)}
                         disabled={!isExtra}
                         style={{ ...timeInputSt, opacity: isExtra ? 1 : 0.4 }}
-                      />
+                      />{' '}
                       <label style={{ fontSize: 10, marginLeft: 4 }}>
                         <input
                           type="checkbox"
@@ -372,7 +369,7 @@ export default function GameInfoScreen({
                         onChange={(e) => setDelayRegManual(e.target.value)}
                         style={{ ...timeInputSt, width: 34 }}
                       />{' '}
-                      분&nbsp;&nbsp;연장{' '}
+                      분 연장{' '}
                       <input
                         value={delayExt}
                         onChange={(e) => setDelayExt(e.target.value)}
@@ -391,14 +388,11 @@ export default function GameInfoScreen({
                         style={{
                           ...(isSuspended ? inputSt : readonlySt),
                           width: 80,
-                          display: 'inline-block',
-                          fontWeight: 'bold',
                           textAlign: 'center',
-                          padding: '0 4px',
+                          fontWeight: 'bold',
                         }}
-                      />
-                      &nbsp;
-                      <label style={{ fontSize: 11, cursor: 'pointer' }}>
+                      />{' '}
+                      <label style={{ fontSize: 11 }}>
                         <input
                           type="checkbox"
                           checked={isSuspended}
@@ -425,14 +419,11 @@ export default function GameInfoScreen({
                         style={{
                           ...(isRegSuspended ? inputSt : readonlySt),
                           width: 80,
-                          display: 'inline-block',
-                          fontWeight: 'bold',
                           textAlign: 'center',
-                          padding: '0 4px',
+                          fontWeight: 'bold',
                         }}
-                      />
-                      &nbsp;
-                      <label style={{ fontSize: 11, cursor: 'pointer' }}>
+                      />{' '}
+                      <label style={{ fontSize: 11 }}>
                         <input
                           type="checkbox"
                           checked={isRegSuspended}
@@ -459,8 +450,7 @@ export default function GameInfoScreen({
                 </tbody>
               </table>
             </div>
-
-            {/* 2열: 심판, 기록원 */}
+            {/* 2열 */}
             <div>
               <div style={sectionTitleStyle}>심판</div>
               <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: 14 }}>
@@ -527,8 +517,7 @@ export default function GameInfoScreen({
                 </tbody>
               </table>
             </div>
-
-            {/* 3열: 기상 */}
+            {/* 3열 */}
             <div>
               <div style={sectionTitleStyle}>구장/일기</div>
               <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: 14 }}>
@@ -575,10 +564,10 @@ export default function GameInfoScreen({
                     </td>
                   </tr>
                   <tr>
-                    <td style={tdLabel}>일기상태</td>
+                    <td style={tdLabel}>일기</td>
                     <td style={tdInput}>
                       <input
-                        placeholder="맑음, 흐림 등"
+                        placeholder="예) F, C, R"
                         value={weatherLog}
                         onChange={(e) => setWeatherLog(e.target.value)}
                         style={inputSt}
@@ -586,10 +575,10 @@ export default function GameInfoScreen({
                     </td>
                   </tr>
                   <tr>
-                    <td style={tdLabel}>바람방향</td>
+                    <td style={tdLabel}>풍향</td>
                     <td style={tdInput}>
                       <input
-                        placeholder="예: NE"
+                        placeholder="예) NE"
                         value={windDir}
                         onChange={(e) => setWindDir(e.target.value)}
                         style={inputSt}
@@ -642,7 +631,6 @@ export default function GameInfoScreen({
                 border: 'none',
                 fontWeight: 700,
                 cursor: 'pointer',
-                fontSize: 13,
               }}
             >
               확인
@@ -657,7 +645,6 @@ export default function GameInfoScreen({
                 border: `1px solid ${BLUE}`,
                 fontWeight: 700,
                 cursor: 'pointer',
-                fontSize: 13,
               }}
             >
               취소

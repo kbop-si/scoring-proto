@@ -5,7 +5,6 @@ import Calendar from '../components/Calendar';
 
 interface Props {
   setup: GameSetup;
-  // onConfirm 인자에 dh 추가
   onConfirm: (awayTeam: string, homeTeam: string, date: string, dh: string) => void;
   onBack: () => void;
 }
@@ -17,12 +16,12 @@ function fmtDate(y: number, m: number, d: number): string {
 
 export default function CreateScreen({ setup, onConfirm, onBack }: Props) {
   const today = new Date();
-  const [date, setDate] = useState(() =>
-    fmtDate(today.getFullYear(), today.getMonth() + 1, today.getDate())
+  const [date, setDate] = useState(
+    () => setup.date || fmtDate(today.getFullYear(), today.getMonth() + 1, today.getDate())
   );
   const [awayTeam, setAwayTeam] = useState(setup.awayTeam || KBO_TEAMS[0]);
   const [homeTeam, setHomeTeam] = useState(setup.homeTeam || KBO_TEAMS[1]);
-  const [dh, setDh] = useState('--------'); // 더블헤더 상태 추가
+  const [dh, setDh] = useState(setup.doubleHeader || '--------');
   const [calOpen, setCalOpen] = useState(false);
 
   const BLUE = '#102C57';
@@ -37,14 +36,9 @@ export default function CreateScreen({ setup, onConfirm, onBack }: Props) {
     color: BLUE,
     fontWeight: 700,
     fontSize: 13,
-    whiteSpace: 'nowrap',
     width: 110,
   };
-
-  const fieldWrapStyle: React.CSSProperties = {
-    padding: '8px 6px',
-  };
-
+  const fieldWrapStyle: React.CSSProperties = { padding: '8px 6px' };
   const inputStyle: React.CSSProperties = {
     width: '100%',
     height: 32,
@@ -55,22 +49,11 @@ export default function CreateScreen({ setup, onConfirm, onBack }: Props) {
     boxSizing: 'border-box',
     outline: 'none',
   };
-
-  const selectStyle: React.CSSProperties = {
-    width: '100%',
-    height: 32,
-    border: `1px solid ${BLUE}`,
-    padding: '0 10px',
-    background: '#ffffff',
-    color: BLUE,
-    boxSizing: 'border-box',
-    outline: 'none',
-  };
+  const selectStyle: React.CSSProperties = { ...inputStyle };
 
   return (
     <div
       className="screen active"
-      id="s-create"
       style={{
         height: '100vh',
         background: '#ffffff',
@@ -102,23 +85,11 @@ export default function CreateScreen({ setup, onConfirm, onBack }: Props) {
         >
           경기 생성
         </div>
-
-        <div
-          className="modal-body"
-          style={{
-            padding: '18px 22px 14px 22px',
-          }}
-        >
-          <table
-            className="form-tbl"
-            style={{
-              width: '100%',
-              borderCollapse: 'collapse',
-            }}
-          >
+        <div className="modal-body" style={{ padding: '18px 22px 14px 22px' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <tbody>
               <tr>
-                <td style={labelStyle}>서기</td>
+                <td style={labelStyle}>날짜</td>
                 <td style={{ ...fieldWrapStyle, position: 'relative' }}>
                   <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
                     <input
@@ -126,10 +97,7 @@ export default function CreateScreen({ setup, onConfirm, onBack }: Props) {
                       value={date}
                       readOnly
                       onClick={() => setCalOpen((v) => !v)}
-                      style={{
-                        ...inputStyle,
-                        cursor: 'pointer',
-                      }}
+                      style={{ ...inputStyle, cursor: 'pointer' }}
                     />
                     <button
                       onClick={() => setCalOpen((v) => !v)}
@@ -138,7 +106,6 @@ export default function CreateScreen({ setup, onConfirm, onBack }: Props) {
                         height: 32,
                         border: `1px solid ${BLUE}`,
                         background: '#ffffff',
-                        color: BLUE,
                         cursor: 'pointer',
                         flexShrink: 0,
                       }}
@@ -146,7 +113,6 @@ export default function CreateScreen({ setup, onConfirm, onBack }: Props) {
                       📅
                     </button>
                   </div>
-
                   {calOpen && (
                     <Calendar
                       selectedDate={date}
@@ -156,7 +122,6 @@ export default function CreateScreen({ setup, onConfirm, onBack }: Props) {
                   )}
                 </td>
               </tr>
-
               <tr>
                 <td style={labelStyle}>원정팀</td>
                 <td style={fieldWrapStyle}>
@@ -166,12 +131,13 @@ export default function CreateScreen({ setup, onConfirm, onBack }: Props) {
                     style={selectStyle}
                   >
                     {KBO_TEAMS.map((t) => (
-                      <option key={t}>{t}</option>
+                      <option key={t} value={t}>
+                        {t}
+                      </option>
                     ))}
                   </select>
                 </td>
               </tr>
-
               <tr>
                 <td style={labelStyle}>홈팀</td>
                 <td style={fieldWrapStyle}>
@@ -181,16 +147,16 @@ export default function CreateScreen({ setup, onConfirm, onBack }: Props) {
                     style={selectStyle}
                   >
                     {KBO_TEAMS.map((t) => (
-                      <option key={t}>{t}</option>
+                      <option key={t} value={t}>
+                        {t}
+                      </option>
                     ))}
                   </select>
                 </td>
               </tr>
-
               <tr>
                 <td style={labelStyle}>더블헤더(DH)</td>
                 <td style={fieldWrapStyle}>
-                  {/* select에 value와 onChange 연결 */}
                   <select style={selectStyle} value={dh} onChange={(e) => setDh(e.target.value)}>
                     <option value="--------">--------</option>
                     <option value="1차전">1차전</option>
@@ -200,7 +166,6 @@ export default function CreateScreen({ setup, onConfirm, onBack }: Props) {
               </tr>
             </tbody>
           </table>
-
           <div
             className="modal-footer"
             style={{
@@ -213,7 +178,7 @@ export default function CreateScreen({ setup, onConfirm, onBack }: Props) {
             }}
           >
             <button
-              onClick={() => onConfirm(awayTeam, homeTeam, date, dh)} // dh 전달
+              onClick={() => onConfirm(awayTeam, homeTeam, date, dh)}
               style={{
                 minWidth: 72,
                 height: 34,
@@ -226,7 +191,6 @@ export default function CreateScreen({ setup, onConfirm, onBack }: Props) {
             >
               확인
             </button>
-
             <button
               onClick={onBack}
               style={{

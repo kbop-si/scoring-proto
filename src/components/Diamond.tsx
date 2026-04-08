@@ -164,11 +164,11 @@ export default function Diamond({
             }}
             onClick={(e) => {
               e.stopPropagation();
+              onBatterContextMenu?.();
             }}
             onContextMenu={(e) => {
               e.preventDefault();
               e.stopPropagation();
-              onBatterContextMenu?.();
             }}
           >
             {batter.num} {batter.name}
