@@ -1,163 +1,239 @@
-import { useState } from 'react';
+import { useState, useMemo, useRef, useEffect } from 'react';
 import type { CSSProperties, Dispatch, SetStateAction } from 'react';
 import type { GameSetup } from '../types';
 
-interface Props {
-  setup: GameSetup;
-  onConfirm: (extra: Partial<GameSetup>) => void;
-  onBack: () => void;
-}
+const BLUE = '#102C57';
 
-export default function GameInfoScreen({ setup, onConfirm, onBack }: Props) {
-  const BLUE = '#102C57';
+// --- 공통 스타일 ---
+const sectionTitleStyle: CSSProperties = {
+  fontSize: 12,
+  fontWeight: 700,
+  color: BLUE,
+  marginBottom: 10,
+  paddingBottom: 4,
+  borderBottom: `1px solid ${BLUE}`,
+};
+const tdLabel: CSSProperties = {
+  padding: '5px 8px 5px 0',
+  color: BLUE,
+  fontWeight: 700,
+  fontSize: 12,
+  whiteSpace: 'nowrap',
+  width: 72,
+};
+const tdInput: CSSProperties = { padding: '5px 0' };
+const inputSt: CSSProperties = {
+  width: '100%',
+  height: 30,
+  border: `1px solid ${BLUE}`,
+  padding: '0 8px',
+  background: '#ffffff',
+  color: BLUE,
+  boxSizing: 'border-box',
+  outline: 'none',
+  fontSize: 12,
+};
+const readonlySt: CSSProperties = {
+  ...inputSt,
+  background: '#f1f5f9',
+  color: '#102C57',
+  opacity: 0.8,
+};
+const timeInputSt: CSSProperties = {
+  width: 45,
+  height: 30,
+  border: `1px solid ${BLUE}`,
+  textAlign: 'center',
+  fontSize: 12,
+  outline: 'none',
+};
 
-  const gameKey = `${setup.date
-    .replace(/[년월일 (요일)]/g, '')
-    .substring(0, 8)}${setup.awayTeam.substring(0, 2)}${setup.homeTeam.substring(0, 2)}0`;
-
-  const [gameNum, setGameNum] = useState(setup.gameNum ?? '1');
-  const [startTime, setStartTime] = useState(setup.startTime ?? '');
-  const [endTime, setEndTime] = useState(setup.endTime ?? '');
-  const [stadium, setStadium] = useState(setup.stadium ?? '');
-  const [attendance, setAttendance] = useState(setup.attendance ?? '');
-  const [temperature, setTemperature] = useState(setup.temperature ?? '');
-  const [humidity, setHumidity] = useState(setup.humidity ?? '');
-  const [windDir, setWindDir] = useState(setup.windDir ?? '');
-  const [windSpeed, setWindSpeed] = useState(setup.windSpeed ?? '');
-  const [umpireHome, setUmpireHome] = useState(setup.umpireHome ?? '');
-  const [umpire1B, setUmpire1B] = useState(setup.umpire1B ?? '');
-  const [umpire2B, setUmpire2B] = useState(setup.umpire2B ?? '');
-  const [umpire3B, setUmpire3B] = useState(setup.umpire3B ?? '');
-  const [umpireLeft, setUmpireLeft] = useState(setup.umpireLeft ?? '');
-  const [umpireRight, setUmpireRight] = useState(setup.umpireRight ?? '');
-  const [umpireStandby, setUmpireStandby] = useState(setup.umpireStandby ?? '');
-  const [recorder1, setRecorder1] = useState(setup.recorder1 ?? '');
-  const [recorder2, setRecorder2] = useState(setup.recorder2 ?? '');
-
-  // 심판 기록원 리스트 임시
-  const officialOptions = [
-    '',
-    '김철수',
-    '이영희',
-    '박민수',
-    '최지훈',
-    '정우성',
-    '강동원',
-    '오시현',
-    '윤태훈',
-  ];
-
-  const handleConfirm = () => {
-    onConfirm({
-      gameNum,
-      startTime,
-      endTime,
-      stadium,
-      attendance,
-      temperature,
-      humidity,
-      windDir,
-      windSpeed,
-      umpireHome,
-      umpire1B,
-      umpire2B,
-      umpire3B,
-      umpireLeft,
-      umpireRight,
-      umpireStandby,
-      recorder1,
-      recorder2,
-    });
-  };
-
-  const sectionTitleStyle: CSSProperties = {
-    fontSize: 12,
-    fontWeight: 700,
-    color: BLUE,
-    marginBottom: 10,
-    paddingBottom: 4,
-    borderBottom: `1px solid ${BLUE}`,
-  };
-
-  const tdLabel: CSSProperties = {
-    padding: '5px 8px 5px 0',
-    color: BLUE,
-    fontWeight: 700,
-    fontSize: 12,
-    whiteSpace: 'nowrap',
-    width: 72,
-  };
-
-  const tdInput: CSSProperties = { padding: '5px 0' };
-
-  const inputSt: CSSProperties = {
-    width: '100%',
-    height: 30,
-    border: `1px solid ${BLUE}`,
-    padding: '0 8px',
-    background: '#ffffff',
-    color: BLUE,
-    boxSizing: 'border-box',
-    outline: 'none',
-    fontSize: 12,
-  };
-
-  const readonlySt: CSSProperties = {
-    ...inputSt,
-    background: '#f1f5f9',
-    color: '#64748b',
-  };
-
-  const selectSt: CSSProperties = {
-    ...inputSt,
-    appearance: 'none',
-    WebkitAppearance: 'none',
-    MozAppearance: 'none',
-    cursor: 'pointer',
-  };
-
-  const renderSelectRow = (
-    label: string,
-    value: string,
-    setter: Dispatch<SetStateAction<string>>
-  ) => (
-    <tr key={label}>
+// --- 심판/기록원 검색용 컴포넌트 ---
+const SearchableInput = ({
+  label,
+  value,
+  setter,
+  options,
+}: {
+  label: string;
+  value: string;
+  setter: Dispatch<SetStateAction<string>>;
+  options: string[];
+}) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const handleClick = (e: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node))
+        setIsOpen(false);
+    };
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, []);
+  const filtered = options.filter((n) => n.includes(value));
+  return (
+    <tr>
       <td style={tdLabel}>{label}</td>
       <td style={tdInput}>
-        <select value={value} onChange={(e) => setter(e.target.value)} style={selectSt}>
-          <option value="">선택</option>
-          {officialOptions
-            .filter((name) => name !== '')
-            .map((name) => (
-              <option key={name} value={name}>
-                {name}
-              </option>
-            ))}
-        </select>
+        <div ref={containerRef} style={{ position: 'relative' }}>
+          <input
+            value={value}
+            onChange={(e) => setter(e.target.value)}
+            onFocus={() => setIsOpen(true)}
+            style={inputSt}
+            placeholder="이름 검색"
+            autoComplete="off"
+          />
+          {isOpen && filtered.length > 0 && (
+            <div
+              style={{
+                position: 'absolute',
+                top: 31,
+                left: 0,
+                right: 0,
+                maxHeight: 120,
+                overflowY: 'auto',
+                background: '#fff',
+                border: `1px solid ${BLUE}`,
+                zIndex: 999,
+                boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
+              }}
+            >
+              {filtered.map((name) => (
+                <div
+                  key={name}
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    setter(name);
+                    setIsOpen(false);
+                  }}
+                  style={{
+                    padding: '6px 10px',
+                    fontSize: 12,
+                    cursor: 'pointer',
+                    borderBottom: '1px solid #eee',
+                  }}
+                >
+                  {name}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       </td>
     </tr>
   );
+};
+
+export default function GameInfoScreen({
+  setup,
+  onConfirm,
+  onBack,
+}: {
+  setup: GameSetup;
+  onConfirm: (extra: Partial<GameSetup>) => void;
+  onBack: () => void;
+}) {
+  // 1. 상태값 (원본 HTML 기반)
+  const [gameNum, setGameNum] = useState('1');
+  const [dh, setDh] = useState(setup.doubleHeader ?? '--------');
+  const [stadium, setStadium] = useState('');
+  const [spectators, setSpectators] = useState('');
+  const [startH, setStartH] = useState('');
+  const [startM, setStartM] = useState('');
+  const [regEndH, setRegEndH] = useState('');
+  const [regEndM, setRegEndM] = useState('');
+  const [endH, setEndH] = useState('');
+  const [endM, setEndM] = useState('');
+  const [isExtra, setIsExtra] = useState(false);
+  const [delayRegManual, setDelayRegManual] = useState('0');
+  const [temp, setTemp] = useState('');
+  const [hum, setHum] = useState('');
+  const [windDir, setWindDir] = useState('');
+  const [windSpeed, setWindSpeed] = useState('');
+  const [weatherLog, setWeatherLog] = useState('');
+  const [indoorEnabled, setIndoorEnabled] = useState(false);
+  const [indoorTemp, setIndoorTemp] = useState('');
+
+  // 2. 검색 대상 인원 상태
+  const [uHome, setUHome] = useState('');
+  const [u1B, setU1B] = useState('');
+  const [u2B, setU2B] = useState('');
+  const [u3B, setU3B] = useState('');
+  const [uLeft, setULeft] = useState('');
+  const [uRight, setURight] = useState('');
+  const [uWait, setUWait] = useState('');
+  const [rec1, setRec1] = useState('');
+  const [rec2, setRec2] = useState('');
+
+  const officialList = useMemo(
+    () =>
+      [
+        '김철수',
+        '이영희',
+        '박민수',
+        '최지훈',
+        '정우성',
+        '강동원',
+        '오시현',
+        '윤태훈',
+        '김원석',
+        '김수현',
+        '이지은',
+        '박지민',
+        '남궁심판',
+        '선우기록',
+      ].sort(),
+    []
+  );
+
+  const [delayExt, setDelayExt] = useState('0');
+  const [isSuspended, setIsSuspended] = useState(false);
+  const [suspendedTime, setSuspendedTime] = useState('');
+  const [isRegSuspended, setIsRegSuspended] = useState(false);
+  const [regSuspendedTime, setRegSuspendedTime] = useState('');
+
+  const toMin = (h: string, m: string) => (parseInt(h) || 0) * 60 + (parseInt(m) || 0);
+
+  // 소요시간: (경기종료 - 시합개시) - (정규지연 + 연장지연)
+  const totalDurationStr = useMemo(() => {
+    if (!startH || !endH) return '0 : 00';
+    const sT = toMin(startH, startM);
+    let eT = toMin(endH, endM);
+    if (eT < sT) eT += 1440;
+    const delay = (parseInt(delayRegManual) || 0) + (parseInt(delayExt) || 0);
+    const m = Math.max(0, eT - sT - delay);
+    return `${Math.floor(m / 60)} : ${String(m % 60).padStart(2, '0')}`;
+  }, [startH, startM, endH, endM, delayRegManual, delayExt]);
+
+  // 정규이닝 소요시간: (정규이닝종료 - 시합개시) - 정규지연
+  const regDurationStr = useMemo(() => {
+    if (!startH || !regEndH) return '0 : 00';
+    const sT = toMin(startH, startM);
+    let rT = toMin(regEndH, regEndM);
+    if (rT < sT) rT += 1440;
+    const m = Math.max(0, rT - sT - (parseInt(delayRegManual) || 0));
+    return `${Math.floor(m / 60)} : ${String(m % 60).padStart(2, '0')}`;
+  }, [startH, startM, regEndH, regEndM, delayRegManual]);
 
   return (
     <div
       className="screen active"
-      id="s-gameinfo"
       style={{
         height: '100vh',
-        background: '#ffffff',
+        background: '#fff',
         display: 'flex',
         justifyContent: 'center',
         alignItems: 'center',
       }}
     >
       <div
-        className="modal-box"
         style={{
           width: 820,
           maxWidth: '95vw',
           border: `1px solid ${BLUE}`,
           borderRadius: 6,
-          background: '#ffffff',
+          background: '#fff',
           boxShadow: '0 2px 8px rgba(0,0,0,0.05)',
           overflow: 'hidden',
         }}
@@ -165,7 +241,7 @@ export default function GameInfoScreen({ setup, onConfirm, onBack }: Props) {
         <div
           style={{
             background: BLUE,
-            color: '#ffffff',
+            color: '#fff',
             fontSize: 15,
             fontWeight: 700,
             padding: '11px 16px',
@@ -173,22 +249,11 @@ export default function GameInfoScreen({ setup, onConfirm, onBack }: Props) {
         >
           게임정보입력
         </div>
-
         <div
-          style={{
-            padding: '16px 20px 12px',
-            overflowY: 'auto',
-            maxHeight: 'calc(100vh - 100px)',
-          }}
+          style={{ padding: '16px 20px 12px', overflowY: 'auto', maxHeight: 'calc(100vh - 100px)' }}
         >
-          <div
-            style={{
-              display: 'grid',
-              gridTemplateColumns: '1fr 1fr 1fr',
-              gap: 20,
-              alignItems: 'start',
-            }}
-          >
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 20 }}>
+            {/* 1열: 명칭, 시간 */}
             <div>
               <div style={sectionTitleStyle}>명칭</div>
               <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: 14 }}>
@@ -196,7 +261,7 @@ export default function GameInfoScreen({ setup, onConfirm, onBack }: Props) {
                   <tr>
                     <td style={tdLabel}>게임키</td>
                     <td style={tdInput}>
-                      <input value={gameKey} readOnly style={readonlySt} />
+                      <input readOnly value="20260408KI한화0" style={readonlySt} />
                     </td>
                   </tr>
                   <tr>
@@ -210,75 +275,291 @@ export default function GameInfoScreen({ setup, onConfirm, onBack }: Props) {
                     </td>
                   </tr>
                   <tr>
-                    <td style={tdLabel}>구장명</td>
+                    <td style={tdLabel}>더블헤더</td>
                     <td style={tdInput}>
-                      <input
-                        value={stadium}
-                        onChange={(e) => setStadium(e.target.value)}
-                        style={inputSt}
-                        placeholder="구장 입력"
-                      />
+                      <input readOnly value={dh} style={readonlySt} />
                     </td>
                   </tr>
                 </tbody>
               </table>
-
               <div style={sectionTitleStyle}>시간</div>
-              <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: 14 }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                 <tbody>
                   <tr>
                     <td style={tdLabel}>서기</td>
                     <td style={tdInput}>
-                      <input value={setup.date} readOnly style={readonlySt} />
+                      <input readOnly value="2026년 04월 08일 (수)" style={readonlySt} />
                     </td>
                   </tr>
                   <tr>
                     <td style={tdLabel}>시합개시</td>
                     <td style={tdInput}>
                       <input
-                        value={startTime}
-                        onChange={(e) => setStartTime(e.target.value)}
-                        style={inputSt}
-                        placeholder="HH:MM"
+                        placeholder="HH"
+                        value={startH}
+                        onChange={(e) => setStartH(e.target.value)}
+                        style={timeInputSt}
+                      />{' '}
+                      :{' '}
+                      <input
+                        placeholder="MM"
+                        value={startM}
+                        onChange={(e) => setStartM(e.target.value)}
+                        style={timeInputSt}
                       />
+                    </td>
+                  </tr>
+                  <tr>
+                    <td style={tdLabel}>정규이닝종료</td>
+                    <td style={tdInput}>
+                      <input
+                        placeholder="HH"
+                        value={regEndH}
+                        onChange={(e) => setRegEndH(e.target.value)}
+                        disabled={!isExtra}
+                        style={{ ...timeInputSt, opacity: isExtra ? 1 : 0.4 }}
+                      />{' '}
+                      :{' '}
+                      <input
+                        placeholder="MM"
+                        value={regEndM}
+                        onChange={(e) => setRegEndM(e.target.value)}
+                        disabled={!isExtra}
+                        style={{ ...timeInputSt, opacity: isExtra ? 1 : 0.4 }}
+                      />
+                      <label style={{ fontSize: 10, marginLeft: 4 }}>
+                        <input
+                          type="checkbox"
+                          checked={isExtra}
+                          onChange={(e) => setIsExtra(e.target.checked)}
+                        />{' '}
+                        연장
+                      </label>
                     </td>
                   </tr>
                   <tr>
                     <td style={tdLabel}>경기종료</td>
                     <td style={tdInput}>
                       <input
-                        value={endTime}
-                        onChange={(e) => setEndTime(e.target.value)}
-                        style={inputSt}
-                        placeholder="HH:MM"
+                        placeholder="HH"
+                        value={endH}
+                        onChange={(e) => setEndH(e.target.value)}
+                        style={timeInputSt}
+                      />{' '}
+                      :{' '}
+                      <input
+                        placeholder="MM"
+                        value={endM}
+                        onChange={(e) => setEndM(e.target.value)}
+                        style={timeInputSt}
                       />
+                    </td>
+                  </tr>
+                  <tr>
+                    <td style={tdLabel}>지연시간</td>
+                    <td
+                      style={{
+                        ...tdInput,
+                        fontSize: 11,
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 4,
+                      }}
+                    >
+                      정규{' '}
+                      <input
+                        value={delayRegManual}
+                        onChange={(e) => setDelayRegManual(e.target.value)}
+                        style={{ ...timeInputSt, width: 34 }}
+                      />{' '}
+                      분&nbsp;&nbsp;연장{' '}
+                      <input
+                        value={delayExt}
+                        onChange={(e) => setDelayExt(e.target.value)}
+                        style={{ ...timeInputSt, width: 34 }}
+                      />{' '}
+                      분
+                    </td>
+                  </tr>
+                  <tr>
+                    <td style={tdLabel}>소요시간</td>
+                    <td style={tdInput}>
+                      <input
+                        value={isSuspended ? suspendedTime : totalDurationStr}
+                        readOnly={!isSuspended}
+                        onChange={(e) => setSuspendedTime(e.target.value)}
+                        style={{
+                          ...(isSuspended ? inputSt : readonlySt),
+                          width: 80,
+                          display: 'inline-block',
+                          fontWeight: 'bold',
+                          textAlign: 'center',
+                          padding: '0 4px',
+                        }}
+                      />
+                      &nbsp;
+                      <label style={{ fontSize: 11, cursor: 'pointer' }}>
+                        <input
+                          type="checkbox"
+                          checked={isSuspended}
+                          onChange={(e) => {
+                            setIsSuspended(e.target.checked);
+                            if (e.target.checked) setSuspendedTime(totalDurationStr);
+                          }}
+                        />{' '}
+                        서스펜디드
+                      </label>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td style={tdLabel}>
+                      정규이닝
+                      <br />
+                      소요시간
+                    </td>
+                    <td style={tdInput}>
+                      <input
+                        value={isRegSuspended ? regSuspendedTime : regDurationStr}
+                        readOnly={!isRegSuspended}
+                        onChange={(e) => setRegSuspendedTime(e.target.value)}
+                        style={{
+                          ...(isRegSuspended ? inputSt : readonlySt),
+                          width: 80,
+                          display: 'inline-block',
+                          fontWeight: 'bold',
+                          textAlign: 'center',
+                          padding: '0 4px',
+                        }}
+                      />
+                      &nbsp;
+                      <label style={{ fontSize: 11, cursor: 'pointer' }}>
+                        <input
+                          type="checkbox"
+                          checked={isRegSuspended}
+                          onChange={(e) => {
+                            setIsRegSuspended(e.target.checked);
+                            if (e.target.checked) setRegSuspendedTime(regDurationStr);
+                          }}
+                        />{' '}
+                        서스펜디드
+                      </label>
                     </td>
                   </tr>
                   <tr>
                     <td style={tdLabel}>관중수</td>
                     <td style={tdInput}>
                       <input
-                        value={attendance}
-                        onChange={(e) => setAttendance(e.target.value)}
-                        style={inputSt}
                         placeholder="명"
+                        value={spectators}
+                        onChange={(e) => setSpectators(e.target.value)}
+                        style={inputSt}
                       />
                     </td>
                   </tr>
                 </tbody>
               </table>
+            </div>
 
-              <div style={sectionTitleStyle}>기상</div>
+            {/* 2열: 심판, 기록원 */}
+            <div>
+              <div style={sectionTitleStyle}>심판</div>
+              <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: 14 }}>
+                <tbody>
+                  <SearchableInput
+                    label="주심"
+                    value={uHome}
+                    setter={setUHome}
+                    options={officialList}
+                  />
+                  <SearchableInput
+                    label="1루심"
+                    value={u1B}
+                    setter={setU1B}
+                    options={officialList}
+                  />
+                  <SearchableInput
+                    label="2루심"
+                    value={u2B}
+                    setter={setU2B}
+                    options={officialList}
+                  />
+                  <SearchableInput
+                    label="3루심"
+                    value={u3B}
+                    setter={setU3B}
+                    options={officialList}
+                  />
+                  <SearchableInput
+                    label="좌선심"
+                    value={uLeft}
+                    setter={setULeft}
+                    options={officialList}
+                  />
+                  <SearchableInput
+                    label="우선심"
+                    value={uRight}
+                    setter={setURight}
+                    options={officialList}
+                  />
+                  <SearchableInput
+                    label="대기심"
+                    value={uWait}
+                    setter={setUWait}
+                    options={officialList}
+                  />
+                </tbody>
+              </table>
+              <div style={sectionTitleStyle}>기록원</div>
               <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                 <tbody>
+                  <SearchableInput
+                    label="기록원1"
+                    value={rec1}
+                    setter={setRec1}
+                    options={officialList}
+                  />
+                  <SearchableInput
+                    label="기록원2"
+                    value={rec2}
+                    setter={setRec2}
+                    options={officialList}
+                  />
+                </tbody>
+              </table>
+            </div>
+
+            {/* 3열: 기상 */}
+            <div>
+              <div style={sectionTitleStyle}>구장/일기</div>
+              <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: 14 }}>
+                <tbody>
+                  <tr>
+                    <td style={tdLabel}>내부온도</td>
+                    <td style={tdInput}>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <input
+                          type="checkbox"
+                          checked={indoorEnabled}
+                          onChange={(e) => setIndoorEnabled(e.target.checked)}
+                        />
+                        <input
+                          placeholder="℃"
+                          value={indoorTemp}
+                          onChange={(e) => setIndoorTemp(e.target.value)}
+                          disabled={!indoorEnabled}
+                          style={{ ...inputSt, width: 80, opacity: indoorEnabled ? 1 : 0.5 }}
+                        />
+                      </label>
+                    </td>
+                  </tr>
                   <tr>
                     <td style={tdLabel}>온도</td>
                     <td style={tdInput}>
                       <input
-                        value={temperature}
-                        onChange={(e) => setTemperature(e.target.value)}
-                        style={inputSt}
                         placeholder="℃"
+                        value={temp}
+                        onChange={(e) => setTemp(e.target.value)}
+                        style={inputSt}
                       />
                     </td>
                   </tr>
@@ -286,10 +567,21 @@ export default function GameInfoScreen({ setup, onConfirm, onBack }: Props) {
                     <td style={tdLabel}>습도</td>
                     <td style={tdInput}>
                       <input
-                        value={humidity}
-                        onChange={(e) => setHumidity(e.target.value)}
-                        style={inputSt}
                         placeholder="%"
+                        value={hum}
+                        onChange={(e) => setHum(e.target.value)}
+                        style={inputSt}
+                      />
+                    </td>
+                  </tr>
+                  <tr>
+                    <td style={tdLabel}>일기상태</td>
+                    <td style={tdInput}>
+                      <input
+                        placeholder="맑음, 흐림 등"
+                        value={weatherLog}
+                        onChange={(e) => setWeatherLog(e.target.value)}
+                        style={inputSt}
                       />
                     </td>
                   </tr>
@@ -297,10 +589,10 @@ export default function GameInfoScreen({ setup, onConfirm, onBack }: Props) {
                     <td style={tdLabel}>바람방향</td>
                     <td style={tdInput}>
                       <input
+                        placeholder="예: NE"
                         value={windDir}
                         onChange={(e) => setWindDir(e.target.value)}
                         style={inputSt}
-                        placeholder="예: 북동"
                       />
                     </td>
                   </tr>
@@ -308,67 +600,28 @@ export default function GameInfoScreen({ setup, onConfirm, onBack }: Props) {
                     <td style={tdLabel}>풍속</td>
                     <td style={tdInput}>
                       <input
+                        placeholder="m/s"
                         value={windSpeed}
                         onChange={(e) => setWindSpeed(e.target.value)}
                         style={inputSt}
-                        placeholder="m/s"
+                      />
+                    </td>
+                  </tr>
+                  <tr>
+                    <td style={tdLabel}>구장</td>
+                    <td style={tdInput}>
+                      <input
+                        placeholder="구장 입력"
+                        value={stadium}
+                        onChange={(e) => setStadium(e.target.value)}
+                        style={inputSt}
                       />
                     </td>
                   </tr>
                 </tbody>
               </table>
             </div>
-
-            <div>
-              <div style={sectionTitleStyle}>심판</div>
-              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                <tbody>
-                  {renderSelectRow('주심', umpireHome, setUmpireHome)}
-                  {renderSelectRow('1루심', umpire1B, setUmpire1B)}
-                  {renderSelectRow('2루심', umpire2B, setUmpire2B)}
-                  {renderSelectRow('3루심', umpire3B, setUmpire3B)}
-                  {renderSelectRow('좌선심', umpireLeft, setUmpireLeft)}
-                  {renderSelectRow('우선심', umpireRight, setUmpireRight)}
-                  {renderSelectRow('대기심', umpireStandby, setUmpireStandby)}
-                </tbody>
-              </table>
-            </div>
-
-            <div>
-              <div style={sectionTitleStyle}>기록원</div>
-              <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: 14 }}>
-                <tbody>
-                  {renderSelectRow('기록원1', recorder1, setRecorder1)}
-                  {renderSelectRow('기록원2', recorder2, setRecorder2)}
-                </tbody>
-              </table>
-
-              <div style={sectionTitleStyle}>경기 정보</div>
-              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                <tbody>
-                  <tr>
-                    <td style={tdLabel}>리그</td>
-                    <td style={tdInput}>
-                      <input value={setup.league} readOnly style={readonlySt} />
-                    </td>
-                  </tr>
-                  <tr>
-                    <td style={tdLabel}>원정</td>
-                    <td style={tdInput}>
-                      <input value={setup.awayTeam} readOnly style={readonlySt} />
-                    </td>
-                  </tr>
-                  <tr>
-                    <td style={tdLabel}>홈</td>
-                    <td style={tdInput}>
-                      <input value={setup.homeTeam} readOnly style={readonlySt} />
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
           </div>
-
           <div
             style={{
               marginTop: 16,
@@ -380,12 +633,12 @@ export default function GameInfoScreen({ setup, onConfirm, onBack }: Props) {
             }}
           >
             <button
-              onClick={handleConfirm}
+              onClick={() => onConfirm({ stadium, gameNum })}
               style={{
                 minWidth: 72,
                 height: 32,
                 background: BLUE,
-                color: '#ffffff',
+                color: '#fff',
                 border: 'none',
                 fontWeight: 700,
                 cursor: 'pointer',
@@ -399,7 +652,7 @@ export default function GameInfoScreen({ setup, onConfirm, onBack }: Props) {
               style={{
                 minWidth: 72,
                 height: 32,
-                background: '#ffffff',
+                background: '#fff',
                 color: BLUE,
                 border: `1px solid ${BLUE}`,
                 fontWeight: 700,

@@ -242,6 +242,7 @@ export interface GameSetup {
   // Extended game info (GameInfoScreen)
   stadium?: string;
   gameNum?: string;
+  doubleHeader?: string;
   startTime?: string;
   endTime?: string;
   attendance?: string;
@@ -258,6 +259,7 @@ export interface GameSetup {
   humidity?: string;
   windDir?: string;
   windSpeed?: string;
+  weatherLog?: string;
 }
 
 export type GameAction =

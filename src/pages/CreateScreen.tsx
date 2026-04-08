@@ -5,7 +5,8 @@ import Calendar from '../components/Calendar';
 
 interface Props {
   setup: GameSetup;
-  onConfirm: (awayTeam: string, homeTeam: string, date: string) => void;
+  // onConfirm 인자에 dh 추가
+  onConfirm: (awayTeam: string, homeTeam: string, date: string, dh: string) => void;
   onBack: () => void;
 }
 
@@ -21,6 +22,7 @@ export default function CreateScreen({ setup, onConfirm, onBack }: Props) {
   );
   const [awayTeam, setAwayTeam] = useState(setup.awayTeam || KBO_TEAMS[0]);
   const [homeTeam, setHomeTeam] = useState(setup.homeTeam || KBO_TEAMS[1]);
+  const [dh, setDh] = useState('--------'); // 더블헤더 상태 추가
   const [calOpen, setCalOpen] = useState(false);
 
   const BLUE = '#102C57';
@@ -89,7 +91,6 @@ export default function CreateScreen({ setup, onConfirm, onBack }: Props) {
           overflow: 'hidden',
         }}
       >
-        {/* 타이틀 바 */}
         <div
           style={{
             background: BLUE,
@@ -102,7 +103,6 @@ export default function CreateScreen({ setup, onConfirm, onBack }: Props) {
           경기 생성
         </div>
 
-        {/* 본문 */}
         <div
           className="modal-body"
           style={{
@@ -190,17 +190,17 @@ export default function CreateScreen({ setup, onConfirm, onBack }: Props) {
               <tr>
                 <td style={labelStyle}>더블헤더(DH)</td>
                 <td style={fieldWrapStyle}>
-                  <select style={selectStyle}>
-                    <option>--------</option>
-                    <option>1차전</option>
-                    <option>2차전</option>
+                  {/* select에 value와 onChange 연결 */}
+                  <select style={selectStyle} value={dh} onChange={(e) => setDh(e.target.value)}>
+                    <option value="--------">--------</option>
+                    <option value="1차전">1차전</option>
+                    <option value="2차전">2차전</option>
                   </select>
                 </td>
               </tr>
             </tbody>
           </table>
 
-          {/* 버튼 영역 */}
           <div
             className="modal-footer"
             style={{
@@ -213,7 +213,7 @@ export default function CreateScreen({ setup, onConfirm, onBack }: Props) {
             }}
           >
             <button
-              onClick={() => onConfirm(awayTeam, homeTeam, date)}
+              onClick={() => onConfirm(awayTeam, homeTeam, date, dh)} // dh 전달
               style={{
                 minWidth: 72,
                 height: 34,

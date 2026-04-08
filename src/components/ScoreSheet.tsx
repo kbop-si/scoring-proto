@@ -157,7 +157,9 @@ function ScoreCell({
           </span>
         ))}
         {result &&
-          !['B', 'IB', 'IB2', 'HP', '#', 'ob', 'K', 'K3B', 'KW', 'KP', 'KE'].includes(result) && (
+          !['B', 'IB', 'IB2', 'HP', 'K', 'K3B', 'KW', 'KP', 'KE'].includes(result) &&
+          !/^#\dE$/.test(result) &&
+          !/^Ob\dE$/.test(result) && (
             <span
               title={`타격완료: ${result}`}
               style={{
@@ -187,7 +189,7 @@ function ScoreCell({
                   fontSize: 10,
                   fontWeight: 900,
                   lineHeight: 1.2,
-                  color: 'red',
+                  color: '#111',
                 }}
               >
                 M
@@ -203,7 +205,7 @@ function ScoreCell({
                   fontSize: 10,
                   fontWeight: 900,
                   lineHeight: 1.2,
-                  color: 'blue',
+                  color: '#111',
                 }}
               >
                 M
@@ -219,13 +221,13 @@ function ScoreCell({
                   width: 12,
                   height: 12,
                   borderRadius: '50%',
-                  border: '2px solid #2563eb',
+                  border: '2px solid #111',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
                   fontSize: 8,
                   fontWeight: 900,
-                  color: '#2563eb',
+                  color: '#111',
                 }}
               >
                 t
@@ -241,13 +243,13 @@ function ScoreCell({
                   width: 12,
                   height: 12,
                   borderRadius: '50%',
-                  border: '2px solid #22c55e',
+                  border: '2px solid #111',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
                   fontSize: 8,
                   fontWeight: 900,
-                  color: '#22c55e',
+                  color: '#111',
                   lineHeight: 1,
                   boxSizing: 'border-box',
                 }}
@@ -265,7 +267,7 @@ function ScoreCell({
                 fontWeight: 700,
                 lineHeight: 1.4,
                 whiteSpace: 'nowrap',
-                color: '#dc2626',
+                color: '#111',
               }}
             >
               {note}
@@ -647,7 +649,16 @@ function calcStats(G: GameState, half: 'top' | 'bottom', ord: number) {
     sb = 0,
     caught = 0;
   // 타수 제외: 볼넷, 사구, 타격방해, 주루방해, 희생번트, 희생플라이 (record.md §1-1)
-  const noAB = new Set(['B', 'IB', 'IB2', 'HP', '#', 'ob', 'BUNT', 'SH진루']);
+  const noAB = new Set([
+    'B',
+    'IB',
+    'IB2',
+    'HP',
+    'BUNT',
+    'SH진루',
+    ...[1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => `#${n}E`),
+    ...[1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => `Ob${n}E`),
+  ]);
 
   cs.forEach((c) => {
     const r = c.result!;
@@ -807,13 +818,13 @@ export default function ScoreSheet({ G, onSelCell }: Props) {
         </div>
 
         <span>
-          {G.inning}회 <b style={{ color: 'var(--blue)' }}>{G.half === 'top' ? '초' : '말'}</b>
+          {G.inning}회 <b style={{ color: '#111' }}>{G.half === 'top' ? '초' : '말'}</b>
         </span>
 
         {isLive && (
           <>
             <span>
-              아웃 <b style={{ color: 'var(--red)' }}>{G.outs}</b>
+              아웃 <b style={{ color: '#111' }}>{G.outs}</b>
             </span>
             <span>
               볼카운트{' '}
@@ -830,15 +841,15 @@ export default function ScoreSheet({ G, onSelCell }: Props) {
         <span style={{ marginLeft: 4, borderLeft: '1px solid var(--border2)', paddingLeft: 8 }}>
           투수 <b>{activePitcherName}</b>
           {activePitcherNum && (
-            <span style={{ color: 'var(--text3)', fontSize: 9 }}> #{activePitcherNum}</span>
+            <span style={{ color: '#111', fontSize: 9 }}> #{activePitcherNum}</span>
           )}
           {isLive && (
-            <span style={{ color: 'var(--text3)', fontSize: 9 }}> &nbsp;{activePitchCount}구</span>
+            <span style={{ color: '#111', fontSize: 9 }}> &nbsp;{activePitchCount}구</span>
           )}
         </span>
 
         {isLive && (
-          <span style={{ color: 'var(--text3)', fontSize: 9 }}>
+          <span style={{ color: '#111', fontSize: 9 }}>
             볼 {activeBallCount} / 스트 {activeStrikeCount}
           </span>
         )}
@@ -947,7 +958,7 @@ export default function ScoreSheet({ G, onSelCell }: Props) {
                             left: '50%',
                             transform: 'translateX(-50%)',
                             fontSize: 8,
-                            color: '#dc2626',
+                            color: '#111',
                             lineHeight: 1,
                           }}
                         >
@@ -1013,8 +1024,9 @@ export default function ScoreSheet({ G, onSelCell }: Props) {
                             <td rowSpan={maxRows}>
                               <div className="ss-order-col">
                                 <div className="ss-ord-main">{ord}</div>
-                                <div className="ss-ord-sub">{ord + 9}</div>
-                                <div className="ss-ord-sub">{ord + 18}</div>
+                                <div className="ss-ord-sub">{ord + 10}</div>
+                                <div className="ss-ord-sub">{ord + 20}</div>
+                                <div className="ss-ord-sub">{ord + 30}</div>
                               </div>
                             </td>
                           </>
@@ -1115,7 +1127,7 @@ export default function ScoreSheet({ G, onSelCell }: Props) {
                           rowSpan={4}
                           style={{
                             fontSize: 9,
-                            color: 'var(--text3)',
+                            color: '#111',
                             textAlign: 'center',
                             verticalAlign: 'middle',
                             borderTop: '1px solid var(--border)',
@@ -1188,7 +1200,7 @@ export default function ScoreSheet({ G, onSelCell }: Props) {
                           colSpan={6}
                           style={{
                             fontSize: 9,
-                            color: 'var(--text3)',
+                            color: '#111',
                             textAlign: 'right',
                             paddingRight: 4,
                             borderTop: '1px solid var(--border)',
@@ -1216,7 +1228,7 @@ export default function ScoreSheet({ G, onSelCell }: Props) {
                           colSpan={6}
                           style={{
                             fontSize: 9,
-                            color: 'var(--text3)',
+                            color: '#111',
                             textAlign: 'right',
                             paddingRight: 4,
                           }}
@@ -1321,11 +1333,11 @@ export default function ScoreSheet({ G, onSelCell }: Props) {
                     ['관중수', G.attendance ? `${G.attendance}명` : ''],
                   ].map(([label, val]) => (
                     <div key={label} style={{ display: 'contents' }}>
-                      <span style={{ color: 'var(--text3)', textAlign: 'right' }}>{label}</span>
+                      <span style={{ color: '#111', textAlign: 'right' }}>{label}</span>
                       <span
                         style={{
                           fontWeight: val ? 600 : 400,
-                          color: val ? 'var(--text)' : 'var(--text3)',
+                          color: '#111',
                         }}
                       >
                         {val || '—'}
@@ -1343,9 +1355,7 @@ export default function ScoreSheet({ G, onSelCell }: Props) {
                     ['우선심', G.umpireRight],
                   ].map(([label, val]) => (
                     <div key={label} style={{ display: 'flex', gap: 6, marginBottom: 1 }}>
-                      <span style={{ color: 'var(--text3)', width: 38, textAlign: 'right' }}>
-                        {label}
-                      </span>
+                      <span style={{ color: '#111', width: 38, textAlign: 'right' }}>{label}</span>
                       <span style={{ fontWeight: val ? 600 : 400 }}>{val || '—'}</span>
                     </div>
                   ))}
@@ -1399,8 +1409,11 @@ export default function ScoreSheet({ G, onSelCell }: Props) {
                             style={{
                               borderRight: '1px solid var(--border2)',
                               borderBottom: '1px solid var(--border2)',
+                              padding: 0,
                             }}
-                          />
+                          >
+                            {null}
+                          </td>
                         ))}
                       </tr>
                     ))}
@@ -1681,23 +1694,19 @@ export default function ScoreSheet({ G, onSelCell }: Props) {
                       minHeight: 36,
                     }}
                   >
-                    <span style={{ fontWeight: 700, marginRight: 6, color: 'var(--blue)' }}>
-                      {code}
-                    </span>
-                    <span style={{ color: 'var(--text3)', fontSize: 9 }}>{label}</span>
+                    <span style={{ fontWeight: 700, marginRight: 6, color: '#111' }}>{code}</span>
+                    <span style={{ color: '#111', fontSize: 9 }}>{label}</span>
                   </div>
                 ))}
                 <div style={{ padding: '3px 6px', minHeight: 36 }}>
-                  <div style={{ fontSize: 9, color: 'var(--text3)', marginBottom: 2 }}>
-                    결기종단
-                  </div>
+                  <div style={{ fontSize: 9, color: '#111', marginBottom: 2 }}>결기종단</div>
                   <div style={{ fontSize: 9 }}>{G.endTime ? `종료 ${G.endTime}` : '—'}</div>
                 </div>
               </div>
 
               <div style={{ flex: 1, padding: '4px 8px' }}>
                 <div style={{ fontWeight: 700, marginBottom: 4 }}>비고</div>
-                <div style={{ fontSize: 9, color: 'var(--text3)', lineHeight: 1.8 }} />
+                <div style={{ fontSize: 9, color: '#111', lineHeight: 1.8 }} />
               </div>
             </div>
           )}
@@ -1742,29 +1751,24 @@ export default function ScoreSheet({ G, onSelCell }: Props) {
                   flexWrap: 'wrap',
                 }}
               >
-                <span style={{ fontWeight: 700, color: 'var(--text3)', marginRight: 4 }}>투수</span>
+                <span style={{ fontWeight: 700, color: '#111', marginRight: 4 }}>투수</span>
                 <span style={{ fontWeight: 700 }}>{activePitcherName}</span>
-                {activePitcherNum && (
-                  <span style={{ color: 'var(--text3)' }}>#{activePitcherNum}</span>
-                )}
+                {activePitcherNum && <span style={{ color: '#111' }}>#{activePitcherNum}</span>}
                 <span
                   style={{
                     borderLeft: '1px solid var(--border2)',
                     paddingLeft: 6,
-                    color: 'var(--text3)',
+                    color: '#111',
                   }}
                 >
-                  투구수{' '}
-                  <b style={{ color: isLive ? 'var(--blue)' : 'var(--text)' }}>
-                    {isLive ? activePitchCount : '—'}
-                  </b>
+                  투구수 <b style={{ color: '#111' }}>{isLive ? activePitchCount : '—'}</b>
                 </span>
                 {isLive && (
                   <>
-                    <span style={{ color: 'var(--text3)' }}>
+                    <span style={{ color: '#111' }}>
                       볼 <b>{activeBallCount}</b>
                     </span>
-                    <span style={{ color: 'var(--text3)' }}>
+                    <span style={{ color: '#111' }}>
                       스트 <b>{activeStrikeCount}</b>
                     </span>
                   </>
@@ -1773,36 +1777,36 @@ export default function ScoreSheet({ G, onSelCell }: Props) {
                   style={{
                     borderLeft: '1px solid var(--border2)',
                     paddingLeft: 6,
-                    color: 'var(--text3)',
+                    color: '#111',
                   }}
                 >
                   상대타자 <b>{bf}</b>
                 </span>
-                <span style={{ color: 'var(--text3)' }}>
+                <span style={{ color: '#111' }}>
                   피안타 <b>{ha}</b>
                 </span>
-                <span style={{ color: 'var(--text3)' }}>
+                <span style={{ color: '#111' }}>
                   볼넷 <b>{bb}</b>
                 </span>
                 {hbp > 0 && (
-                  <span style={{ color: 'var(--text3)' }}>
+                  <span style={{ color: '#111' }}>
                     사구 <b>{hbp}</b>
                   </span>
                 )}
-                <span style={{ color: 'var(--text3)' }}>
+                <span style={{ color: '#111' }}>
                   삼진 <b>{ks}</b>
                 </span>
                 <span
                   style={{
                     borderLeft: '1px solid var(--border2)',
                     paddingLeft: 6,
-                    color: 'var(--text3)',
+                    color: '#111',
                   }}
                 >
-                  실점 <b style={{ color: 'var(--red)' }}>{r}</b>
+                  실점 <b style={{ color: '#111' }}>{r}</b>
                 </span>
-                <span style={{ color: 'var(--text3)' }}>
-                  자책 <b style={{ color: 'var(--red)' }}>{er}</b>
+                <span style={{ color: '#111' }}>
+                  자책 <b style={{ color: '#111' }}>{er}</b>
                 </span>
               </div>
             );

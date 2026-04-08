@@ -34,7 +34,7 @@ export default function SplashScreen({ onStart }: Props) {
           marginTop: 150,
           width: 240,
           height: 56,
-          background: '#1e3a8a',
+          background: '#102C57',
           color: '#ffffff',
           fontSize: 18,
           fontWeight: 700,

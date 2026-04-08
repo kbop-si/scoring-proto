@@ -213,9 +213,9 @@ export default function StrikeoutModal({ open, pitchType, defLU, onConfirm, onCl
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             {[
-              { code: 'KW', label: 'KW  폭투 낫아웃', sub: '타자 1루 진루', color: 'var(--green)' },
-              { code: 'KP', label: 'KP  포일 낫아웃', sub: '타자 1루 진루', color: 'var(--green)' },
-              { code: 'KE', label: 'KE  실책 낫아웃', sub: '타자 1루 진루', color: 'var(--green)' },
+              { code: 'KW', label: 'KW  폭투 낫아웃', sub: '타자 1루 진루', color: '#111' },
+              { code: 'KP', label: 'KP  포일 낫아웃', sub: '타자 1루 진루', color: '#111' },
+              { code: 'KE', label: 'KE  실책 낫아웃', sub: '타자 1루 진루', color: '#111' },
             ].map(({ code, label, sub, color }) => (
               <button
                 key={code}

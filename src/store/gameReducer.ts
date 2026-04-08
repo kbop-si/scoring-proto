@@ -57,13 +57,13 @@ export function isOnBase(r: string | null): boolean {
   if (/^E\d$/.test(r)) return true; // 실책 진루 E6, E5 등
   if (/^E번트\d$/.test(r)) return true; // 번트 실책 E번트6 등
   if (/^KE\d$/.test(r)) return true; // 낫아웃 수비실책 KE2 등
+  if (/^#\dE$/.test(r)) return true; // 타격방해 #2E 등
+  if (/^Ob\dE$/.test(r)) return true; // 주루방해 Ob3E 등
   return [
     'B',
     'IB',
     'IB2',
     'HP',
-    '#',
-    'ob',
     'E',
     'FC',
     'INT',
@@ -658,8 +658,8 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
         IB: '1B',
         IB2: '1B',
         HP: '1B',
-        '#': '1B',
-        ob: '1B',
+        ...Object.fromEntries([1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => [`#${n}E`, '1B'])),
+        ...Object.fromEntries([1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => [`Ob${n}E`, '1B'])),
         E: '1B',
         FC: '1B',
         KW: '1B',
@@ -672,7 +672,14 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
         TP_E: '1B',
       };
       const dest = BASE_MAP[result] || '1B';
-      const forceTypes = ['B', 'IB', 'IB2', 'HP', '#', 'ob'];
+      const forceTypes = [
+        'B',
+        'IB',
+        'IB2',
+        'HP',
+        ...[1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => `#${n}E`),
+        ...[1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => `Ob${n}E`),
+      ];
 
       let runners = { ...state.runners };
       let awayR = state.awayR;
@@ -758,7 +765,17 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
       const homeER = state.half === 'bottom' ? state.homeER + earnedDiff : state.homeER;
 
       // θ 타격완료 → S 집계 (BB/HP/ob/KW/KP/KE 제외: 이미 PITCH에서 카운트됨)
-      const noPitchResults = new Set(['B', 'IB', 'IB2', 'HP', '#', 'ob', 'KW', 'KP', 'KE']);
+      const noPitchResults = new Set([
+        'B',
+        'IB',
+        'IB2',
+        'HP',
+        'KW',
+        'KP',
+        'KE',
+        ...[1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => `#${n}E`),
+        ...[1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => `Ob${n}E`),
+      ]);
       const isBatContact = !noPitchResults.has(result);
       const batPitcher = isBatContact
         ? { ...state.pitcher, pitchCount: (state.pitcher.pitchCount || 0) + 1 }

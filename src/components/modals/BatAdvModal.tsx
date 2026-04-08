@@ -53,7 +53,7 @@ const HIT_LABEL: Record<string, string> = {
 // 수비위치+타구방향+구질이 필요한 결과
 const NEEDS_HIT = new Set(['1B', '2B', '3B', 'HR', 'GHR', 'GCW', 'INT', 'BUNT']);
 // 실책 수비수 번호가 필요한 결과 — 필드 클릭 한 번으로 바로 확정
-const NEEDS_FIELDER = new Set(['E', 'E번트', 'KE']);
+const NEEDS_FIELDER = new Set(['E', 'E번트', 'KE', '#', 'ob']);
 
 const GHR_DISTS = [90, 95, 100, 105, 110, 115, 120, 125, 130, 135, 140, 145, 150];
 
@@ -80,6 +80,8 @@ function basesForType(hitType: string): 0 | 1 | 2 | 3 | 4 {
 }
 
 function buildErrorResult(base: string, pos: number): string {
+  if (base === '#') return `#${pos}E`;
+  if (base === 'ob') return `Ob${pos}E`;
   return `${base}${pos}`;
 }
 

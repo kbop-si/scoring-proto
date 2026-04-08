@@ -13,6 +13,7 @@ const defaultSetup: GameSetup = {
   awayTeam: 'KIA',
   homeTeam: '한화',
   date: '',
+  doubleHeader: '--------',
   awayLineup: [],
   homeLineup: [],
   awayBench: [],
@@ -26,10 +27,7 @@ export default function App() {
   const updateSetup = (partial: Partial<GameSetup>) =>
     setSetup((prev) => ({ ...prev, ...partial }));
 
-  const gotoLineupWithDefaults = (
-    teams: { awayTeam: string; homeTeam: string; date: string; league: string },
-    extra?: Partial<GameSetup>
-  ) => {
+  const gotoLineupWithDefaults = (teams: GameSetup, extra?: Partial<GameSetup>) => {
     updateSetup({
       ...teams,
       ...extra,
@@ -71,8 +69,8 @@ export default function App() {
       {screen === 'create' && (
         <CreateScreen
           setup={setup}
-          onConfirm={(awayTeam, homeTeam, date) => {
-            updateSetup({ awayTeam, homeTeam, date });
+          onConfirm={(awayTeam, homeTeam, date, dh) => {
+            updateSetup({ awayTeam, homeTeam, date, doubleHeader: dh });
             setScreen('gameinfo');
           }}
           onBack={() => setScreen('league')}
