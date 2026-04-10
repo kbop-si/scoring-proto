@@ -57,6 +57,7 @@ export function isOnBase(r: string | null): boolean {
   if (/^E\d$/.test(r)) return true; // 실책 진루 E6, E5 등
   if (/^E번트\d$/.test(r)) return true; // 번트 실책 E번트6 등
   if (/^KE\d$/.test(r)) return true; // 낫아웃 수비실책 KE2 등
+  if (/^ꓘ[\d-]+$/.test(r)) return true; // 다른주자수비 출루 ꓘ3, ꓘ2-3 등
   if (/^#\dE$/.test(r)) return true; // 타격방해 #2E 등
   if (/^Ob\dE$/.test(r)) return true; // 주루방해 Ob3E 등
   return [
@@ -68,11 +69,13 @@ export function isOnBase(r: string | null): boolean {
     'FC',
     'INT',
     'BUNT',
+    'OBUNT',
     'HR',
     'GHR',
     'GCW',
     'KW',
     'KP',
+    'K다른주자',
     'KE',
     'FC번트',
     'E번트',
@@ -564,6 +567,17 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
         if (state.runners['1B'] && state.runners['2B'] && state.runners['3B']) {
           if (state.half === 'top') awayR++;
           else homeR++;
+          // 3루 주자 득점 표시
+          const r3 = state.runners['3B']!;
+          if (r3.inning) {
+            for (let app = 0; app <= 5; app++) {
+              const rk = cellKey(r3.inning, r3.order, app, r3.half || state.half);
+              if (cells[rk]) {
+                cells = { ...cells, [rk]: { ...cells[rk], scored: true } };
+                break;
+              }
+            }
+          }
           newRunners = forceWalk(state.runners, batObj);
         } else {
           newRunners = forceWalk(state.runners, batObj);
@@ -638,6 +652,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
         '/9': '1B',
         INT: '1B',
         BUNT: '1B',
+        OBUNT: '1B',
         '/hit': '1B',
         H1: '1B',
         '>7': '2B',
@@ -665,6 +680,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
         KW: '1B',
         KP: '1B',
         KE: '1B',
+        K다른주자: '1B',
         FC번트: '1B',
         E번트: '1B',
         SH진루: '1B',
@@ -1175,6 +1191,204 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
       const runners = { ...state.runners, [dest]: runner };
       const next = nextBatterState({ ...state, runners });
       return { ...state, runners, ...next, pendingBatter: null, history: saveHist(state) };
+    }
+
+    // ── CHAIN_BATTER_SKIP ────────────────────────────────────────────────────
+    // 연결동작: dest가 막혀있을 때 타자를 toBase로 직접 이동
+    case 'CHAIN_BATTER_SKIP': {
+      if (!state.pendingBatter) return state;
+      const { runner } = state.pendingBatter;
+      const { toBase, earned, rbi, scorePitcher, advCode } = action;
+      const runners: Runners = { ...state.runners };
+      let cells = state.cells;
+      let awayR = state.awayR,
+        homeR = state.homeR;
+      let awayER = state.awayER,
+        homeER = state.homeER;
+
+      if (toBase === 'HOME') {
+        if (state.half === 'top') {
+          awayR++;
+          if (earned === true || earned === 'half') awayER++;
+        } else {
+          homeR++;
+          if (earned === true || earned === 'half') homeER++;
+        }
+        if (runner.inning) {
+          for (let app = 0; app <= 5; app++) {
+            const rk = cellKey(runner.inning, runner.order, app, runner.half || state.half);
+            if (cells[rk]) {
+              const existing = cells[rk].runnerNotes || [];
+              const homeNote: RunnerNote = {
+                causedBy: state.curBatterOrder,
+                base: 'HOME',
+                rbi,
+                advCode,
+              };
+              cells = {
+                ...cells,
+                [rk]: {
+                  ...cells[rk],
+                  scored: true,
+                  earned,
+                  scorePitcher,
+                  runnerNotes: [...existing, homeNote],
+                },
+              };
+              if (rbi && state.selCellKey && cells[state.selCellKey]) {
+                cells = { ...cells, [state.selCellKey]: { ...cells[state.selCellKey], rbi: true } };
+              }
+              break;
+            }
+          }
+        }
+      } else {
+        // 목적 루에 기존 주자가 있으면 한 루씩 밀어냄
+        if (runners[toBase]) {
+          const chain: Record<string, string> = { '1B': '2B', '2B': '3B', '3B': 'HOME' };
+          const nx = chain[toBase];
+          if (nx === 'HOME') {
+            if (state.half === 'top') awayR++;
+            else homeR++;
+            runners[toBase] = undefined;
+          } else {
+            runners[nx as Base] = runners[toBase];
+            runners[toBase] = undefined;
+          }
+        }
+        runners[toBase] = runner;
+        if (toBase === '2B' || toBase === '3B') {
+          if (runner.inning) {
+            for (let app = 0; app <= 5; app++) {
+              const rk = cellKey(runner.inning, runner.order, app, runner.half || state.half);
+              if (cells[rk]) {
+                const existing = cells[rk].runnerNotes || [];
+                cells = {
+                  ...cells,
+                  [rk]: {
+                    ...cells[rk],
+                    runnerNotes: [
+                      ...existing,
+                      { causedBy: state.curBatterOrder, base: toBase as Base, advCode },
+                    ],
+                  },
+                };
+                break;
+              }
+            }
+          }
+        }
+      }
+
+      const next = nextBatterState({ ...state, runners });
+      return {
+        ...state,
+        runners,
+        cells,
+        awayR,
+        homeR,
+        awayER,
+        homeER,
+        ...next,
+        pendingBatter: null,
+        history: saveHist(state),
+      };
+    }
+
+    // ── REMOVE_RUNNER ────────────────────────────────────────────────────────
+    // chain 대기: 주자를 루에서 제거만 (득점·노트 없음)
+    case 'REMOVE_RUNNER': {
+      const runners: Runners = { ...state.runners };
+      delete runners[action.base];
+      return { ...state, runners, history: saveHist(state) };
+    }
+
+    // ── CHAIN_TRANSIT_ADV ────────────────────────────────────────────────────
+    // chain 대기 주자 최종 배치 (RUN_ADV와 동일 로직, runner 외부 주입)
+    case 'CHAIN_TRANSIT_ADV': {
+      const { runner, fromBase, toBase, earned, rbi, scorePitcher, advCode } = action;
+      const runners: Runners = { ...state.runners };
+      delete runners[fromBase]; // 대기 위치에서 제거 (이미 REMOVE_RUNNER로 제거됐을 수도)
+      let cells = state.cells;
+      let awayR = state.awayR,
+        homeR = state.homeR,
+        awayER = state.awayER,
+        homeER = state.homeER;
+
+      if (toBase === 'HOME') {
+        if (state.half === 'top') {
+          awayR++;
+          if (earned === true || earned === 'half') awayER++;
+        } else {
+          homeR++;
+          if (earned === true || earned === 'half') homeER++;
+        }
+        if (runner.inning) {
+          for (let app = 0; app <= 5; app++) {
+            const rk = cellKey(runner.inning, runner.order, app, runner.half || state.half);
+            if (cells[rk]) {
+              const existing = cells[rk].runnerNotes || [];
+              const homeNote: RunnerNote = {
+                causedBy: state.curBatterOrder,
+                base: 'HOME',
+                rbi,
+                advCode,
+              };
+              cells = {
+                ...cells,
+                [rk]: {
+                  ...cells[rk],
+                  scored: true,
+                  earned,
+                  scorePitcher,
+                  runnerNotes: [...existing, homeNote],
+                },
+              };
+              if (rbi && state.selCellKey && cells[state.selCellKey]) {
+                cells = { ...cells, [state.selCellKey]: { ...cells[state.selCellKey], rbi: true } };
+              }
+              break;
+            }
+          }
+        }
+      } else {
+        if (runners[toBase]) {
+          const chain: Record<string, string> = { '1B': '2B', '2B': '3B', '3B': 'HOME' };
+          const nx = chain[toBase];
+          if (nx === 'HOME') {
+            if (state.half === 'top') awayR++;
+            else homeR++;
+            runners[toBase] = undefined;
+          } else {
+            runners[nx as Base] = runners[toBase];
+            runners[toBase] = undefined;
+          }
+        }
+        runners[toBase] = runner;
+        if (toBase === '2B' || toBase === '3B') {
+          if (runner.inning) {
+            for (let app = 0; app <= 5; app++) {
+              const rk = cellKey(runner.inning, runner.order, app, runner.half || state.half);
+              if (cells[rk]) {
+                const existing = cells[rk].runnerNotes || [];
+                cells = {
+                  ...cells,
+                  [rk]: {
+                    ...cells[rk],
+                    runnerNotes: [
+                      ...existing,
+                      { causedBy: state.curBatterOrder, base: toBase as Base, advCode },
+                    ],
+                  },
+                };
+                break;
+              }
+            }
+          }
+        }
+      }
+
+      return { ...state, runners, cells, awayR, homeR, awayER, homeER, history: saveHist(state) };
     }
 
     // ── NEXT_BATTER ──────────────────────────────────────────────────────────

@@ -53,8 +53,12 @@ function ScoreCell({
   type HomeNoteItem = { kan: string; rbi?: boolean } | { advLbl: string };
   const homeNoteItems: HomeNoteItem[] = [];
 
+  if (result === 'GHR') noteAtBase['2B'] = 'GH'; // 구형 데이터
+
   notes.forEach((n) => {
-    const sup = n.advCode ? (SUP_DIGITS[n.causedBy - 1] ?? String(n.causedBy)) : '';
+    // 수비수 번호가 이미 advCode에 포함된 경우(E3, 6 등) sup 생략
+    const hasFielder = /\d/.test(n.advCode || '');
+    const sup = n.advCode && !hasFielder ? (SUP_DIGITS[n.causedBy - 1] ?? String(n.causedBy)) : '';
     const advLbl = n.advCode
       ? n.advCode.endsWith(')')
         ? n.advCode.slice(0, -1) + sup + ')'
@@ -82,9 +86,14 @@ function ScoreCell({
   const strokeC = '#888';
   const strokeW = isSel ? '1.5' : '0.8';
   const strokeDash = '3,3';
+  const isKDef = /^ꓘ[\d-]+$/.test(result || '');
   const rcol = RESULT_COL[result || ''] || '#111';
   const isWalk = result === 'B' || result === 'IB' || result === 'IB2';
-  const lines = !isWalk ? BASE_LINES[result || ''] || [] : [];
+  const lines = !isWalk
+    ? isKDef
+      ? [{ x1: 20, y1: 38, x2: 38, y2: 20, c: '#111', w: 2.5 }]
+      : BASE_LINES[result || ''] || []
+    : [];
   const scoredCircle = scored || result === 'HR' || result === 'GHR';
   const earnedColor =
     result === 'HR' || result === 'GHR'
@@ -438,7 +447,265 @@ function ScoreCell({
                 const zx = 33;
                 const zy = 36;
                 const zoneColor = '#111';
+                const ht = hitData.hitType;
+                const zoneLbl =
+                  hitData.zone === 78 ? '7·8' : hitData.zone === 89 ? '8·9' : String(hitData.zone);
 
+                // 그라운드홈런 / 캣워크: 우상단 GH/CW + 우하단 수비번호(언더라인)
+                if (ht === 'GHR' || ht === 'GCW') {
+                  const lbl = ht === 'GHR' ? 'GH' : 'CW';
+                  return (
+                    <g>
+                      <text
+                        x="38"
+                        y="1"
+                        textAnchor="middle"
+                        dominantBaseline="middle"
+                        fontSize="15"
+                        fontWeight="900"
+                        fontFamily="monospace"
+                        fill={zoneColor}
+                      >
+                        {lbl}
+                      </text>
+                      <text
+                        x="33"
+                        y="32"
+                        textAnchor="middle"
+                        dominantBaseline="middle"
+                        fontSize="9"
+                        fontWeight="900"
+                        fontFamily="monospace"
+                        fill={zoneColor}
+                      >
+                        {zoneLbl}
+                      </text>
+                      <line
+                        x1="28"
+                        y1="37"
+                        x2="38"
+                        y2="37"
+                        stroke={zoneColor}
+                        strokeWidth="1.5"
+                        strokeLinecap="round"
+                      />
+                    </g>
+                  );
+                }
+
+                // 홈런: 수비번호 + 비거리 + 타구방향
+                if (ht === 'HR') {
+                  const hrZx = 40,
+                    hrZy = 40;
+                  const hrDotMap = [
+                    [
+                      { dx: -5.5, dy: -9.0 },
+                      { dx: 0.0, dy: -9.5 },
+                      { dx: 5.5, dy: -9.0 },
+                    ],
+                    [
+                      { dx: -7.5, dy: -1.5 },
+                      { dx: 0.0, dy: -1.5 },
+                      { dx: 7.5, dy: -1.5 },
+                    ],
+                    [
+                      { dx: -5.5, dy: 5.5 },
+                      { dx: 0.0, dy: 6.0 },
+                      { dx: 5.5, dy: 5.5 },
+                    ],
+                  ];
+                  const hrDot =
+                    hitData.dirRow != null && hitData.dirCol != null
+                      ? hrDotMap[hitData.dirRow]?.[hitData.dirCol]
+                      : null;
+                  return (
+                    <g>
+                      <text
+                        x={hrZx}
+                        y={hrZy}
+                        textAnchor="middle"
+                        dominantBaseline="middle"
+                        fontSize="18"
+                        fontWeight="900"
+                        fontFamily="monospace"
+                        fill={zoneColor}
+                      >
+                        {zoneLbl}
+                      </text>
+                      {hrDot && (
+                        <circle
+                          cx={hrZx + hrDot.dx}
+                          cy={hrZy + hrDot.dy - 1}
+                          r="1.5"
+                          fill={zoneColor}
+                        />
+                      )}
+                      {hitData.ballType === '뜬' && (
+                        <path
+                          d={`M ${hrZx - 4.5},${hrZy - 10.0} Q ${hrZx},${hrZy - 17.5} ${hrZx + 4.5},${hrZy - 10.0}`}
+                          stroke={zoneColor}
+                          strokeWidth="1.3"
+                          fill="none"
+                          strokeLinecap="round"
+                        />
+                      )}
+                      {hitData.ballType === '라' && (
+                        <line
+                          x1={hrZx - 4.5}
+                          y1={hrZy - 13.0}
+                          x2={hrZx + 4.5}
+                          y2={hrZy - 13.0}
+                          stroke={zoneColor}
+                          strokeWidth="1.3"
+                          strokeLinecap="round"
+                        />
+                      )}
+                      {hitData.ballType === '땅' && (
+                        <path
+                          d={`M ${hrZx - 4.5},${hrZy + 13.0} Q ${hrZx},${hrZy + 15.5} ${hrZx + 4.5},${hrZy + 13.0}`}
+                          stroke={zoneColor}
+                          strokeWidth="1.3"
+                          fill="none"
+                          strokeLinecap="round"
+                        />
+                      )}
+                      {hitData.dist != null && (
+                        <text
+                          x="36"
+                          y="4"
+                          textAnchor="middle"
+                          dominantBaseline="middle"
+                          fontSize="11"
+                          fontWeight="700"
+                          fontFamily="monospace"
+                          fill={zoneColor}
+                        >
+                          {hitData.dist}
+                        </text>
+                      )}
+                    </g>
+                  );
+                }
+
+                // 내야안타: /5) — 내야번트에서 물결 제거
+                if (ht === 'INT') {
+                  return (
+                    <g>
+                      <path
+                        d="M 38,20 A 15,15 0 1 1 20,38"
+                        stroke={zoneColor}
+                        strokeWidth="1.3"
+                        fill="none"
+                        strokeLinecap="round"
+                      />
+                      <text
+                        x="35"
+                        y="38"
+                        textAnchor="middle"
+                        dominantBaseline="middle"
+                        fontSize="18"
+                        fontWeight="900"
+                        fontFamily="monospace"
+                        fill={zoneColor}
+                      >
+                        {zoneLbl}
+                      </text>
+                    </g>
+                  );
+                }
+
+                // 내야번트: /4) — BASE_LINE이 / 그림, 여기선 ) 반원호 + 수비번호 + 지그재그
+                if (ht === 'BUNT') {
+                  return (
+                    <g>
+                      {/* ) 반원호 */}
+                      <path
+                        d="M 38,20 A 15,15 0 1 1 20,38"
+                        stroke={zoneColor}
+                        strokeWidth="1.3"
+                        fill="none"
+                        strokeLinecap="round"
+                      />
+                      {/* 수비번호 */}
+                      <text
+                        x="35"
+                        y="38"
+                        textAnchor="middle"
+                        dominantBaseline="middle"
+                        fontSize="18"
+                        fontWeight="900"
+                        fontFamily="monospace"
+                        fill={zoneColor}
+                      >
+                        {zoneLbl}
+                      </text>
+                      {/* 지그재그 물결 */}
+                      <path
+                        d="M 20,49 L 23.85,45.8 L 27.7,49 L 31.55,45.8 L 35.4,49 L 39.25,45.8 L 43.1,49 L 46.95,45.8"
+                        stroke="black"
+                        stroke-width="3"
+                        fill="none"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                      />
+                    </g>
+                  );
+                }
+
+                // 외야번트: 큰 수비번호 + 방향점 + 지그재그 물결
+                if (ht === 'OBUNT') {
+                  const cx = 35,
+                    cy = 37;
+                  const obDotMap = [
+                    [
+                      { dx: -3.5, dy: -5.5 },
+                      { dx: 0, dy: -6.0 },
+                      { dx: 3.5, dy: -5.5 },
+                    ],
+                    [
+                      { dx: -4.5, dy: -1.0 },
+                      { dx: 0, dy: -1.0 },
+                      { dx: 4.5, dy: -1.0 },
+                    ],
+                    [
+                      { dx: -3.0, dy: 3.2 },
+                      { dx: 0, dy: 3.5 },
+                      { dx: 3.0, dy: 3.2 },
+                    ],
+                  ];
+                  const dot =
+                    hitData.dirRow != null && hitData.dirCol != null
+                      ? obDotMap[hitData.dirRow]?.[hitData.dirCol]
+                      : null;
+                  return (
+                    <g>
+                      <text
+                        x={cx}
+                        y={cy}
+                        textAnchor="middle"
+                        dominantBaseline="middle"
+                        fontSize="11"
+                        fontWeight="900"
+                        fontFamily="monospace"
+                        fill={zoneColor}
+                      >
+                        {zoneLbl}
+                      </text>
+                      {dot && <circle cx={cx + dot.dx} cy={cy + dot.dy} r="1.2" fill={zoneColor} />}
+                      {/* 지그재그 물결 */}
+                      <path
+                        d="M 20,49 L 23.85,45.8 L 27.7,49 L 31.55,45.8 L 35.4,49 L 39.25,45.8 L 43.1,49 L 46.95,45.8"
+                        stroke="black"
+                        stroke-width="3"
+                        fill="none"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                      />
+                    </g>
+                  );
+                }
+
+                // 일반 루타/홈런: 기존 렌더링
                 const dotMap = [
                   [
                     { dx: -4.8, dy: -7.6 },
@@ -466,19 +733,19 @@ function ScoreCell({
                   <g>
                     {hitData.ballType === '뜬' && (
                       <path
-                        d={`M ${zx - 2.9},${zy - 5.4} Q ${zx},${zy - 7.0} ${zx + 2.9},${zy - 5.4}`}
+                        /* x축 중심을 zx + 4에서 zx + 6으로 더 오른쪽으로 이동 */
+                        d={`M ${zx + 5 - 2.9},${zy + (dot?.dy ?? 0)} Q ${zx + 6},${zy + (dot?.dy ?? 0) - 6} ${zx + 6 + 2.9},${zy + (dot?.dy ?? 0)}`}
                         stroke={zoneColor}
                         strokeWidth="1.2"
                         fill="none"
                         strokeLinecap="round"
                       />
                     )}
-
                     {hitData.ballType === '라' && (
                       <line
-                        x1={zx - 3.0}
+                        x1={zx - 7}
                         y1={zy - 6.0}
-                        x2={zx + 3.0}
+                        x2={zx + 7}
                         y2={zy - 6.0}
                         stroke={zoneColor}
                         strokeWidth="1.2"
@@ -487,29 +754,32 @@ function ScoreCell({
                     )}
 
                     <text
-                      x={zx}
-                      y={zy}
+                      x={zx + 4}
+                      y={zy + 2}
                       textAnchor="middle"
                       dominantBaseline="middle"
-                      fontSize="9"
+                      fontSize="11"
                       fontWeight="900"
                       fontFamily="monospace"
                       fill={zoneColor}
                     >
-                      {hitData.zone}
+                      {zoneLbl}
                     </text>
 
                     {hitData.ballType === '땅' && (
                       <path
-                        d={`M ${zx - 2.9},${zy + 2.7} Q ${zx},${zy + 4.3} ${zx + 2.9},${zy + 2.7}`}
+                        /* x축은 zx + 4 유지 */
+                        /* 시작/끝점 y좌표를 +7.5로, 제어점 y좌표를 +9.8로 더 하향 조정 */
+                        d={`M ${zx + 4 - 5},${zy + (dot?.dy ?? 0) + 7.5} Q ${zx + 4},${zy + (dot?.dy ?? 0) + 9.8} ${zx + 4 + 5},${zy + (dot?.dy ?? 0) + 7.5}`}
                         stroke={zoneColor}
                         strokeWidth="1.2"
                         fill="none"
                         strokeLinecap="round"
                       />
                     )}
-
-                    {dot && <circle cx={zx + dot.dx} cy={zy + dot.dy} r="1.35" fill={zoneColor} />}
+                    {dot && (
+                      <circle cx={zx + dot.dx + 4} cy={zy + dot.dy} r="1.35" fill={zoneColor} />
+                    )}
                   </g>
                 );
               })()}
@@ -664,7 +934,13 @@ function calcStats(G: GameState, half: 'top' | 'bottom', ord: number) {
     const r = c.result!;
     const isSF = r.startsWith('SF');
     if (!noAB.has(r) && !isSF) ab++;
-    const is1B = /^\/[789]$/.test(r) || r === '/hit' || r === 'H1' || r === 'INT' || r === 'BUNT';
+    const is1B =
+      /^\/[789]$/.test(r) ||
+      r === '/hit' ||
+      r === 'H1' ||
+      r === 'INT' ||
+      r === 'BUNT' ||
+      r === 'OBUNT';
     const is2B = /^>[789](-[789])?$/.test(r) || r === '>hit' || r === 'H2';
     const is3B = /^>>>[789]$/.test(r) || r === '>>>hit' || r === 'H3';
     if (is1B || is2B || is3B || r === 'HR' || r === 'GHR' || r === 'GCW') h++;
@@ -1179,7 +1455,7 @@ export default function ScoreSheet({ G, onSelCell }: Props) {
                       const r = c.result!;
                       const isH =
                         /^\/[789]$/.test(r) ||
-                        ['H1', '/hit', 'INT', 'BUNT'].includes(r) ||
+                        ['H1', '/hit', 'INT', 'BUNT', 'OBUNT'].includes(r) ||
                         /^>[789]/.test(r) ||
                         r === 'H2' ||
                         r === '>hit' ||
@@ -1729,7 +2005,8 @@ export default function ScoreSheet({ G, onSelCell }: Props) {
                 r === 'HR' ||
                 r === 'GHR' ||
                 r === 'INT' ||
-                r === 'BUNT'
+                r === 'BUNT' ||
+                r === 'OBUNT'
               );
             }).length;
             const bb = cells.filter((c) => ['B', 'IB', 'IB2'].includes(c.result!)).length;

@@ -13,7 +13,7 @@ interface Props {
 
 // 수비 위치 SVG 좌표 (viewBox 0 0 200 210)
 const FPOS: { pos: number; x: number; y: number }[] = [
-  { pos: 8, x: 100, y: 22 },
+  { pos: 8, x: 100, y: 42 },
   { pos: 7, x: 25, y: 52 },
   { pos: 9, x: 175, y: 52 },
   { pos: 6, x: 72, y: 105 },
@@ -107,7 +107,7 @@ export default function RunOutModal({
               {/* 외야 */}
               <path d="M100,175 L2,50 Q100,0 195,50 Z" fill="#3a7a3a" />
               {/* 내야 흙 */}
-              <circle cx="100" cy="140" r="65" fill="#7a5c38" opacity=".45" />
+              <circle cx="100" cy="140" r="80" fill="#7a5c38" opacity=".45" />
               {/* 파울 라인 */}
               <line
                 x1="100"
@@ -187,14 +187,14 @@ export default function RunOutModal({
                       x={x}
                       y={y + (inSeq ? 9 : 4)}
                       textAnchor="middle"
-                      fontSize={inSeq ? '8' : '12'}
+                      fontSize={inSeq ? '8' : pos > 9 ? '9' : '12'}
                       fontWeight="700"
                       fill={inSeq ? '#bfdbfe' : canAdd ? '#fff' : 'rgba(255,255,255,0.3)'}
                       style={{ pointerEvents: 'none' }}
                     >
-                      {pos}
+                      {POS_NAME[pos] ?? pos}
                     </text>
-                    {!inSeq && (
+                    {!inSeq && pos <= 9 && (
                       <text
                         x={x}
                         y={y + 15}

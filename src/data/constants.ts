@@ -72,11 +72,11 @@ export const BASE_XY: Record<string, { x: number; y: number }> = {
 // 베이스: HOME(100,175) 1B(145,130) 2B(100,85) 3B(55,130) — 각 14×14 사각형
 export const FPOS_XY: Record<number, { x: number; y: number }> = {
   1: { x: 100, y: 128 }, // 투수: 마운드 중앙
-  2: { x: 100, y: 193 }, // 포수: 홈 아래로 이동 (홈 rect y=168~182 아래)
+  2: { x: 100, y: 197 }, // 포수: 홈 아래로 이동 (홈 rect y=168~182 아래)
   3: { x: 164, y: 125 }, // 1루수: 1루 베이스 rect(138~152,123~137) 우측 바깥
-  4: { x: 128, y: 105 }, // 2루수: 1~2루 사이
+  4: { x: 128, y: 97 }, // 2루수: 1~2루 사이
   5: { x: 36, y: 125 }, // 3루수: 3루 베이스 rect(48~62,123~137) 좌측 바깥
-  6: { x: 72, y: 105 }, // 유격수: 2~3루 사이
+  6: { x: 72, y: 97 }, // 유격수: 2~3루 사이
   7: { x: 25, y: 52 }, // 좌익수
   8: { x: 100, y: 22 }, // 중견수
   9: { x: 175, y: 52 }, // 우익수
@@ -139,6 +139,7 @@ export const RESULT_COL: Record<string, string> = {
   '/9': '#111',
   INT: '#111',
   BUNT: '#111',
+  OBUNT: '#111',
   '/hit': '#111',
   H1: '#111',
   // 2루타
@@ -186,9 +187,9 @@ export const RESULT_COL: Record<string, string> = {
 };
 
 // Base path lines for score cell SVG (viewBox 40x40, diamond: top(20,2) right(38,20) bottom(20,38) left(2,20))
-const S1 = [{ x1: 20, y1: 38, x2: 38, y2: 20, c: '#2563eb', w: 2.5 }];
-const S2 = [...S1, { x1: 38, y1: 20, x2: 20, y2: 2, c: '#2563eb', w: 2.5 }];
-const S3 = [...S2, { x1: 20, y1: 2, x2: 2, y2: 20, c: '#2563eb', w: 2.5 }];
+const S1 = [{ x1: 20, y1: 38, x2: 38, y2: 20, c: '#111', w: 2.5 }];
+const S2 = [...S1, { x1: 38, y1: 20, x2: 20, y2: 2, c: '#111', w: 2.5 }];
+const S3 = [...S2, { x1: 20, y1: 2, x2: 2, y2: 20, c: '#111', w: 2.5 }];
 
 export const BASE_LINES: Record<
   string,
@@ -200,6 +201,7 @@ export const BASE_LINES: Record<
   '/9': S1,
   INT: S1,
   BUNT: S1,
+  OBUNT: S1,
   '/hit': S1,
   H1: S1,
   // 출루 (볼넷/사구/실책/FC 등) — 1루까지 선 표시

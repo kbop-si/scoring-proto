@@ -1,16 +1,21 @@
-import type { GameState, Base, BaseTargetState } from '../types';
+import type { GameState, Base, BaseTargetState, Runner } from '../types';
 import { BASE_XY, FPOS_XY } from '../data/constants';
 
 interface Props {
   G: GameState;
   selRunnerBase: Base | null;
   baseTargets: BaseTargetState;
+  chainBases: Set<Base>;
+  chainPendingBase: Base | null;
+  chainTransitRunner?: Runner | null;
   onRunnerToggle: (base: Base) => void;
   onBaseTargetClick: (dest: string) => void;
   onRunnerDestClick?: (dest: Base | 'HOME') => void;
   onFielderClick: (e: React.MouseEvent, pos: number) => void;
   onRunnerContextMenu?: (base: Base) => void;
   onBatterContextMenu?: () => void;
+  onChainPendingClick?: () => void;
+  onChainEnd?: () => void;
 }
 
 function getNextBases(from: string): string[] {
@@ -24,12 +29,17 @@ export default function Diamond({
   G,
   selRunnerBase,
   baseTargets,
+  chainBases,
+  chainPendingBase,
+  chainTransitRunner,
   onRunnerToggle,
   onBaseTargetClick,
   onRunnerDestClick,
   onFielderClick,
   onRunnerContextMenu,
   onBatterContextMenu,
+  onChainPendingClick,
+  onChainEnd,
 }: Props) {
   const curLU = G.half === 'top' ? G.awayLineup : G.homeLineup;
   const defLU = G.half === 'top' ? G.homeLineup : G.awayLineup;
@@ -49,6 +59,24 @@ export default function Diamond({
         <span style={{ fontSize: 9, color: '#94a3b8' }}>
           {G.inning}회 {G.half === 'top' ? '초' : '말'}
         </span>
+        {(chainBases.size > 0 || !!chainPendingBase) && (
+          <button
+            onClick={onChainEnd}
+            style={{
+              marginLeft: 'auto',
+              fontSize: 10,
+              fontWeight: 700,
+              padding: '2px 8px',
+              border: '1px solid #991b1b',
+              background: '#dc2626',
+              color: '#fff',
+              borderRadius: 3,
+              cursor: 'pointer',
+            }}
+          >
+            연결동작 종료
+          </button>
+        )}
       </div>
 
       <div className="dp-field" id="dp-field">
@@ -123,7 +151,7 @@ export default function Diamond({
               <g key={p.pos} pointerEvents="none">
                 <text
                   x={fp.x}
-                  y={fp.y > 180 ? fp.y - 14 : fp.y}
+                  y={fp.y > 180 ? fp.y - 10 : fp.y}
                   textAnchor="middle"
                   fontSize="9"
                   fill="#fff"
@@ -134,7 +162,7 @@ export default function Diamond({
                 </text>
                 <text
                   x={fp.x}
-                  y={fp.y > 180 ? fp.y - 4 : fp.y + 10}
+                  y={fp.y > 180 ? fp.y : fp.y + 10}
                   textAnchor="middle"
                   fontSize="7"
                   fill="#ddd"
@@ -153,7 +181,7 @@ export default function Diamond({
             className="batter-dot"
             title={`${batter.name} — 우클릭: 대타 교체`}
             style={{
-              left: pct(BASE_XY.HOME.x + (batter.hitType === 2 ? 14 : -14)),
+              left: pct(BASE_XY.HOME.x + (batter.hitType === 2 ? 30 : -30)),
               top: pct(BASE_XY.HOME.y + 16),
               width: 'auto',
               minWidth: 32,
@@ -180,12 +208,13 @@ export default function Diamond({
           const r = G.runners[base];
           if (!r) return null;
           const pos = BASE_XY[base];
-          const isPending = !!G.pendingBatter;
+          const isChain = chainBases.has(base);
+          const isPending = !!G.pendingBatter && !isChain;
           return (
             <div
               key={base}
-              className={`runner${selRunnerBase === base ? ' hl' : ''}${isPending ? ' pending-move' : ''}`}
-              title={`${r.name}(${base}) — 클릭: 선택/취소, 우클릭: 대주자 교체`}
+              className={`runner${selRunnerBase === base ? ' hl' : ''}${isChain ? ' chain' : isPending ? ' pending-move' : ''}`}
+              title={`${r.name}(${base}) — 클릭: ${isChain ? '연결동작 진루' : '선택/취소'}, 우클릭: 대주자 교체`}
               style={{
                 left: pct(pos.x),
                 top: pct(pos.y),
@@ -210,6 +239,47 @@ export default function Diamond({
             </div>
           );
         })}
+
+        {/* 연결동작 중 대기 주자/타자 (blocked → 기존 주자 위에 스택, 클릭 가능) */}
+        {chainPendingBase &&
+          BASE_XY[chainPendingBase] &&
+          (G.pendingBatter || chainTransitRunner) &&
+          (() => {
+            const pos = BASE_XY[chainPendingBase];
+            // chainTransit 주자 우선, 없으면 현재 타자
+            const displayRunner = chainTransitRunner
+              ? { num: chainTransitRunner.num, name: chainTransitRunner.name }
+              : (() => {
+                  const bat = curLU[G.curBatterOrder - 1];
+                  return bat ? { num: bat.num, name: bat.name } : null;
+                })();
+            if (!displayRunner) return null;
+            const hasExisting = !!G.runners[chainPendingBase];
+            return (
+              <div
+                key="chain-pending"
+                className="runner chain"
+                title={`${displayRunner.name} — 연결동작 클릭하여 전진`}
+                style={{
+                  left: pct(pos.x),
+                  top: hasExisting ? `calc(${pct(pos.y)} - 36px)` : pct(pos.y),
+                  width: 'auto',
+                  minWidth: 32,
+                  padding: '0 4px',
+                  borderRadius: 4,
+                  fontSize: 10,
+                  whiteSpace: 'nowrap',
+                  cursor: 'pointer',
+                }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onChainPendingClick?.();
+                }}
+              >
+                {displayRunner.num} {displayRunner.name}
+              </div>
+            );
+          })()}
 
         {/* 대기 중인 타자 (목적지 베이스에 반투명 표시) */}
         {G.pendingBatter &&

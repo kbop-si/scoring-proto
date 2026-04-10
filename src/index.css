@@ -1311,6 +1311,21 @@ button {
   background: rgba(245, 158, 11, 0.75);
   animation: b-pulse 0.8s ease-in-out infinite;
 }
+.runner.chain {
+  background: #dc2626;
+  border: 2px solid #991b1b;
+  z-index: 12;
+  animation: chain-pulse 1.2s ease-in-out infinite;
+}
+@keyframes chain-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.5);
+  }
+  50% {
+    box-shadow: 0 0 0 8px rgba(220, 38, 38, 0.15);
+  }
+}
 .base-target {
   position: absolute;
   width: 40px;

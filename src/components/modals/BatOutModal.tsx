@@ -35,7 +35,7 @@ const POS_NAME: Record<number, string> = {
 
 const SEQ_LABEL = ['①', '②', '③', '④', '⑤'];
 
-type HitType = '땅' | 'BU' | 'SH' | 'F' | 'f' | 'L';
+type HitType = '땅' | 'BU' | 'SH' | 'F' | 'f' | 'L' | 'IF';
 type GMode = '송구' | '태그' | '루터치';
 type DpMode = '송구' | '태그' | '리버스';
 
@@ -67,6 +67,7 @@ function buildResult(
   if (type === 'F') return (fSac ? 'SF' : 'F') + s;
   if (type === 'f') return 'f' + s;
   if (type === 'L') return 'L' + s;
+  if (type === 'IF') return 'IF' + s;
   // 땅볼 계열
   const prefix =
     type === 'BU'
@@ -192,12 +193,12 @@ function FieldPicker({
               x={x}
               y={y + (inSeq ? 8 : 4)}
               textAnchor="middle"
-              fontSize={inSeq ? '7' : '10'}
+              fontSize={inSeq ? '7' : pos > 9 ? '8' : '10'}
               fontWeight="700"
               fill={inSeq ? '#bfdbfe' : canAdd ? '#fff' : 'rgba(255,255,255,0.3)'}
               style={{ pointerEvents: 'none' }}
             >
-              {pos}
+              {POS_NAME[pos] ?? pos}
             </text>
             {/* 선수 번호 (선택 안됐을 때 작게) */}
             {!inSeq && p && (
@@ -369,7 +370,7 @@ export default function BatOutModal({ open, defLU, onResult, onClose }: Props) {
                     '자살',
                     '실책',
                     '송구방향',
-                    '수구방향',
+                    '송구높이',
                     '디플',
                     '시프트',
                     '',
@@ -600,9 +601,15 @@ export default function BatOutModal({ open, defLU, onResult, onClose }: Props) {
                 })}
 
                 <div className="rs-title">플라이 아웃</div>
-                {(['F', 'f', 'L'] as HitType[]).map((t) => {
+                {(['F', 'f', 'L', 'IF'] as HitType[]).map((t) => {
                   const lbl =
-                    t === 'F' ? 'F 플라이' : t === 'f' ? 'f 파울 플라이' : 'L 라인 드라이브';
+                    t === 'F'
+                      ? 'F 플라이'
+                      : t === 'f'
+                        ? 'f 파울 플라이'
+                        : t === 'L'
+                          ? 'L 라인 드라이브'
+                          : 'IF 인필드플라이';
                   return (
                     <button
                       key={t}
@@ -613,13 +620,6 @@ export default function BatOutModal({ open, defLU, onResult, onClose }: Props) {
                     </button>
                   );
                 })}
-                <button
-                  className="r-btn"
-                  style={{ gridColumn: '1 / -1' }}
-                  onClick={() => handleResult('IF', false, false)}
-                >
-                  IF 인필드 플라이
-                </button>
 
                 <div className="rs-title">병살, 삼중살</div>
                 <button

@@ -29,11 +29,13 @@ export interface RunnerNote {
 
 export interface HitData {
   zone: number; // 1-9 fielder zone
+  hitType?: string; // 'INT' | 'BUNT' | 'OBUNT' | '1B' | '2B' | '3B' | 'HR' | ...
   dirRow: number; // 0-2 (0=deep/top, 1=mid, 2=near/bottom of 3x3 grid)
   dirCol: number; // 0-2 (0=left, 1=center, 2=right)
   ballType: '땅' | '뜬' | '라';
   deflection: boolean;
   bases: 0 | 1 | 2 | 3 | 4; // 0=out, 1=single, 2=double, 3=triple, 4=HR
+  dist?: number; // 홈런 비거리 (HR)
 }
 
 export interface CellData {
@@ -284,6 +286,25 @@ export type GameAction =
   | { type: 'CLEAR_CELL' }
   | { type: 'ADD_OVERFLOW' }
   | { type: 'PLACE_BATTER' }
+  | {
+      type: 'CHAIN_BATTER_SKIP';
+      toBase: Base | 'HOME';
+      earned: boolean | 'half';
+      rbi?: boolean;
+      scorePitcher?: string;
+      advCode?: string;
+    }
+  | { type: 'REMOVE_RUNNER'; base: Base }
+  | {
+      type: 'CHAIN_TRANSIT_ADV';
+      runner: Runner;
+      fromBase: Base;
+      toBase: Base | 'HOME';
+      earned: boolean | 'half';
+      rbi?: boolean;
+      scorePitcher?: string;
+      advCode?: string;
+    }
   | { type: 'UNDO' }
   | { type: 'SEL_CELL'; key: string }
   | { type: 'SUBST'; side: 'away' | 'home'; pos: number; player: Player }

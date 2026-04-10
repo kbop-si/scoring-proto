@@ -6,7 +6,12 @@ interface Props {
   selected: string | null;
   onSelect: (v: string, ballType?: '땅' | '뜬' | '라') => void;
   onConfirm: () => void;
-  onAutoConfirm: (result: string, ballType?: '땅' | '뜬' | '라', hitData?: HitData) => void;
+  onAutoConfirm: (
+    result: string,
+    ballType?: '땅' | '뜬' | '라',
+    hitData?: HitData,
+    chain?: boolean
+  ) => void;
   onClose: () => void;
   selectedHit: HitData | null;
   onSelectHit: (data: HitData) => void;
@@ -17,6 +22,8 @@ type BallType = '땅볼' | '뜬공' | '라이너';
 
 const FPOS: { key: number; x: number; y: number; r: number }[] = [
   { key: 8, x: 130, y: 32, r: 13 },
+  { key: 78, x: 80, y: 40, r: 13 },
+  { key: 89, x: 180, y: 40, r: 13 },
   { key: 7, x: 44, y: 62, r: 13 },
   { key: 9, x: 216, y: 62, r: 13 },
   { key: 6, x: 104, y: 108, r: 13 },
@@ -28,15 +35,17 @@ const FPOS: { key: number; x: number; y: number; r: number }[] = [
 ];
 
 const POS_NAME: Record<number, string> = {
-  1: '투수',
-  2: '포수',
-  3: '1루수',
-  4: '2루수',
-  5: '3루수',
-  6: '유격수',
-  7: '좌익수',
-  8: '중견수',
-  9: '우익수',
+  1: '1',
+  2: '2',
+  3: '3',
+  4: '4',
+  5: '5',
+  6: '6',
+  7: '7',
+  8: '8',
+  9: '9',
+  78: '7·8',
+  89: '8·9',
 };
 
 const HIT_LABEL: Record<string, string> = {
@@ -48,10 +57,11 @@ const HIT_LABEL: Record<string, string> = {
   GCW: '캣워크',
   INT: '내야안타',
   BUNT: '번트안타',
+  OBUNT: '외야번트',
 };
 
 // 수비위치+타구방향+구질이 필요한 결과
-const NEEDS_HIT = new Set(['1B', '2B', '3B', 'HR', 'GHR', 'GCW', 'INT', 'BUNT']);
+const NEEDS_HIT = new Set(['1B', '2B', '3B', 'HR', 'GHR', 'GCW', 'INT', 'BUNT', 'OBUNT']);
 // 실책 수비수 번호가 필요한 결과 — 필드 클릭 한 번으로 바로 확정
 const NEEDS_FIELDER = new Set(['E', 'E번트', 'KE', '#', 'ob']);
 
@@ -73,7 +83,7 @@ function toBallTypeShort(b: BallType): '땅' | '뜬' | '라' {
 }
 
 function basesForType(hitType: string): 0 | 1 | 2 | 3 | 4 {
-  if (hitType === '1B' || hitType === 'INT' || hitType === 'BUNT') return 1;
+  if (hitType === '1B' || hitType === 'INT' || hitType === 'BUNT' || hitType === 'OBUNT') return 1;
   if (hitType === '2B') return 2;
   if (hitType === '3B') return 3;
   return 4; // HR, GHR, GCW
@@ -132,6 +142,7 @@ export default function BatAdvModal({
   const [defSeq, setDefSeq] = useState<DefRow[]>([]);
   const [연결동작, set연결동작] = useState(false);
   const [장외홈런, set장외홈런] = useState(false);
+  const [hrDist, setHrDist] = useState(110);
   const [ghrDist, setGhrDist] = useState(110);
   const [ghrH, setGhrH] = useState(0);
   const [ghrM, setGhrM] = useState(0);
@@ -149,6 +160,7 @@ export default function BatAdvModal({
     const bases = basesForType(hitType);
     const hd: HitData = {
       zone,
+      hitType,
       dirRow: row,
       dirCol: col,
       ballType: toBallTypeShort(ball),
@@ -212,12 +224,11 @@ export default function BatAdvModal({
   const handleConfirm = () => {
     if (!pendingResult) return;
     if (NEEDS_FIELDER.has(pendingResult)) {
-      // E, E번트, KE: 마지막으로 클릭한 수비수가 실책자
       const errorPos = defSeq[defSeq.length - 1]?.pos;
       if (!errorPos) return;
-      onAutoConfirm(buildErrorResult(pendingResult, errorPos));
+      onAutoConfirm(buildErrorResult(pendingResult, errorPos), undefined, undefined, 연결동작);
     } else {
-      onAutoConfirm(pendingResult);
+      onAutoConfirm(pendingResult, undefined, undefined, 연결동작);
     }
   };
 
@@ -230,6 +241,7 @@ export default function BatAdvModal({
     setSelBall(null);
     setDeflection(false);
     set장외홈런(false);
+    setHrDist(110);
     setGhrDist(110);
     setGhrH(0);
     setGhrM(0);
@@ -336,12 +348,12 @@ export default function BatAdvModal({
                           x={x}
                           y={y + 6}
                           textAnchor="middle"
-                          fontSize="16"
+                          fontSize={key > 9 ? '10' : '16'}
                           fontWeight="700"
                           fill="#fff"
                           pointerEvents="none"
                         >
-                          {key}
+                          {POS_NAME[key] ?? key}
                         </text>
                       </g>
                     );
@@ -387,7 +399,7 @@ export default function BatAdvModal({
                               fontFamily: 'monospace',
                             }}
                           >
-                            {zone ?? '—'}
+                            {zone ? (POS_NAME[zone] ?? zone) : '—'}
                           </div>
                         );
                       return (
@@ -419,7 +431,7 @@ export default function BatAdvModal({
                 </div>
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                {(['땅볼', '뜬공', '라이너'] as BallType[]).map((b) => (
+                {(['땅볼', '뜬공', '라이너', '번트'] as BallType[]).map((b) => (
                   <label
                     key={b}
                     style={{
@@ -640,13 +652,16 @@ export default function BatAdvModal({
                   if (!hitReady) return;
                   const hd: HitData = {
                     zone: zone!,
+                    hitType: pendingResult,
                     dirRow: selDirRow!,
                     dirCol: selDirCol!,
                     ballType: toBallTypeShort(selBall!),
                     deflection,
                     bases: basesForType(pendingResult),
+                    ...(pendingResult === 'HR' ? { dist: hrDist } : {}),
+                    ...(pendingResult === 'GHR' ? { dist: ghrDist } : {}),
                   };
-                  onAutoConfirm('HIT', undefined, hd);
+                  onAutoConfirm('HIT', undefined, hd, 연결동작);
                 }}
                 disabled={!hitReady}
                 style={{ opacity: hitReady ? 1 : 0.4 }}
@@ -713,16 +728,33 @@ export default function BatAdvModal({
                   <Btn label="2루타" sel={s('2B')} onClick={() => pick('2B')} />
                   <Btn label="3루타" sel={s('3B')} onClick={() => pick('3B')} />
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 4 }}>
-                    <Btn label="△ 내야안타" sel={s('INT')} onClick={() => pick('INT')} />
-                    <Btn label="△∿ 내야번트" sel={s('BUNT')} onClick={() => pick('BUNT')} />
+                    <Btn label="내야안타" sel={s('INT')} onClick={() => pick('INT')} />
+                    <Btn label="내야번트" sel={s('BUNT')} onClick={() => pick('BUNT')} />
+                    <Btn label="외야번트" sel={s('OBUNT')} onClick={() => pick('OBUNT')} />
                   </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
                     <Btn
-                      label="◇ 홈런"
+                      label="홈런"
                       sel={s('HR')}
                       onClick={() => pick('HR')}
                       style={{ flex: 1 }}
                     />
+                    <select
+                      value={hrDist}
+                      onChange={(e) => setHrDist(Number(e.target.value))}
+                      style={{
+                        fontSize: 10,
+                        border: '1px solid var(--border)',
+                        borderRadius: 2,
+                        padding: '2px 2px',
+                      }}
+                    >
+                      {GHR_DISTS.map((d) => (
+                        <option key={d} value={d}>
+                          {d}
+                        </option>
+                      ))}
+                    </select>
                     <label
                       style={{
                         display: 'flex',
@@ -744,65 +776,68 @@ export default function BatAdvModal({
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
                     <Btn
-                      label="◇G 그라운드"
+                      label="그라운드 홈런"
                       sel={s('GHR')}
                       onClick={() => pick('GHR')}
                       style={{ flex: 1 }}
                     />
-                    <select
-                      value={ghrDist}
-                      onChange={(e) => setGhrDist(Number(e.target.value))}
+                  </div>
+                  <div
+                    style={{ display: 'flex', alignItems: 'center', gap: 4, paddingLeft: 4 }}
+                  ></div>
+                  <Btn label="캣워크 홈런" sel={s('GCW')} onClick={() => pick('GCW')} />
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                    <span
                       style={{
-                        fontSize: 10,
-                        border: '1px solid var(--border)',
-                        borderRadius: 2,
-                        padding: '2px 2px',
+                        fontSize: 11,
+                        color: 'var(--text3)',
+                        whiteSpace: 'nowrap',
+                        fontWeight: 'bold',
                       }}
                     >
-                      {GHR_DISTS.map((d) => (
-                        <option key={d} value={d}>
-                          {d}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 4, paddingLeft: 4 }}>
-                    <span style={{ fontSize: 9, color: 'var(--text3)', whiteSpace: 'nowrap' }}>
-                      홈런 시각
+                      홈런시각
                     </span>
+
+                    {/* 시간 입력 (시) */}
                     <input
                       type="number"
                       value={ghrH}
                       min={0}
                       max={23}
                       onChange={(e) => setGhrH(Number(e.target.value))}
+                      placeholder="00"
                       style={{
-                        width: 36,
-                        fontSize: 10,
+                        width: 32,
+                        fontSize: 11,
                         border: '1px solid var(--border)',
                         borderRadius: 2,
-                        padding: '1px 3px',
+                        padding: '2px 0',
                         textAlign: 'center',
+                        backgroundColor: 'var(--bg-input)', // 배경색은 환경에 맞춰 조절하세요
                       }}
                     />
-                    <span style={{ fontSize: 10 }}>:</span>
+
+                    <span style={{ fontSize: 11, fontWeight: 'bold' }}>:</span>
+
+                    {/* 시간 입력 (분) */}
                     <input
                       type="number"
                       value={ghrM}
                       min={0}
                       max={59}
                       onChange={(e) => setGhrM(Number(e.target.value))}
+                      placeholder="00"
                       style={{
-                        width: 36,
-                        fontSize: 10,
+                        width: 32,
+                        fontSize: 11,
                         border: '1px solid var(--border)',
                         borderRadius: 2,
-                        padding: '1px 3px',
+                        padding: '2px 0',
                         textAlign: 'center',
+                        backgroundColor: 'var(--bg-input)',
                       }}
                     />
                   </div>
-                  <Btn label="◇W 캣워크" sel={s('GCW')} onClick={() => pick('GCW')} />
                 </div>
               </div>
 

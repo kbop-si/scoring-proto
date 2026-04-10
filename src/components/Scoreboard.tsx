@@ -80,7 +80,7 @@ export default function Scoreboard({ G, onOpenSheetWindow }: Props) {
                   key={i}
                   className={`sb-inn-cell${isCur ? ' cur' : ''}${val !== null ? ' score' : ''}`}
                 >
-                  {val !== null ? val : '—'}
+                  {val !== null ? val : '0'}
                 </div>
               );
             })}
@@ -102,7 +102,7 @@ export default function Scoreboard({ G, onOpenSheetWindow }: Props) {
                   key={i}
                   className={`sb-inn-cell${isCur ? ' cur' : ''}${val !== null ? ' score' : ''}`}
                 >
-                  {val !== null ? val : '—'}
+                  {val !== null ? val : '0'}
                 </div>
               );
             })}
