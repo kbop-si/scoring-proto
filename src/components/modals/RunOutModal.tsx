@@ -91,7 +91,16 @@ export default function RunOutModal({
       const updated = prev.map((r) => ({ ...r, putout: false, assist: true }));
       return [
         ...updated,
-        { pos, assist: false, putout: true, error: false, throwDir: '중앙', recvDir: '중앙', defl: false, shift: false },
+        {
+          pos,
+          assist: false,
+          putout: true,
+          error: false,
+          throwDir: '중앙',
+          recvDir: '중앙',
+          defl: false,
+          shift: false,
+        },
       ];
     });
 
@@ -149,9 +158,33 @@ export default function RunOutModal({
             >
               <path d="M100,175 L5,50 Q100,0 195,50 Z" fill="#3a7a3a" />
               <circle cx="100" cy="135" r="68" fill="#7a5c38" opacity=".45" />
-              <line x1="100" y1="175" x2="5" y2="60" stroke="#fff" strokeWidth=".7" strokeDasharray="4,3" opacity=".5" />
-              <line x1="100" y1="175" x2="195" y2="60" stroke="#fff" strokeWidth=".7" strokeDasharray="4,3" opacity=".5" />
-              <polygon points="100,91 131,122 100,153 69,122" fill="#4a7a4a" stroke="#fff" strokeWidth=".8" opacity=".9" />
+              <line
+                x1="100"
+                y1="175"
+                x2="5"
+                y2="60"
+                stroke="#fff"
+                strokeWidth=".7"
+                strokeDasharray="4,3"
+                opacity=".5"
+              />
+              <line
+                x1="100"
+                y1="175"
+                x2="195"
+                y2="60"
+                stroke="#fff"
+                strokeWidth=".7"
+                strokeDasharray="4,3"
+                opacity=".5"
+              />
+              <polygon
+                points="100,91 131,122 100,153 69,122"
+                fill="#4a7a4a"
+                stroke="#fff"
+                strokeWidth=".8"
+                opacity=".9"
+              />
               <polygon points="100,175 94,181 96,187 104,187 106,181" fill="#fff" opacity=".85" />
 
               {FPOS.map(({ pos, x, y }) => {
@@ -162,25 +195,46 @@ export default function RunOutModal({
                 return (
                   <g key={pos} style={{ cursor: 'pointer' }} onClick={() => addPos(pos)}>
                     <circle
-                      cx={x} cy={y} r={12}
+                      cx={x}
+                      cy={y}
+                      r={12}
                       fill={inSeq ? '#1d4ed8' : 'rgba(255,255,255,0.18)'}
                       stroke={inSeq ? '#60a5fa' : 'rgba(255,255,255,0.6)'}
                       strokeWidth={inSeq ? 2 : 1}
                     />
                     {inSeq && (
-                      <text x={x} y={y - 1} textAnchor="middle" fontSize="9" fontWeight="700" fill="#fff" style={{ pointerEvents: 'none' }}>
+                      <text
+                        x={x}
+                        y={y - 1}
+                        textAnchor="middle"
+                        fontSize="9"
+                        fontWeight="700"
+                        fill="#fff"
+                        style={{ pointerEvents: 'none' }}
+                      >
                         {count > 1 ? `×${count}` : SEQ_LABEL[idx]}
                       </text>
                     )}
                     <text
-                      x={x} y={y + (inSeq ? 8 : 4)} textAnchor="middle"
-                      fontSize={inSeq ? '7' : '10'} fontWeight="700"
-                      fill={inSeq ? '#bfdbfe' : '#fff'} style={{ pointerEvents: 'none' }}
+                      x={x}
+                      y={y + (inSeq ? 8 : 4)}
+                      textAnchor="middle"
+                      fontSize={inSeq ? '7' : '10'}
+                      fontWeight="700"
+                      fill={inSeq ? '#bfdbfe' : '#fff'}
+                      style={{ pointerEvents: 'none' }}
                     >
                       {POS_NAME[pos]}
                     </text>
                     {!inSeq && player && (
-                      <text x={x} y={y + 13} textAnchor="middle" fontSize="6" fill="rgba(255,255,255,0.55)" style={{ pointerEvents: 'none' }}>
+                      <text
+                        x={x}
+                        y={y + 13}
+                        textAnchor="middle"
+                        fontSize="6"
+                        fill="rgba(255,255,255,0.55)"
+                        style={{ pointerEvents: 'none' }}
+                      >
                         {player.num}
                       </text>
                     )}
@@ -213,7 +267,14 @@ export default function RunOutModal({
               {defSeq.length > 0 && (
                 <button
                   onClick={() => setDefSeq([])}
-                  style={{ fontSize: 10, padding: '2px 8px', border: '1px solid var(--border)', background: '#fff', borderRadius: 2, cursor: 'pointer' }}
+                  style={{
+                    fontSize: 10,
+                    padding: '2px 8px',
+                    border: '1px solid var(--border)',
+                    background: '#fff',
+                    borderRadius: 2,
+                    cursor: 'pointer',
+                  }}
                 >
                   초기화
                 </button>
@@ -222,7 +283,18 @@ export default function RunOutModal({
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
               <thead>
                 <tr>
-                  {['수비', '선수명', '보살', '자살', '실책', '송구방향', '송구높이', '디플', '시프트', ''].map((h) => (
+                  {[
+                    '수비',
+                    '선수명',
+                    '보살',
+                    '자살',
+                    '실책',
+                    '송구방향',
+                    '송구높이',
+                    '디플',
+                    '시프트',
+                    '',
+                  ].map((h) => (
                     <th
                       key={h}
                       style={{
@@ -243,7 +315,16 @@ export default function RunOutModal({
               <tbody>
                 {defSeq.length === 0 ? (
                   <tr>
-                    <td colSpan={10} style={{ border: '1px solid var(--border2)', padding: '8px 4px', textAlign: 'center', color: 'var(--text3)', fontSize: 11 }}>
+                    <td
+                      colSpan={10}
+                      style={{
+                        border: '1px solid var(--border2)',
+                        padding: '8px 4px',
+                        textAlign: 'center',
+                        color: 'var(--text3)',
+                        fontSize: 11,
+                      }}
+                    >
                       수비 번호를 클릭해 추가하세요
                     </td>
                   </tr>
@@ -254,43 +335,87 @@ export default function RunOutModal({
                       setDefSeq((prev) => prev.map((r, j) => (j === i ? { ...r, [f]: !r[f] } : r)));
                     const upd = (patch: Partial<DefRow>) =>
                       setDefSeq((prev) => prev.map((r, j) => (j === i ? { ...r, ...patch } : r)));
-                    const td: React.CSSProperties = { border: '1px solid var(--border2)', padding: '3px 4px', textAlign: 'center', fontSize: 11 };
+                    const td: React.CSSProperties = {
+                      border: '1px solid var(--border2)',
+                      padding: '3px 4px',
+                      textAlign: 'center',
+                      fontSize: 11,
+                    };
                     return (
                       <tr key={i}>
                         <td style={{ ...td, fontWeight: 700 }}>{POS_NAME[row.pos]}</td>
-                        <td style={{ ...td, textAlign: 'left', paddingLeft: 6 }}>{player?.name || `#${row.pos}`}</td>
-                        <td style={td}>
-                          <input type="checkbox" checked={row.assist} onChange={() => toggle('assist')} style={{ accentColor: 'var(--blue)' }} />
+                        <td style={{ ...td, textAlign: 'left', paddingLeft: 6 }}>
+                          {player?.name || `#${row.pos}`}
                         </td>
                         <td style={td}>
-                          <input type="checkbox" checked={row.putout} onChange={() => toggle('putout')} style={{ accentColor: 'var(--blue)' }} />
+                          <input
+                            type="checkbox"
+                            checked={row.assist}
+                            onChange={() => toggle('assist')}
+                            style={{ accentColor: 'var(--blue)' }}
+                          />
                         </td>
                         <td style={td}>
-                          <input type="checkbox" checked={row.error} onChange={() => toggle('error')} style={{ accentColor: '#ef4444' }} />
+                          <input
+                            type="checkbox"
+                            checked={row.putout}
+                            onChange={() => toggle('putout')}
+                            style={{ accentColor: 'var(--blue)' }}
+                          />
+                        </td>
+                        <td style={td}>
+                          <input
+                            type="checkbox"
+                            checked={row.error}
+                            onChange={() => toggle('error')}
+                            style={{ accentColor: '#ef4444' }}
+                          />
                         </td>
                         <td style={td}>
                           <select
                             value={row.throwDir}
                             onChange={(e) => upd({ throwDir: e.target.value })}
-                            style={{ fontSize: 10, border: '1px solid var(--border2)', borderRadius: 2, padding: '1px 2px' }}
+                            style={{
+                              fontSize: 10,
+                              border: '1px solid var(--border2)',
+                              borderRadius: 2,
+                              padding: '1px 2px',
+                            }}
                           >
-                            {DIR_OPTS.map((d) => <option key={d}>{d}</option>)}
+                            {DIR_OPTS.map((d) => (
+                              <option key={d}>{d}</option>
+                            ))}
                           </select>
                         </td>
                         <td style={td}>
                           <select
                             value={row.recvDir}
                             onChange={(e) => upd({ recvDir: e.target.value })}
-                            style={{ fontSize: 10, border: '1px solid var(--border2)', borderRadius: 2, padding: '1px 2px' }}
+                            style={{
+                              fontSize: 10,
+                              border: '1px solid var(--border2)',
+                              borderRadius: 2,
+                              padding: '1px 2px',
+                            }}
                           >
-                            {DIR_OPTS.map((d) => <option key={d}>{d}</option>)}
+                            {DIR_OPTS.map((d) => (
+                              <option key={d}>{d}</option>
+                            ))}
                           </select>
                         </td>
                         <td style={td}>
-                          <input type="checkbox" checked={row.defl} onChange={() => toggle('defl')} />
+                          <input
+                            type="checkbox"
+                            checked={row.defl}
+                            onChange={() => toggle('defl')}
+                          />
                         </td>
                         <td style={td}>
-                          <input type="checkbox" checked={row.shift} onChange={() => toggle('shift')} />
+                          <input
+                            type="checkbox"
+                            checked={row.shift}
+                            onChange={() => toggle('shift')}
+                          />
                         </td>
                         <td style={{ ...td, padding: '2px 4px' }}>
                           <button
@@ -306,7 +431,15 @@ export default function RunOutModal({
                                 return next;
                               })
                             }
-                            style={{ fontSize: 11, padding: '1px 5px', border: '1px solid var(--border)', background: '#fff', borderRadius: 2, cursor: 'pointer', color: 'var(--red)' }}
+                            style={{
+                              fontSize: 11,
+                              padding: '1px 5px',
+                              border: '1px solid var(--border)',
+                              background: '#fff',
+                              borderRadius: 2,
+                              cursor: 'pointer',
+                              color: 'var(--red)',
+                            }}
                           >
                             ×
                           </button>
@@ -329,11 +462,23 @@ export default function RunOutModal({
               borderTop: '1px solid var(--border2)',
             }}
           >
-            <span style={{ fontFamily: 'monospace', fontWeight: 700, fontSize: 15, color: seq.length ? 'var(--blue)' : 'var(--text3)' }}>
+            <span
+              style={{
+                fontFamily: 'monospace',
+                fontWeight: 700,
+                fontSize: 15,
+                color: seq.length ? 'var(--blue)' : 'var(--text3)',
+              }}
+            >
               {seq.length ? seq.join('-') : '—'}
             </span>
             <div style={{ display: 'flex', gap: 8 }}>
-              <button className="btn-ok" disabled={!selected} style={{ opacity: selected ? 1 : 0.4 }} onClick={handleConfirm}>
+              <button
+                className="btn-ok"
+                disabled={!selected}
+                style={{ opacity: selected ? 1 : 0.4 }}
+                onClick={handleConfirm}
+              >
                 확인
               </button>
               <button className="btn-cancel" onClick={handleClose}>
@@ -396,24 +541,87 @@ export default function RunOutModal({
             </div>
 
             {/* 옵션 열 */}
-            <div style={{ width: 110, padding: '10px 10px', display: 'flex', flexDirection: 'column', gap: 8 }}>
-              <label style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, cursor: 'pointer' }}>
-                <input type="checkbox" checked={wInsert} onChange={() => setWInsert((v) => !v)} style={{ accentColor: 'var(--blue)' }} />
+            <div
+              style={{
+                width: 110,
+                padding: '10px 10px',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 8,
+              }}
+            >
+              <label
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 5,
+                  fontSize: 11,
+                  cursor: 'pointer',
+                }}
+              >
+                <input
+                  type="checkbox"
+                  checked={wInsert}
+                  onChange={() => setWInsert((v) => !v)}
+                  style={{ accentColor: 'var(--blue)' }}
+                />
                 폭투삽입
               </label>
-              <label style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, cursor: 'pointer' }}>
-                <input type="checkbox" checked={pInsert} onChange={() => setPInsert((v) => !v)} style={{ accentColor: 'var(--blue)' }} />
+              <label
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 5,
+                  fontSize: 11,
+                  cursor: 'pointer',
+                }}
+              >
+                <input
+                  type="checkbox"
+                  checked={pInsert}
+                  onChange={() => setPInsert((v) => !v)}
+                  style={{ accentColor: 'var(--blue)' }}
+                />
                 포일삽입
               </label>
-              <label style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, cursor: 'pointer' }}>
-                <input type="checkbox" checked={csRecord} onChange={() => setCsRecord((v) => !v)} style={{ accentColor: 'var(--blue)' }} />
+              <label
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 5,
+                  fontSize: 11,
+                  cursor: 'pointer',
+                }}
+              >
+                <input
+                  type="checkbox"
+                  checked={csRecord}
+                  onChange={() => setCsRecord((v) => !v)}
+                  style={{ accentColor: 'var(--blue)' }}
+                />
                 도루자기록
               </label>
               <div style={{ borderTop: '1px solid var(--border2)', paddingTop: 8, marginTop: 2 }}>
                 <div style={{ fontSize: 10, color: 'var(--text3)', marginBottom: 4 }}>견제</div>
                 {(['1', '2', '3'] as PickoffBase[]).map((b) => (
-                  <label key={b} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 10, cursor: 'pointer', marginBottom: 2 }}>
-                    <input type="radio" name="runOutPickoff" checked={pickoffBase === b} onChange={() => setPickoffBase(b)} style={{ accentColor: 'var(--blue)' }} />
+                  <label
+                    key={b}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 4,
+                      fontSize: 10,
+                      cursor: 'pointer',
+                      marginBottom: 2,
+                    }}
+                  >
+                    <input
+                      type="radio"
+                      name="runOutPickoff"
+                      checked={pickoffBase === b}
+                      onChange={() => setPickoffBase(b)}
+                      style={{ accentColor: 'var(--blue)' }}
+                    />
                     {b}루견제
                   </label>
                 ))}

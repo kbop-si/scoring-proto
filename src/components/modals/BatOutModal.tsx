@@ -156,11 +156,7 @@ function FieldPicker({
         const numLabel = p ? p.num : POS_NAME[pos];
 
         return (
-          <g
-            key={pos}
-            style={{ cursor: 'pointer' }}
-            onClick={() => onAdd(pos)}
-          >
+          <g key={pos} style={{ cursor: 'pointer' }} onClick={() => onAdd(pos)}>
             <circle
               cx={x}
               cy={y}
@@ -339,8 +335,23 @@ export default function BatOutModal({ open, defLU, onResult, onClose }: Props) {
           >
             수비 위치 선택
             {otherType && (
-              <span style={{ fontSize: 11, fontWeight: 400, color: 'var(--red)', fontFamily: 'monospace' }}>
-                {otherType === 'X' ? '× 타구맞음' : otherType === 'xBU' ? '×∿ 번트타구맞음' : otherType === 'IP' ? 'IP 부정타격' : otherType === 'IP0' ? 'IP0 부정타격' : 'A 공과'}
+              <span
+                style={{
+                  fontSize: 11,
+                  fontWeight: 400,
+                  color: 'var(--red)',
+                  fontFamily: 'monospace',
+                }}
+              >
+                {otherType === 'X'
+                  ? '× 타구맞음'
+                  : otherType === 'xBU'
+                    ? '×∿ 번트타구맞음'
+                    : otherType === 'IP'
+                      ? 'IP 부정타격'
+                      : otherType === 'IP0'
+                        ? 'IP0 부정타격'
+                        : 'A 공과'}
               </span>
             )}
           </div>
@@ -579,7 +590,8 @@ export default function BatOutModal({ open, defLU, onResult, onClose }: Props) {
                 disabled={!activeCode}
                 style={{ opacity: activeCode ? 1 : 0.4 }}
                 onClick={() => {
-                  if (activeCode) handleResult(activeCode, otherType ? false : dp, otherType ? false : tp);
+                  if (activeCode)
+                    handleResult(activeCode, otherType ? false : dp, otherType ? false : tp);
                 }}
               >
                 확인
