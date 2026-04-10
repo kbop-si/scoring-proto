@@ -20,7 +20,7 @@ export interface Runner {
 }
 
 export interface RunnerNote {
-  causedBy: number;
+  causedBy?: number;
   base: Base | 'HOME';
   rbi?: boolean;
   steal?: boolean; // 도루에 의한 진루 (통계용)
@@ -279,6 +279,7 @@ export type GameAction =
       scorePitcher?: string;
       steal?: boolean;
       advCode?: string;
+      causedBy?: number;
     }
   | { type: 'RUN_OUT'; base: Base; result: string }
   | { type: 'NEXT_BATTER' }
@@ -304,6 +305,7 @@ export type GameAction =
       rbi?: boolean;
       scorePitcher?: string;
       advCode?: string;
+      causedBy?: number;
     }
   | { type: 'UNDO' }
   | { type: 'SEL_CELL'; key: string }

@@ -58,7 +58,7 @@ function ScoreCell({
   notes.forEach((n) => {
     // 수비수 번호가 이미 advCode에 포함된 경우(E3, 6 등) sup 생략
     const hasFielder = /\d/.test(n.advCode || '');
-    const sup = n.advCode && !hasFielder ? (SUP_DIGITS[n.causedBy - 1] ?? String(n.causedBy)) : '';
+    const sup = n.advCode && !hasFielder && n.causedBy ? (SUP_DIGITS[n.causedBy - 1] ?? String(n.causedBy)) : '';
     const advLbl = n.advCode
       ? n.advCode.endsWith(')')
         ? n.advCode.slice(0, -1) + sup + ')'
@@ -68,13 +68,13 @@ function ScoreCell({
     if (n.base === 'HOME') {
       if (advLbl) {
         homeNoteItems.push({ advLbl });
-      } else {
+      } else if (n.causedBy) {
         const kan = KAN[n.causedBy - 1] || String(n.causedBy);
         homeNoteItems.push({ kan, rbi: n.rbi });
       }
     } else {
-      const lbl = advLbl ?? `(${KAN[n.causedBy - 1] || String(n.causedBy)})`;
-      noteAtBase[n.base] = noteAtBase[n.base] ? noteAtBase[n.base] + lbl : lbl;
+      const lbl = advLbl ?? (n.causedBy ? `(${KAN[n.causedBy - 1] || String(n.causedBy)})` : '');
+      if (lbl) noteAtBase[n.base] = noteAtBase[n.base] ? noteAtBase[n.base] + lbl : lbl;
     }
   });
 

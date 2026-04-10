@@ -133,6 +133,7 @@ export default function GameScreen({ setup, onEnd }: Props) {
   }, [G]);
   const [chainBases, setChainBases] = useState<Set<Base>>(new Set());
   const [chainPendingBase, setChainPendingBase] = useState<Base | null>(null);
+  const [chainCausedBy, setChainCausedBy] = useState<number | null>(null);
   const [chainBatterOpen, setChainBatterOpen] = useState(false);
   const [chainTransit, setChainTransit] = useState<{
     runner: Runner;
@@ -282,6 +283,8 @@ export default function GameScreen({ setup, onEnd }: Props) {
           const BASES: Base[] = ['1B', '2B', '3B'];
           const destIdx = BASES.indexOf(dest);
           const blocked = destIdx >= 0 && BASES.slice(0, destIdx + 1).some((b) => G.runners[b]);
+          // 연결동작 유발 타자 저장 (BAT_ADV 전에 캡처 — 이후 curBatterOrder 증가)
+          setChainCausedBy(G.curBatterOrder);
           if (!blocked) {
             // 즉시 chainBases에 추가 → PLACE_BATTER 후 렌더 시 빨간색으로 표시
             setChainBases((prev) => new Set([...prev, dest]));
@@ -418,6 +421,7 @@ export default function GameScreen({ setup, onEnd }: Props) {
           rbi,
           scorePitcher,
           advCode,
+          causedBy: chainCausedBy ?? undefined,
         });
         if (toBase === 'HOME') showToast(`${runner.name} 득점!`);
         else showToast(`${runner.name} → ${toBase} (chain)`);
@@ -426,12 +430,14 @@ export default function GameScreen({ setup, onEnd }: Props) {
         if (chain && toBase !== 'HOME') {
           setChainBases((prev) => new Set([...prev, toBase as Base]));
         }
-        dispatch({ type: 'CHAIN_BATTER_SKIP', toBase, earned, rbi, scorePitcher });
+        const batterAdvCode =
+          typeof UI.runAdvResult === 'string' ? getAdvCode(UI.runAdvResult, fielderSeq) : undefined;
+        dispatch({ type: 'CHAIN_BATTER_SKIP', toBase, earned, rbi, scorePitcher, advCode: batterAdvCode });
         if (toBase === 'HOME') showToast(`${G.pendingBatter.runner.name} 득점!`);
         else showToast(`${G.pendingBatter.runner.name} → ${toBase} (chain)`);
       }
     },
-    [UI, chainPendingBase, chainTransit, G.pendingBatter, dispatch, showToast]
+    [UI, chainPendingBase, chainTransit, G.pendingBatter, dispatch, showToast, chainCausedBy]
   );
 
   const handleRunnerDestClick = useCallback(
@@ -528,6 +534,7 @@ export default function GameScreen({ setup, onEnd }: Props) {
         scorePitcher,
         steal: isSteal || undefined,
         advCode,
+        causedBy: chainCausedBy ?? undefined,
       });
 
       if (dest === 'HOME')
@@ -536,7 +543,7 @@ export default function GameScreen({ setup, onEnd }: Props) {
         );
       else showToast(`${runner.name} → ${dest} (${reason})`);
     },
-    [UI, G.runners, dispatch, showToast]
+    [UI, G.runners, dispatch, showToast, chainBases, chainCausedBy]
   );
 
   // ── Runner Out ────────────────────────────────────────────────────────────
@@ -762,12 +769,14 @@ export default function GameScreen({ setup, onEnd }: Props) {
   const handleNextBatter = useCallback(() => {
     setChainBases(new Set());
     setChainPendingBase(null);
+    setChainCausedBy(null);
     dispatch({ type: 'NEXT_BATTER' });
   }, [dispatch]);
 
   const handleNextInning = useCallback(() => {
     setChainBases(new Set());
     setChainPendingBase(null);
+    setChainCausedBy(null);
     dispatch({ type: 'NEXT_INNING' });
     setUI((p) => ({ ...p, selRunnerBase: null }));
     showToast(
@@ -873,6 +882,7 @@ export default function GameScreen({ setup, onEnd }: Props) {
                     setChainBases(new Set());
                     setChainPendingBase(null);
                     setChainTransit(null);
+                    setChainCausedBy(null);
                   }}
                 />
               </div>

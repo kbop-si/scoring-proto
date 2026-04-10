@@ -956,6 +956,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
     // ── RUN_ADV ──────────────────────────────────────────────────────────────
     case 'RUN_ADV': {
       const { base, runner, dest, earned } = action;
+      const runAdvCausedBy = action.causedBy ?? state.curBatterOrder;
       const runners: Runners = { ...state.runners };
       delete runners[base];
 
@@ -981,7 +982,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
             if (cells[rk]) {
               const existing = cells[rk].runnerNotes || [];
               const homeNote: RunnerNote = {
-                causedBy: state.curBatterOrder,
+                causedBy: runAdvCausedBy,
                 base: 'HOME',
                 rbi: action.rbi,
                 steal: action.steal,
@@ -989,7 +990,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
               };
 
               const runnerNotes = existing.find(
-                (n) => n.base === 'HOME' && n.causedBy === state.curBatterOrder
+                (n) => n.base === 'HOME' && n.causedBy === runAdvCausedBy
               )
                 ? existing
                 : [...existing, homeNote];
@@ -1048,7 +1049,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
                 !existing.find(
                   (n) =>
                     n.base === dest &&
-                    n.causedBy === state.curBatterOrder &&
+                    n.causedBy === runAdvCausedBy &&
                     n.steal === action.steal
                 )
               ) {
@@ -1059,7 +1060,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
                     runnerNotes: [
                       ...existing,
                       {
-                        causedBy: state.curBatterOrder,
+                        causedBy: runAdvCausedBy,
                         base: dest as Base,
                         steal: action.steal,
                         advCode: action.advCode,
@@ -1219,8 +1220,8 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
             const rk = cellKey(runner.inning, runner.order, app, runner.half || state.half);
             if (cells[rk]) {
               const existing = cells[rk].runnerNotes || [];
+              // CHAIN_BATTER_SKIP: 타자 자신의 진루이므로 causedBy 없음, advCode만 기록
               const homeNote: RunnerNote = {
-                causedBy: state.curBatterOrder,
                 base: 'HOME',
                 rbi,
                 advCode,
@@ -1269,7 +1270,8 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
                     ...cells[rk],
                     runnerNotes: [
                       ...existing,
-                      { causedBy: state.curBatterOrder, base: toBase as Base, advCode },
+                      // causedBy 없음: 타자 자신의 chain 진루
+                      { base: toBase as Base, advCode },
                     ],
                   },
                 };
@@ -1307,8 +1309,12 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
     // chain 대기 주자 최종 배치 (RUN_ADV와 동일 로직, runner 외부 주입)
     case 'CHAIN_TRANSIT_ADV': {
       const { runner, fromBase, toBase, earned, rbi, scorePitcher, advCode } = action;
+      const chainTransitCausedBy = action.causedBy ?? state.curBatterOrder;
       const runners: Runners = { ...state.runners };
-      delete runners[fromBase]; // 대기 위치에서 제거 (이미 REMOVE_RUNNER로 제거됐을 수도)
+      // transit 주자만 제거 — fromBase에 다른 주자가 있을 경우 (REMOVE_RUNNER 이후 원래 점유자가 남은 경우) 보존
+      if (!runners[fromBase] || runners[fromBase]!.order === runner.order) {
+        delete runners[fromBase];
+      }
       let cells = state.cells;
       let awayR = state.awayR,
         homeR = state.homeR,
@@ -1329,7 +1335,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
             if (cells[rk]) {
               const existing = cells[rk].runnerNotes || [];
               const homeNote: RunnerNote = {
-                causedBy: state.curBatterOrder,
+                causedBy: chainTransitCausedBy,
                 base: 'HOME',
                 rbi,
                 advCode,
@@ -1377,7 +1383,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
                     ...cells[rk],
                     runnerNotes: [
                       ...existing,
-                      { causedBy: state.curBatterOrder, base: toBase as Base, advCode },
+                      { causedBy: chainTransitCausedBy, base: toBase as Base, advCode },
                     ],
                   },
                 };
