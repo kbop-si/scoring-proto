@@ -1048,9 +1048,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
               if (
                 !existing.find(
                   (n) =>
-                    n.base === dest &&
-                    n.causedBy === runAdvCausedBy &&
-                    n.steal === action.steal
+                    n.base === dest && n.causedBy === runAdvCausedBy && n.steal === action.steal
                 )
               ) {
                 cells = {

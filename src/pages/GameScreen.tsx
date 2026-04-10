@@ -432,7 +432,14 @@ export default function GameScreen({ setup, onEnd }: Props) {
         }
         const batterAdvCode =
           typeof UI.runAdvResult === 'string' ? getAdvCode(UI.runAdvResult, fielderSeq) : undefined;
-        dispatch({ type: 'CHAIN_BATTER_SKIP', toBase, earned, rbi, scorePitcher, advCode: batterAdvCode });
+        dispatch({
+          type: 'CHAIN_BATTER_SKIP',
+          toBase,
+          earned,
+          rbi,
+          scorePitcher,
+          advCode: batterAdvCode,
+        });
         if (toBase === 'HOME') showToast(`${G.pendingBatter.runner.name} 득점!`);
         else showToast(`${G.pendingBatter.runner.name} → ${toBase} (chain)`);
       }

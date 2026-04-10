@@ -58,7 +58,10 @@ function ScoreCell({
   notes.forEach((n) => {
     // 수비수 번호가 이미 advCode에 포함된 경우(E3, 6 등) sup 생략
     const hasFielder = /\d/.test(n.advCode || '');
-    const sup = n.advCode && !hasFielder && n.causedBy ? (SUP_DIGITS[n.causedBy - 1] ?? String(n.causedBy)) : '';
+    const sup =
+      n.advCode && !hasFielder && n.causedBy
+        ? (SUP_DIGITS[n.causedBy - 1] ?? String(n.causedBy))
+        : '';
     const advLbl = n.advCode
       ? n.advCode.endsWith(')')
         ? n.advCode.slice(0, -1) + sup + ')'
