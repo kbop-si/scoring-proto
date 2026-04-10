@@ -64,9 +64,7 @@ export default function StrikeoutModal({ open, pitchType, defLU, onConfirm, onCl
   };
 
   const addPos = (pos: number) => {
-    if (outType === 'KT' && seq.length >= 1) return;
-    if (outType === 'KSG' && seq.length >= 3) return;
-    setSeq((prev) => (prev.includes(pos) ? prev : [...prev, pos]));
+    setSeq((prev) => [...prev, pos]);
   };
 
   const toggleDefPos = (pos: number) => {
@@ -187,7 +185,8 @@ export default function StrikeoutModal({ open, pitchType, defLU, onConfirm, onCl
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 4 }}>
                 {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((pos) => {
                   const p = defLU.find((x) => x.pos === pos);
-                  const inSeq = seq.includes(pos);
+                  const count = seq.filter((n) => n === pos).length;
+                  const inSeq = count > 0;
                   return (
                     <button
                       key={pos}
@@ -203,7 +202,7 @@ export default function StrikeoutModal({ open, pitchType, defLU, onConfirm, onCl
                         color: inSeq ? '#fff' : 'var(--text)',
                       }}
                     >
-                      {pos}({p?.num ?? POS_NAME[pos]})
+                      {pos}({p?.num ?? POS_NAME[pos]}){count > 1 ? ` ×${count}` : ''}
                     </button>
                   );
                 })}

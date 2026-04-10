@@ -1095,6 +1095,7 @@ export default function GameScreen({ setup, onEnd }: Props) {
         open={UI.runOutOpen}
         runnerBase={UI.selRunnerBase}
         runnerName={UI.selRunnerBase ? G.runners[UI.selRunnerBase]?.name || '' : ''}
+        defLU={defLU}
         selected={UI.runOutResult}
         onSelect={(v) => setUI((p) => ({ ...p, runOutResult: v }))}
         onConfirm={confirmRunOut}

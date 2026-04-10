@@ -33,11 +33,12 @@ const POS_NAME: Record<number, string> = {
   9: '우',
 };
 
-const SEQ_LABEL = ['①', '②', '③', '④', '⑤'];
+const SEQ_LABEL = ['①', '②', '③', '④', '⑤', '⑥', '⑦', '⑧', '⑨'];
 
 type HitType = '땅' | 'BU' | 'SH' | 'F' | 'f' | 'L' | 'IF';
 type GMode = '송구' | '태그' | '루터치';
 type DpMode = '송구' | '태그' | '리버스';
+type OtherType = 'X' | 'xBU' | 'IP' | 'IP0' | 'A';
 
 interface DefRow {
   pos: number;
@@ -99,12 +100,10 @@ function buildResult(
 // ── 다이아몬드 수비 위치 선택기 ──────────────────────────────────────────────
 function FieldPicker({
   seq,
-  maxSeq,
   defLU,
   onAdd,
 }: {
   seq: number[];
-  maxSeq: number;
   defLU: Player[];
   onAdd: (pos: number) => void;
 }) {
@@ -150,28 +149,24 @@ function FieldPicker({
       <polygon points="100,175 94,181 96,187 104,187 106,181" fill="#fff" opacity=".85" />
 
       {FPOS.map(({ pos, x, y }) => {
+        const count = seq.filter((p) => p === pos).length;
+        const inSeq = count > 0;
         const idx = seq.indexOf(pos);
-        const inSeq = idx >= 0;
-        const canAdd = seq.length < maxSeq && !inSeq;
         const p = defLU.find((pl) => pl.pos === pos);
         const numLabel = p ? p.num : POS_NAME[pos];
 
         return (
           <g
             key={pos}
-            style={{ cursor: canAdd ? 'pointer' : inSeq ? 'default' : 'not-allowed' }}
-            onClick={() => canAdd && onAdd(pos)}
+            style={{ cursor: 'pointer' }}
+            onClick={() => onAdd(pos)}
           >
             <circle
               cx={x}
               cy={y}
               r={12}
-              fill={
-                inSeq ? '#1d4ed8' : canAdd ? 'rgba(255,255,255,0.18)' : 'rgba(255,255,255,0.07)'
-              }
-              stroke={
-                inSeq ? '#60a5fa' : canAdd ? 'rgba(255,255,255,0.6)' : 'rgba(255,255,255,0.2)'
-              }
+              fill={inSeq ? '#1d4ed8' : 'rgba(255,255,255,0.18)'}
+              stroke={inSeq ? '#60a5fa' : 'rgba(255,255,255,0.6)'}
               strokeWidth={inSeq ? 2 : 1}
             />
             {/* 수비 순서 번호 (선택됐을 때) */}
@@ -185,7 +180,7 @@ function FieldPicker({
                 fill="#fff"
                 style={{ pointerEvents: 'none' }}
               >
-                {SEQ_LABEL[idx]}
+                {count > 1 ? `×${count}` : SEQ_LABEL[idx]}
               </text>
             )}
             {/* 포지션 번호 */}
@@ -195,7 +190,7 @@ function FieldPicker({
               textAnchor="middle"
               fontSize={inSeq ? '7' : pos > 9 ? '8' : '10'}
               fontWeight="700"
-              fill={inSeq ? '#bfdbfe' : canAdd ? '#fff' : 'rgba(255,255,255,0.3)'}
+              fill={inSeq ? '#bfdbfe' : '#fff'}
               style={{ pointerEvents: 'none' }}
             >
               {POS_NAME[pos] ?? pos}
@@ -231,6 +226,7 @@ export default function BatOutModal({ open, defLU, onResult, onClose }: Props) {
   const [dpBunt, setDpBunt] = useState(false);
   const [fSac, setFSac] = useState(false);
   const [fBunt, setFBunt] = useState(false);
+  const [otherType, setOtherType] = useState<OtherType | null>(null);
 
   const reset = () => {
     setDefSeq([]);
@@ -242,6 +238,7 @@ export default function BatOutModal({ open, defLU, onResult, onClose }: Props) {
     setDpBunt(false);
     setFSac(false);
     setFBunt(false);
+    setOtherType(null);
   };
   const handleClose = () => {
     reset();
@@ -254,20 +251,36 @@ export default function BatOutModal({ open, defLU, onResult, onClose }: Props) {
   };
 
   const isFlat = type === 'F' || type === 'f' || type === 'L';
-  const maxSeq = isFlat ? 1 : 5;
 
   const selectType = (t: HitType) => {
     setType(t);
-    if (t === 'F' || t === 'f' || t === 'L') setDefSeq((s) => s.slice(0, 1));
+    setOtherType(null);
     if (t !== '땅') {
       setDp(false);
       setTp(false);
     }
   };
 
+  const selectOtherType = (t: OtherType) => {
+    setOtherType(t);
+    setDefSeq([]);
+    setDp(false);
+    setTp(false);
+  };
+
+  const buildOtherCode = (): string | null => {
+    if (!otherType) return null;
+    const s = seq.join('-');
+    if (otherType === 'X') return seq.length ? 'X' + s : null;
+    if (otherType === 'xBU') return seq.length ? 'xBU' + s : null;
+    if (otherType === 'IP') return seq.length ? 'IP' + s : null;
+    if (otherType === 'IP0') return seq.length ? 'IP0' + s : null;
+    if (otherType === 'A') return seq.length ? s + 'A' : null;
+    return null;
+  };
+
   const addPos = (pos: number) =>
     setDefSeq((prev) => {
-      if (prev.length >= maxSeq) return prev;
       const updated = prev.map((r) => ({ ...r, putout: false, assist: true }));
       return [
         ...updated,
@@ -285,6 +298,7 @@ export default function BatOutModal({ open, defLU, onResult, onClose }: Props) {
     });
 
   const code = buildResult(seq, type, gMode, dp, tp, dpMode, dpBunt, fSac);
+  const activeCode = otherType ? buildOtherCode() : code;
   const isGround = type === '땅' || type === 'BU' || type === 'SH';
 
   return (
@@ -318,12 +332,20 @@ export default function BatOutModal({ open, defLU, onResult, onClose }: Props) {
               padding: '8px 10px',
               fontWeight: 700,
               fontSize: 14,
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
             }}
           >
-            수비 위치 선택 (최대 {maxSeq}명)
+            수비 위치 선택
+            {otherType && (
+              <span style={{ fontSize: 11, fontWeight: 400, color: 'var(--red)', fontFamily: 'monospace' }}>
+                {otherType === 'X' ? '× 타구맞음' : otherType === 'xBU' ? '×∿ 번트타구맞음' : otherType === 'IP' ? 'IP 부정타격' : otherType === 'IP0' ? 'IP0 부정타격' : 'A 공과'}
+              </span>
+            )}
           </div>
           <div style={{ padding: '10px 10px 6px', borderBottom: '1px solid var(--border2)' }}>
-            <FieldPicker seq={seq} maxSeq={maxSeq} defLU={defLU} onAdd={addPos} />
+            <FieldPicker seq={seq} defLU={defLU} onAdd={addPos} />
           </div>
           <div style={{ padding: 10, flex: 1, overflow: 'auto' }}>
             <div
@@ -546,18 +568,18 @@ export default function BatOutModal({ open, defLU, onResult, onClose }: Props) {
                 fontFamily: 'monospace',
                 fontWeight: 700,
                 fontSize: 15,
-                color: code ? 'var(--blue)' : 'var(--text3)',
+                color: activeCode ? 'var(--blue)' : 'var(--text3)',
               }}
             >
-              {code ?? '—'}
+              {activeCode ?? '—'}
             </span>
             <div style={{ display: 'flex', gap: 8 }}>
               <button
                 className="btn-ok"
-                disabled={!code}
-                style={{ opacity: code ? 1 : 0.4 }}
+                disabled={!activeCode}
+                style={{ opacity: activeCode ? 1 : 0.4 }}
                 onClick={() => {
-                  if (code) handleResult(code, dp, tp);
+                  if (activeCode) handleResult(activeCode, otherType ? false : dp, otherType ? false : tp);
                 }}
               >
                 확인
@@ -669,27 +691,29 @@ export default function BatOutModal({ open, defLU, onResult, onClose }: Props) {
                   기타 아웃
                 </div>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 4 }}>
-                  <button className="r-btn" onClick={() => handleResult('x2', false, false)}>
-                    × 타구 맞음
-                  </button>
-                  <button className="r-btn" onClick={() => handleResult('xBU', false, false)}>
-                    ×∿ 번트타구맞음
-                  </button>
-                  <button className="r-btn" onClick={() => handleResult('IP', false, false)}>
-                    IP 부정 타격
-                  </button>
-                  <button className="r-btn" onClick={() => handleResult('IP0', false, false)}>
-                    IP 부정타격(투구없음)
-                  </button>
+                  {(
+                    [
+                      { t: 'X', label: '× 타구 맞음' },
+                      { t: 'xBU', label: '×∿ 번트타구맞음' },
+                      { t: 'IP', label: 'IP 부정 타격' },
+                      { t: 'IP0', label: 'IP 부정타격(투구없음)' },
+                      { t: 'A', label: 'A 공과' },
+                    ] as { t: OtherType; label: string }[]
+                  ).map(({ t, label }) => (
+                    <button
+                      key={t}
+                      className={`r-btn${otherType === t ? ' sel' : ''}`}
+                      onClick={() => selectOtherType(t)}
+                    >
+                      {label}
+                    </button>
+                  ))}
                   <button
                     className="r-btn"
                     onClick={() => handleResult('K3B', false, false)}
                     style={{ opacity: 0.5 }}
                   >
                     K 쓰리번트
-                  </button>
-                  <button className="r-btn" onClick={() => handleResult('A', false, false)}>
-                    A 1루 공과
                   </button>
                 </div>
               </div>
