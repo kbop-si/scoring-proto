@@ -75,12 +75,14 @@ export default function Scoreboard({ G, onOpenSheetWindow }: Props) {
             {inns.map((i) => {
               const val = awayInnRuns[i - 1];
               const isCur = i === G.inning && G.half === 'top';
+              // 원정(초) 이닝 시작 여부: 현재 이닝 이하면 시작됨
+              const started = i <= G.inning;
               return (
                 <div
                   key={i}
-                  className={`sb-inn-cell${isCur ? ' cur' : ''}${val !== null ? ' score' : ''}`}
+                  className={`sb-inn-cell${isCur ? ' cur' : ''}${started && val !== null ? ' score' : ''}`}
                 >
-                  {val !== null ? val : '0'}
+                  {started ? (val ?? 0) : '-'}
                 </div>
               );
             })}
@@ -97,12 +99,14 @@ export default function Scoreboard({ G, onOpenSheetWindow }: Props) {
             {inns.map((i) => {
               const val = homeInnRuns[i - 1];
               const isCur = i === G.inning && G.half === 'bottom';
+              // 홈(말) 이닝 시작 여부: 이전 이닝이거나 현재 이닝 말이면 시작됨
+              const started = i < G.inning || (i === G.inning && G.half === 'bottom');
               return (
                 <div
                   key={i}
-                  className={`sb-inn-cell${isCur ? ' cur' : ''}${val !== null ? ' score' : ''}`}
+                  className={`sb-inn-cell${isCur ? ' cur' : ''}${started && val !== null ? ' score' : ''}`}
                 >
-                  {val !== null ? val : '0'}
+                  {started ? (val ?? 0) : '-'}
                 </div>
               );
             })}

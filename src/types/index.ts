@@ -62,7 +62,15 @@ export interface CellData {
   isDPRunner?: boolean; // 병살/삼중살에서 아웃된 주자 셀 (outMap pre-population 구분용)
   sideNotes?: string[]; // 마운드방문/타자타임/투수판이탈 등 투구 영역에 표시
   hitData?: HitData; // 구조화된 타구 데이터
+  eventLog?: CellEventEntry[]; // 투구·이벤트 FIFO 순서 기록
 }
+
+// 투구와 이벤트(마운드방문 등)의 순서를 보존하는 엔트리
+export type CellEventEntry =
+  | { kind: 'pitch'; pitch: PitchType }
+  | { kind: 'note'; note: string }
+  | { kind: 'runner_steal'; runnerName: string; dest: string }
+  | { kind: 'runner_cs'; runnerName: string; runOut: string };
 
 export interface PitcherData {
   name: string;

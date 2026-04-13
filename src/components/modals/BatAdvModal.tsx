@@ -89,10 +89,11 @@ function basesForType(hitType: string): 0 | 1 | 2 | 3 | 4 {
   return 4; // HR, GHR, GCW
 }
 
-function buildErrorResult(base: string, pos: number): string {
-  if (base === '#') return `#${pos}E`;
-  if (base === 'ob') return `Ob${pos}E`;
-  return `${base}${pos}`;
+function buildErrorResult(base: string, seq: number[]): string {
+  const lastPos = seq[seq.length - 1];
+  if (base === '#') return `#${lastPos}E`;
+  if (base === 'ob') return `Ob${lastPos}E`;
+  return `E${seq.join('-')}`;
 }
 
 interface DefRow {
@@ -224,9 +225,9 @@ export default function BatAdvModal({
   const handleConfirm = () => {
     if (!pendingResult) return;
     if (NEEDS_FIELDER.has(pendingResult)) {
-      const errorPos = defSeq[defSeq.length - 1]?.pos;
-      if (!errorPos) return;
-      onAutoConfirm(buildErrorResult(pendingResult, errorPos), undefined, undefined, 연결동작);
+      if (!defSeq.length) return;
+      const seq = defSeq.map((r) => r.pos);
+      onAutoConfirm(buildErrorResult(pendingResult, seq), undefined, undefined, 연결동작);
     } else {
       onAutoConfirm(pendingResult, undefined, undefined, 연결동작);
     }

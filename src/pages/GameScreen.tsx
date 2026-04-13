@@ -581,7 +581,7 @@ export default function GameScreen({ setup, onEnd }: Props) {
         if (t === '포스아웃') return seq || '●';
         if (t === 'T 태그아웃') return seq ? seq + 'T' : 'T';
         if (t === 'X 견제사') return seq ? 'X' + seq : 'X';
-        if (t === 'CS 도루실패') return seq ? 'CS' + seq : 'CS';
+        if (t === 'CS 도루실패') return seq ? 'CS' + seq + 'T' : 'CS';
         // 터치/공과/기타 — 수비수번호 + 코드 (예: 5B, 3A)
         const code = t.split(' ')[0];
         return seq ? seq + code : code;

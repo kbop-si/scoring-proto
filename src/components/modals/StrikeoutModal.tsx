@@ -87,8 +87,8 @@ export default function StrikeoutModal({ open, pitchType, defLU, onConfirm, onCl
 
   const buildResult = (): string | null => {
     if (outType === 'K') return 'K';
-    if (outType === 'KT') return seq.length ? `KT${seq[0]}` : null;
-    if (outType === 'KSG') return seq.length >= 1 ? `K${seq.join('-')}` : null;
+    if (outType === 'KT') return seq.length ? `ꓘ${seq[0]}T` : null;
+    if (outType === 'KSG') return seq.length >= 1 ? `ꓘ${seq.join('-')}` : null;
     return null;
   };
 

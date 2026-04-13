@@ -54,7 +54,7 @@ export function isOnBase(r: string | null): boolean {
   if (/^\/[789]$/.test(r)) return true; // 단타 /7 /8 /9
   if (/^>[789](-[789])?$/.test(r)) return true; // 2루타 >7 >7-8 >8-9 >9
   if (/^>>>[789]$/.test(r)) return true; // 3루타 >>>7 >>>8 >>>9
-  if (/^E\d$/.test(r)) return true; // 실책 진루 E6, E5 등
+  if (/^E[\d-]+$/.test(r)) return true; // 실책 진루 E6, E5, E6-3 등
   if (/^E번트\d$/.test(r)) return true; // 번트 실책 E번트6 등
   if (/^KE\d$/.test(r)) return true; // 낫아웃 수비실책 KE2 등
   if (/^ꓘ[\d-]+$/.test(r)) return true; // 다른주자수비 출루 ꓘ3, ꓘ2-3 등
@@ -478,6 +478,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
       if (cell.result) return state;
 
       cell.pitches = [...cell.pitches, pitchType as PitchType];
+      cell.eventLog = [...(cell.eventLog || []), { kind: 'pitch', pitch: pitchType as PitchType }];
 
       let { balls, strikes, pitchBalls, pitchStrikes } = state;
       switch (pitchType) {
@@ -881,6 +882,8 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
             // 주자가 아웃된 부분 수비 수열: 전체 seq에서 뒷 부분(나머지 아웃) 제거
             const partCount = digits.length - extraOuts + runnerOutIdx;
             const runOutSeq = digits.slice(0, partCount).join('-') || result;
+            // 포스플레이: 주자는 다음 베이스에서 아웃
+            const dpOutBase = base === '1B' ? '2B' : base === '2B' ? '3B' : 'HOME';
             for (let app = 0; app <= 5; app++) {
               const rk = cellKey(runner.inning, runner.order, app, runner.half || state.half);
               if (cells[rk]) {
@@ -889,7 +892,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
                   [rk]: {
                     ...cells[rk],
                     runOut: runOutSeq,
-                    runOutBase: base,
+                    runOutBase: dpOutBase,
                     runOutNum,
                     runOutInning: state.inning,
                     isDPRunner: true,
@@ -1020,6 +1023,21 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
           }
         }
 
+        // 도루 시 현재 타자 셀 eventLog에 runner_steal 항목 추가
+        if (action.steal && state.selCellKey && cells[state.selCellKey]) {
+          const sc = cells[state.selCellKey];
+          cells = {
+            ...cells,
+            [state.selCellKey]: {
+              ...sc,
+              eventLog: [
+                ...(sc.eventLog || []),
+                { kind: 'runner_steal' as const, runnerName: runner.name, dest },
+              ],
+            },
+          };
+        }
+
         return { ...state, runners, cells, awayR, homeR, awayER, homeER, history: saveHist(state) };
       }
 
@@ -1073,6 +1091,21 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
         }
       }
 
+      // 도루 시 현재 타자 셀 eventLog에 runner_steal 항목 추가
+      if (action.steal && state.selCellKey && cells[state.selCellKey]) {
+        const sc = cells[state.selCellKey];
+        cells = {
+          ...cells,
+          [state.selCellKey]: {
+            ...sc,
+            eventLog: [
+              ...(sc.eventLog || []),
+              { kind: 'runner_steal' as const, runnerName: runner.name, dest },
+            ],
+          },
+        };
+      }
+
       return { ...state, runners, cells, awayR, homeR, awayER, homeER, history: saveHist(state) };
     }
 
@@ -1082,6 +1115,27 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
       const runners: Runners = { ...state.runners };
       delete runners[action.base];
       const outs = state.outs + 1;
+
+      // 결과 코드에서 실제 아웃 위치 추론 (H=홈, C=3루, B=2루, A=1루, CS=다음베이스, 포스=다음베이스)
+      const inferOutBase = (result: string, startBase: Base): string => {
+        const last = result[result.length - 1];
+        if (last === 'H') return 'HOME';
+        if (last === 'C') return '3B';
+        if (last === 'B') return '2B';
+        if (last === 'A') return '1B';
+        if (result.startsWith('CS')) {
+          if (startBase === '1B') return '2B';
+          if (startBase === '2B') return '3B';
+          return 'HOME';
+        }
+        if (/^[\d-]+$/.test(result) || result === '●') {
+          if (startBase === '1B') return '2B';
+          if (startBase === '2B') return '3B';
+          return 'HOME';
+        }
+        return startBase;
+      };
+      const outBase = inferOutBase(action.result, action.base);
 
       let cells = { ...state.cells };
       if (runner) {
@@ -1096,7 +1150,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
               [rk]: {
                 ...cells[rk],
                 runOut: action.result,
-                runOutBase: action.base,
+                runOutBase: outBase,
                 runOutNum,
                 runOutInning: state.inning,
               },
@@ -1116,7 +1170,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
                 [rk]: {
                   ...cells[rk],
                   runOut: action.result,
-                  runOutBase: action.base,
+                  runOutBase: outBase,
                   runOutNum,
                   runOutInning: state.inning,
                 },
@@ -1138,7 +1192,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
             result: null,
             runnerNotes: [],
             runOut: action.result,
-            runOutBase: action.base,
+            runOutBase: outBase,
             runOutNum,
             runOutInning: state.inning,
           };
@@ -1171,6 +1225,21 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
             }
           }
         }
+      }
+
+      // 도루실패 시 현재 타자 셀 eventLog에 runner_cs 항목 추가
+      if (action.result.startsWith('CS') && runner && state.selCellKey && cells[state.selCellKey]) {
+        const sc = cells[state.selCellKey];
+        cells = {
+          ...cells,
+          [state.selCellKey]: {
+            ...sc,
+            eventLog: [
+              ...(sc.eventLog || []),
+              { kind: 'runner_cs' as const, runnerName: runner.name, runOut: action.result },
+            ],
+          },
+        };
       }
 
       if (outs === 3) {
@@ -1760,7 +1829,11 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
         result: null,
         runnerNotes: [],
       };
-      const updated = { ...cell, sideNotes: [...(cell.sideNotes || []), action.note] };
+      const updated = {
+        ...cell,
+        sideNotes: [...(cell.sideNotes || []), action.note],
+        eventLog: [...(cell.eventLog || []), { kind: 'note' as const, note: action.note }],
+      };
       return { ...state, cells: { ...state.cells, [ck]: updated } };
     }
 

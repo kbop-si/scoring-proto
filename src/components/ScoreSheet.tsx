@@ -91,7 +91,7 @@ function ScoreCell({
   const strokeDash = '3,3';
   const isKDef = /^ꓘ[\d-]+$/.test(result || '');
   const rcol = RESULT_COL[result || ''] || '#111';
-  const isWalk = result === 'B' || result === 'IB' || result === 'IB2';
+  const isWalk = result === 'B' || result === 'IB' || result === 'IB2' || result === 'HP';
   const lines = !isWalk
     ? isKDef
       ? [{ x1: 20, y1: 38, x2: 38, y2: 20, c: '#111', w: 2.5 }]
@@ -117,18 +117,18 @@ function ScoreCell({
     switch (base) {
       case '2B':
         return {
-          top: -10,
-          left: 27,
+          top: 5,
+          left: 60,
         };
       case '3B':
         return {
-          top: -10,
-          left: -7,
+          top: 2,
+          left: 23,
         };
       case 'HOME':
         return {
-          bottom: -5,
-          left: -5,
+          bottom: 10,
+          left: 30,
         };
       default:
         return {
@@ -788,72 +788,72 @@ function ScoreCell({
               })()}
           </svg>
 
-          {(['2B', '3B'] as const).map((base) => {
-            if (!noteAtBase[base]) return null;
-            return (
-              <div key={base} style={getNoteGroupStyle(base)}>
-                <span
-                  style={{
-                    fontSize: 11,
-                    color: '#111',
-                    fontWeight: 800,
-                    lineHeight: 1,
-                    whiteSpace: 'nowrap',
-                  }}
-                >
-                  {noteAtBase[base]}
-                </span>
-              </div>
-            );
-          })}
-
-          {homeNoteItems.length > 0 && (
-            <div
-              style={{ ...getNoteGroupStyle('HOME'), width: 'auto', gap: 1, flexWrap: 'nowrap' }}
-            >
-              {homeNoteItems.map((item, i) => {
-                if ('advLbl' in item) {
-                  return (
-                    <span
-                      key={i}
-                      style={{ fontSize: 10, color: '#111', fontWeight: 800, lineHeight: 1 }}
-                    >
-                      {item.advLbl}
-                    </span>
-                  );
-                }
-                // 동그라미 안에 한자
-                const ringColor = '#111';
-                return (
-                  <svg
-                    key={i}
-                    width="18"
-                    height="18"
-                    viewBox="0 0 18 18"
-                    style={{ display: 'block' }}
-                  >
-                    <circle cx="9" cy="9" r="8" fill="none" stroke={ringColor} strokeWidth="1.8" />
-                    <text
-                      x="9"
-                      y="13.5"
-                      textAnchor="middle"
-                      fontSize="12"
-                      fontWeight="900"
-                      fontFamily="serif"
-                      fill="#000"
-                      stroke="#000"
-                      strokeWidth="0.6"
-                      paintOrder="stroke"
-                    >
-                      {item.kan}
-                    </text>
-                  </svg>
-                );
-              })}
-            </div>
-          )}
         </div>
       </div>
+
+      {(['2B', '3B'] as const).map((base) => {
+        if (!noteAtBase[base]) return null;
+        return (
+          <div key={base} style={getNoteGroupStyle(base)}>
+            <span
+              style={{
+                fontSize: 11,
+                color: '#111',
+                fontWeight: 800,
+                lineHeight: 1,
+                whiteSpace: 'nowrap',
+              }}
+            >
+              {noteAtBase[base]}
+            </span>
+          </div>
+        );
+      })}
+
+      {homeNoteItems.length > 0 && (
+        <div
+          style={{ ...getNoteGroupStyle('HOME'), width: 'auto', gap: 1, flexWrap: 'nowrap' }}
+        >
+          {homeNoteItems.map((item, i) => {
+            if ('advLbl' in item) {
+              return (
+                <span
+                  key={i}
+                  style={{ fontSize: 10, color: '#111', fontWeight: 800, lineHeight: 1 }}
+                >
+                  {item.advLbl}
+                </span>
+              );
+            }
+            const ringColor = '#111';
+            return (
+              <svg
+                key={i}
+                width="18"
+                height="18"
+                viewBox="0 0 18 18"
+                style={{ display: 'block' }}
+              >
+                <circle cx="9" cy="9" r="8" fill="none" stroke={ringColor} strokeWidth="1.8" />
+                <text
+                  x="9"
+                  y="13.5"
+                  textAnchor="middle"
+                  fontSize="12"
+                  fontWeight="900"
+                  fontFamily="serif"
+                  fill="#000"
+                  stroke="#000"
+                  strokeWidth="0.6"
+                  paintOrder="stroke"
+                >
+                  {item.kan}
+                </text>
+              </svg>
+            );
+          })}
+        </div>
+      )}
 
       {result && !hitData && !runOut && (
         <div className="sc-result" style={{ color: rcol, fontSize: 20, fontWeight: 'bold' }}>

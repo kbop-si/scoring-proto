@@ -616,6 +616,7 @@ button {
   border-right: 1px solid var(--border);
   overflow: hidden;
   min-height: 0;
+  height: 100%;
 }
 .plp-head {
   flex-shrink: 0;
@@ -623,10 +624,11 @@ button {
 .plp-body {
   overflow-y: auto;
   flex: 1;
+  min-height: 0;
 }
 .plp-row {
   display: grid;
-  grid-template-columns: 30px 56px 1fr 36px 1fr 44px;
+  grid-template-columns: 28px 42px 2fr 36px 2fr 1.5fr;
   border-bottom: 1px solid #e2e8f0;
 }
 .plp-hdr {
@@ -642,6 +644,20 @@ button {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.plp-cell:last-child {
+  white-space: normal;
+  word-break: keep-all;
+  overflow: visible;
+  text-align: left;
+}
+/* 투수(3번째)·타자(5번째) 칸 — 긴 이름 줄바꿈 허용 */
+.plp-cell:nth-child(3),
+.plp-cell:nth-child(5) {
+  white-space: normal;
+  word-break: keep-all;
+  overflow: visible;
+  font-size: 11px;
 }
 .plp-hdr .plp-cell {
   border-right-color: rgba(255, 255, 255, 0.2);
