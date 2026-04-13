@@ -435,7 +435,7 @@ export default function PitcherLogPanel({ G }: { G: GameState }) {
                   }}
                 >
                   {isResult
-                    ? ((r as Extract<LogRow, { kind: 'result' }>).pitchNum || '')
+                    ? (r as Extract<LogRow, { kind: 'result' }>).pitchNum || ''
                     : (r as { pitchNum: string }).pitchNum}
                 </div>
                 <div className="plp-cell">{r.paStart ? r.batter : ''}</div>

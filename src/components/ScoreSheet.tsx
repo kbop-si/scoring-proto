@@ -787,7 +787,6 @@ function ScoreCell({
                 );
               })()}
           </svg>
-
         </div>
       </div>
 
@@ -811,9 +810,7 @@ function ScoreCell({
       })}
 
       {homeNoteItems.length > 0 && (
-        <div
-          style={{ ...getNoteGroupStyle('HOME'), width: 'auto', gap: 1, flexWrap: 'nowrap' }}
-        >
+        <div style={{ ...getNoteGroupStyle('HOME'), width: 'auto', gap: 1, flexWrap: 'nowrap' }}>
           {homeNoteItems.map((item, i) => {
             if ('advLbl' in item) {
               return (
@@ -827,13 +824,7 @@ function ScoreCell({
             }
             const ringColor = '#111';
             return (
-              <svg
-                key={i}
-                width="18"
-                height="18"
-                viewBox="0 0 18 18"
-                style={{ display: 'block' }}
-              >
+              <svg key={i} width="18" height="18" viewBox="0 0 18 18" style={{ display: 'block' }}>
                 <circle cx="9" cy="9" r="8" fill="none" stroke={ringColor} strokeWidth="1.8" />
                 <text
                   x="9"
