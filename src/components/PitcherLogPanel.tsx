@@ -148,13 +148,22 @@ type LogRow = {
 );
 
 function buildPitcherLog(G: GameState): LogRow[] {
+  // cells 삽입 순서 = 사용자 입력(생성) 시간 순
+  const insertSeq: Record<string, number> = {};
+  Object.keys(G.cells).forEach((k, i) => {
+    insertSeq[k] = i;
+  });
+  const seqOf = (c: { half: string; inning: number; order: number; appearance: number }) => {
+    const k = `${c.half}-${c.inning}-${c.order}-${c.appearance}`;
+    return insertSeq[k] ?? 0;
+  };
   const cells = Object.values(G.cells)
     .filter((c) => c.pitches.length > 0 || c.result || (c.eventLog && c.eventLog.length > 0))
+    // 이닝 → half(초·말) → cells 삽입 순 (타자 번호로 솔트하지 않음)
     .sort((a, b) => {
       if (a.inning !== b.inning) return a.inning - b.inning;
       if (a.half !== b.half) return a.half === 'top' ? -1 : 1;
-      if (a.order !== b.order) return a.order - b.order;
-      return a.appearance - b.appearance;
+      return seqOf(a) - seqOf(b);
     });
 
   const topInit = G.homeLineup.find((p) => p.pos === 1)?.name || '—';

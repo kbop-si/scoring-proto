@@ -859,19 +859,30 @@ export default function GameScreen({ setup, onEnd }: Props) {
     );
   }, [G, dispatch, showToast]);
 
+  const resetChainUI = useCallback(() => {
+    setChainBases(new Set());
+    setChainPendingBase(null);
+    setChainCausedBy(null);
+    setChainTransit(null);
+    setPendingSkipParams(null);
+    setChainBatterOpen(false);
+  }, []);
+
   const handleUndo = useCallback(() => {
     if (!G.history.length) {
       showToast('되돌릴 내용 없음');
       return;
     }
     dispatch({ type: 'UNDO' });
+    resetChainUI();
     setUI((p) => ({ ...p, selRunnerBase: null }));
     showToast('Undo 완료');
-  }, [G.history.length, dispatch, showToast]);
+  }, [G.history.length, dispatch, showToast, resetChainUI]);
 
   const handleClear = useCallback(() => {
     dispatch({ type: 'CLEAR_CELL' });
-  }, [dispatch]);
+    resetChainUI();
+  }, [dispatch, resetChainUI]);
 
   const handleOverflow = useCallback(() => {
     dispatch({ type: 'ADD_OVERFLOW' });
