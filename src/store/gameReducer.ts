@@ -970,8 +970,11 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
       const { result, dp: isDP, tp: isTP } = action;
       const key = state.selCellKey;
       let cells = ensureCell(state.cells, key);
-      // 현재 타자의 chronological 아웃 번호 = 누적 아웃 + 1 (DP/TP 미반영, 본인 카운트만)
-      const myOutNum = Math.min(state.outs + 1, 3);
+      // 현재 타자의 chronological 아웃 번호
+      // 병살(DP): 주자가 먼저 아웃 → 타자는 +2번째 아웃
+      // 삼중살(TP): 주자 2명 먼저 → 타자는 +3번째
+      const batterOutOffset = isTP ? 3 : isDP ? 2 : 1;
+      const myOutNum = Math.min(state.outs + batterOutOffset, 3);
       cells = {
         ...cells,
         [key]: {

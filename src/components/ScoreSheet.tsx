@@ -62,7 +62,9 @@ function ScoreCell({
   const SUP_DIGITS = ['¹', '²', '³', '⁴', '⁵', '⁶', '⁷', '⁸', '⁹'];
   // 한자+화살표+advCode 모두 이전 루 위치에 표시 (화살표로 간 방향 표시)
   const noteAtBase: Record<string, React.ReactNode> = {};
-  type HomeNoteItem = { kan: string; rbi?: boolean; arrow?: string } | { advLbl: React.ReactNode };
+  type HomeNoteItem =
+    | { kan: string; rbi?: boolean; arrow?: string; filled?: boolean }
+    | { advLbl: React.ReactNode };
   const homeNoteItems: HomeNoteItem[] = [];
   const CHAIN_ARROW: Record<string, string> = { '2B': '↖', '3B': '↙', HOME: '↘' };
   if (result === 'GHR') noteAtBase['2B'] = 'GH'; // 구형 데이터
@@ -211,10 +213,12 @@ function ScoreCell({
     }
   }
 
-  // HOME 멀티스킵 재배치: HOME 한자 항목을 제거하고, 첫 중간 베이스에 한자 표기
+  // HOME 멀티스킵: 한자를 첫 중간 베이스(curIdx+1)로 이동
+  // - 2B → HOME (2 base): 한자 at 3B
+  // - 1B → HOME (3 base): 한자 at 2B
+  // HOME homeNoteItems의 한자 항목 제거 (이동되었으므로)
   if (homeSkipKanjiTarget && homeSkipCausedBy) {
     const targetKan = KAN[homeSkipCausedBy - 1] || String(homeSkipCausedBy);
-    // homeNoteItems에서 동일 한자 1개 제거 (advLbl 항목은 유지)
     for (let i = 0; i < homeNoteItems.length; i++) {
       const it = homeNoteItems[i];
       if ('kan' in it && it.kan === targetKan) {
@@ -222,9 +226,32 @@ function ScoreCell({
         break;
       }
     }
-    // 중간 베이스에 한자 (없을 때만)
     if (!noteAtBase[homeSkipKanjiTarget]) {
-      noteAtBase[homeSkipKanjiTarget] = `(${targetKan})`;
+      // 득점했으므로 ○ 안에 한자 (homeNoteItems과 동일한 스타일)
+      noteAtBase[homeSkipKanjiTarget] = (
+        <svg
+          width="18"
+          height="18"
+          viewBox="0 0 18 18"
+          style={{ display: 'inline-block', verticalAlign: 'middle' }}
+        >
+          <circle cx="9" cy="9" r="8" fill="none" stroke="#111" strokeWidth="1.8" />
+          <text
+            x="9"
+            y="13.5"
+            textAnchor="middle"
+            fontSize="12"
+            fontWeight="900"
+            fontFamily="serif"
+            fill="#000"
+            stroke="#000"
+            strokeWidth="0.6"
+            paintOrder="stroke"
+          >
+            {targetKan}
+          </text>
+        </svg>
+      );
     }
   }
 
@@ -1490,6 +1517,12 @@ export default function ScoreSheet({ G, onSelCell }: Props) {
 
   // 종료선 별도 플래그 (outMap 값은 셀의 chronological 아웃번호 보존)
   const inningEndLine: Record<string, boolean> = {};
+  // cellOutNum=3 셀(병살/삼중살로 batter가 3아웃 종결)에 종료선 표시
+  sorted.forEach((c) => {
+    if (c.cellOutNum === 3) {
+      inningEndLine[cellKey(c.inning, c.order, c.appearance, half)] = true;
+    }
+  });
   // 1차 패스: 이닝별 이미 점유된 out 번호 수집 (runOutNum + cellOutNum)
   const takenByInn: Record<number, Set<number>> = {};
   sorted.forEach((c) => {
