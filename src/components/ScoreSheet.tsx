@@ -65,9 +65,6 @@ function ScoreCell({
   type HomeNoteItem = { kan: string; rbi?: boolean; arrow?: string } | { advLbl: React.ReactNode };
   const homeNoteItems: HomeNoteItem[] = [];
   const CHAIN_ARROW: Record<string, string> = { '2B': '↖', '3B': '↙', HOME: '↘' };
-  // 도착 루의 이전 루 (표시 위치)
-  const PREV_BASE: Record<string, string> = { '2B': '1B', '3B': '2B', HOME: '3B' };
-
   if (result === 'GHR') noteAtBase['2B'] = 'GH'; // 구형 데이터
 
   // 연결동작 화살표는 마지막(가장 멀리 진루한) chain note 1개에만 표시
@@ -234,7 +231,6 @@ function ScoreCell({
   const isDP = cell?.isDoublePlay || false;
   const isDPRunner = cell?.isDPRunner || false;
   const hasSteal = (cell?.eventLog || []).some((e) => e.kind === 'runner_steal');
-  const hasPickoff = (cell?.runOut || '').startsWith('X');
   const fill = onBase ? '#eee' : 'none';
   const strokeC = '#888';
   const strokeW = isSel ? '1.5' : '0.8';
@@ -242,8 +238,6 @@ function ScoreCell({
   const rcol = RESULT_COL[result || ''] || '#111';
   const isWalk = result === 'B' || result === 'IB' || result === 'IB2' || result === 'HP';
   const lines = !isWalk ? BASE_LINES[result || ''] || [] : [];
-  // 연결동작 화살표용: 볼넷/사구도 1B 진루(length=1)로 계산
-  const baseLinesCount = isWalk ? 1 : (BASE_LINES[result || ''] || []).length;
   const scoredCircle = scored || result === 'HR' || result === 'GHR';
   const earnedColor =
     result === 'HR' || result === 'GHR'
@@ -257,49 +251,6 @@ function ScoreCell({
   const cls = ['sc', isSel ? 'sel' : '', isCur ? 'cur-bat' : ''].filter(Boolean).join(' ');
 
   const DIAMOND_SIZE = 48;
-  const NOTE_GROUP_WIDTH = 28;
-  const NOTE_GROUP_HEIGHT = 18;
-
-  const getBasePosition = (base: string) => {
-    switch (base) {
-      case '2B':
-        return {
-          top: 0,
-          right: 2,
-        };
-      case '3B':
-        return {
-          top: 0,
-          left: 22,
-        };
-      case 'HOME':
-        return {
-          bottom: 2,
-          left: 22,
-        };
-      case '1B':
-        return {
-          bottom: 2,
-          right: 2,
-        };
-      default:
-        return {
-          top: 14,
-          left: 14,
-        };
-    }
-  };
-
-  const getNoteGroupStyle = (base: string) => ({
-    position: 'absolute' as const,
-    width: NOTE_GROUP_WIDTH,
-    height: NOTE_GROUP_HEIGHT,
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    pointerEvents: 'none' as const,
-    ...getBasePosition(base),
-  });
 
   const pitchMarkStyle: React.CSSProperties = {
     display: 'inline-flex',

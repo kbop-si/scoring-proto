@@ -426,7 +426,7 @@ export default function GameScreen({ setup, onEnd }: Props) {
       setChainPendingBase(null);
 
       if (chainTransit) {
-        const { runner, atBase } = chainTransit;
+        const { runner } = chainTransit;
         // 목적지에 기존 주자 있으면 → 기존 주자 먼저 이동하도록 대기
         const destHasRunner = toBase !== 'HOME' && !!G.runners[toBase as Base];
         if (destHasRunner) {
