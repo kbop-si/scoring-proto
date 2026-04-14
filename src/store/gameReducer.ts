@@ -271,6 +271,12 @@ function nextBatterState(s: GameState): Partial<GameState> {
 function ensureCell(cells: Record<string, CellData>, key: string): Record<string, CellData> {
   if (cells[key]) return cells;
   const [shf, si, so, sa] = parseKey(key);
+  // 셀 생성 순(=PA 발생 순)으로 단조 증가하는 paSeq 부여 → 타순이 아닌 시간 순으로 정렬 가능
+  let maxSeq = 0;
+  for (const c of Object.values(cells)) {
+    const s = c.paSeq ?? 0;
+    if (s > maxSeq) maxSeq = s;
+  }
   return {
     ...cells,
     [key]: {
@@ -281,6 +287,7 @@ function ensureCell(cells: Record<string, CellData>, key: string): Record<string
       pitches: [],
       result: null,
       runnerNotes: [],
+      paSeq: maxSeq + 1,
     },
   };
 }
@@ -534,6 +541,11 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
       // Auto-strikeout
       if (strikes >= 3) {
         cell.result = pitchType === 'BF' ? 'K3B' : 'K';
+        cell.cellOutNum = Math.min(state.outs + 1, 3);
+        cell.eventLog = [
+          ...(cell.eventLog || []),
+          { kind: 'result' as const, result: cell.result },
+        ];
         const outs = state.outs + 1;
         cells = { ...cells, [key]: cell };
         const next = nextBatterState({ ...state, outs });
@@ -670,7 +682,11 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
         cellUpdate = { result, ...(ballType ? { ballType } : {}) };
       }
 
-      const cell = { ...cells[key], ...cellUpdate };
+      const cell = {
+        ...cells[key],
+        ...cellUpdate,
+        eventLog: [...(cells[key].eventLog || []), { kind: 'result' as const, result }],
+      };
       cells = { ...cells, [key]: cell };
 
       const lu = state.half === 'top' ? state.awayLineup : state.homeLineup;
@@ -947,11 +963,15 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
       const { result, dp: isDP, tp: isTP } = action;
       const key = state.selCellKey;
       let cells = ensureCell(state.cells, key);
+      // 현재 타자의 chronological 아웃 번호 = 누적 아웃 + 1 (DP/TP 미반영, 본인 카운트만)
+      const myOutNum = Math.min(state.outs + 1, 3);
       cells = {
         ...cells,
         [key]: {
           ...cells[key],
           result,
+          cellOutNum: myOutNum,
+          eventLog: [...(cells[key].eventLog || []), { kind: 'result' as const, result }],
           ...(isDP ? { isDoublePlay: true } : {}),
           ...(isTP ? { isTriplePlay: true } : {}),
         },
@@ -1138,25 +1158,46 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
 
         // 도루/폭투/포일/보크 시 현재 타자 셀 eventLog에 '/' 항목 추가
         const wpCodes = ['W', '(W)', 'P', '(P)', 'BK', '(BK)', '✓BK', '✓(BK)'];
-        if ((action.steal || wpCodes.includes(action.advCode || '')) && state.selCellKey) {
+        if (state.selCellKey) {
           cells = ensureCell(cells, state.selCellKey);
           const sc = cells[state.selCellKey];
-          const isDouble = action.advCode === 'SD' || action.advCode === '(SD)';
-          cells = {
-            ...cells,
-            [state.selCellKey]: {
-              ...sc,
-              eventLog: [
-                ...(sc.eventLog || []),
-                {
-                  kind: 'runner_steal' as const,
-                  runnerName: runner.name,
-                  dest,
-                  double: isDouble || undefined,
-                },
-              ],
-            },
-          };
+          if (action.steal || wpCodes.includes(action.advCode || '')) {
+            const isDouble = action.advCode === 'SD' || action.advCode === '(SD)';
+            cells = {
+              ...cells,
+              [state.selCellKey]: {
+                ...sc,
+                eventLog: [
+                  ...(sc.eventLog || []),
+                  {
+                    kind: 'runner_steal' as const,
+                    runnerName: runner.name,
+                    dest,
+                    double: isDouble || undefined,
+                    advCode: action.advCode,
+                  },
+                ],
+              },
+            };
+          } else {
+            // 일반 진루(타자도움·실책 등) — FIFO 보존을 위해 현재 타자 셀 eventLog에 추가
+            cells = {
+              ...cells,
+              [state.selCellKey]: {
+                ...sc,
+                eventLog: [
+                  ...(sc.eventLog || []),
+                  {
+                    kind: 'runner_adv' as const,
+                    runnerName: runner.name,
+                    dest,
+                    advCode: action.advCode,
+                    rbi: action.rbi,
+                  },
+                ],
+              },
+            };
+          }
         }
 
         return { ...state, runners, cells, awayR, homeR, awayER, homeER, history: saveHist(state) };
@@ -1234,27 +1275,47 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
         }
       }
 
-      // 도루/폭투/포일/보크 시 현재 타자 셀 eventLog에 '/' 항목 추가
+      // 도루/폭투/포일/보크 또는 일반 진루 — FIFO 보존을 위해 현재 타자 셀 eventLog에 추가
       const wpCodes2 = ['W', '(W)', 'P', '(P)', 'BK', '(BK)', '✓BK', '✓(BK)'];
-      if ((action.steal || wpCodes2.includes(action.advCode || '')) && state.selCellKey) {
+      if (state.selCellKey) {
         cells = ensureCell(cells, state.selCellKey);
         const sc = cells[state.selCellKey];
-        const isDouble = action.advCode === 'SD' || action.advCode === '(SD)';
-        cells = {
-          ...cells,
-          [state.selCellKey]: {
-            ...sc,
-            eventLog: [
-              ...(sc.eventLog || []),
-              {
-                kind: 'runner_steal' as const,
-                runnerName: runner.name,
-                dest,
-                double: isDouble || undefined,
-              },
-            ],
-          },
-        };
+        if (action.steal || wpCodes2.includes(action.advCode || '')) {
+          const isDouble = action.advCode === 'SD' || action.advCode === '(SD)';
+          cells = {
+            ...cells,
+            [state.selCellKey]: {
+              ...sc,
+              eventLog: [
+                ...(sc.eventLog || []),
+                {
+                  kind: 'runner_steal' as const,
+                  runnerName: runner.name,
+                  dest,
+                  double: isDouble || undefined,
+                  advCode: action.advCode,
+                },
+              ],
+            },
+          };
+        } else {
+          cells = {
+            ...cells,
+            [state.selCellKey]: {
+              ...sc,
+              eventLog: [
+                ...(sc.eventLog || []),
+                {
+                  kind: 'runner_adv' as const,
+                  runnerName: runner.name,
+                  dest,
+                  advCode: action.advCode,
+                  rbi: action.rbi,
+                },
+              ],
+            },
+          };
+        }
       }
 
       return { ...state, runners, cells, awayR, homeR, awayER, homeER, history: saveHist(state) };
@@ -1378,12 +1439,8 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
         }
       }
 
-      // 도루실패/견제사 시 현재 타자 셀 eventLog에 runner_cs 항목 추가
-      if (
-        (action.result.startsWith('CS') || action.result.startsWith('X')) &&
-        runner &&
-        state.selCellKey
-      ) {
+      // 모든 주자 아웃을 현재 타자 셀 eventLog에 runner_cs 항목으로 기록 (FIFO 보존)
+      if (runner && state.selCellKey) {
         cells = ensureCell(cells, state.selCellKey);
         const sc = cells[state.selCellKey];
         cells = {
@@ -1509,6 +1566,26 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
             }
           }
         }
+      }
+
+      // 현재 타자 셀 eventLog에 기록 (FIFO 보존)
+      if (state.selCellKey && cells[state.selCellKey]) {
+        cells = {
+          ...cells,
+          [state.selCellKey]: {
+            ...cells[state.selCellKey],
+            eventLog: [
+              ...(cells[state.selCellKey].eventLog || []),
+              {
+                kind: 'runner_adv' as const,
+                runnerName: runner.name,
+                dest: toBase,
+                advCode,
+                rbi,
+              },
+            ],
+          },
+        };
       }
 
       const next = nextBatterState({ ...state, runners });
@@ -1662,6 +1739,28 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
             }
           }
         }
+      }
+
+      // 현재 타자 셀 eventLog에 기록 (FIFO 보존)
+      if (state.selCellKey) {
+        cells = ensureCell(cells, state.selCellKey);
+        const sc = cells[state.selCellKey];
+        cells = {
+          ...cells,
+          [state.selCellKey]: {
+            ...sc,
+            eventLog: [
+              ...(sc.eventLog || []),
+              {
+                kind: 'runner_adv' as const,
+                runnerName: runner.name,
+                dest: toBase,
+                advCode,
+                rbi,
+              },
+            ],
+          },
+        };
       }
 
       return { ...state, runners, cells, awayR, homeR, awayER, homeER, history: saveHist(state) };
@@ -1938,6 +2037,10 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
       cell.pitches = [...cell.pitches, pitchType];
       cell.eventLog = [...(cell.eventLog || []), { kind: 'pitch', pitch: pitchType }];
       cell.result = result;
+      if (isOut(result) || result === 'K') {
+        cell.cellOutNum = Math.min(state.outs + 1, 3);
+        cell.eventLog = [...(cell.eventLog || []), { kind: 'result' as const, result }];
+      }
       cells = { ...cells, [key]: cell };
 
       const pitcher = { ...state.pitcher, pitchCount: (state.pitcher.pitchCount || 0) + 1 };

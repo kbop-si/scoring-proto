@@ -1440,9 +1440,19 @@ export default function ScoreSheet({ G, onSelCell }: Props) {
 
   const outMap: Record<string, number> = {};
   const outByInn: Record<number, number> = {};
+  // cells 삽입 순서 = chronological (가장 신뢰할 수 있는 시간 순)
+  const insertSeq: Record<string, number> = {};
+  Object.keys(G.cells).forEach((k, i) => {
+    insertSeq[k] = i;
+  });
+  const seqOf = (c: CellData) => {
+    const k = cellKey(c.inning, c.order, c.appearance, c.half);
+    return insertSeq[k] ?? 0;
+  };
   const sorted = Object.values(G.cells)
     .filter((c) => c.half === half)
-    .sort((a, b) => a.inning - b.inning || a.order - b.order || a.appearance - b.appearance);
+    // 이닝 → 삽입 순(=시간 순) — 타순으로 폴백하지 않음
+    .sort((a, b) => a.inning - b.inning || seqOf(a) - seqOf(b));
 
   // 이닝이 runOutNum=3 (견제사·도루실패·DP 마지막 주자)으로 끝난 경우 표시
   const inningEndedByRunOut: Record<number, string> = {};
@@ -1454,23 +1464,37 @@ export default function ScoreSheet({ G, onSelCell }: Props) {
     }
   });
 
+  // 1차 패스: 이닝별 이미 점유된 out 번호 수집 (runOutNum + cellOutNum)
+  const takenByInn: Record<number, Set<number>> = {};
   sorted.forEach((c) => {
-    if (c.isDPRunner && c.runOutNum && c.runOutInning) {
-      if (!outByInn[c.runOutInning]) outByInn[c.runOutInning] = 0;
-      outByInn[c.runOutInning] = Math.max(outByInn[c.runOutInning], c.runOutNum);
+    if (c.runOutNum && c.runOutInning) {
+      (takenByInn[c.runOutInning] ||= new Set()).add(c.runOutNum);
     }
-    // 견제사/도루실패 아웃도 outByInn에 반영
-    if (!c.isDPRunner && c.runOutNum && c.runOutInning) {
-      if (!outByInn[c.runOutInning]) outByInn[c.runOutInning] = 0;
-      outByInn[c.runOutInning] = Math.max(outByInn[c.runOutInning], c.runOutNum);
+    if (c.cellOutNum && c.inning) {
+      (takenByInn[c.inning] ||= new Set()).add(c.cellOutNum);
     }
+  });
+
+  // 2차 패스: chronological 순(sorted)으로 isOut 셀 처리, cellOutNum 없으면 takenByInn에 없는 다음 슬롯 부여
+  const usedByInn: Record<number, Set<number>> = {};
+  sorted.forEach((c) => {
+    if (!isOut(c.result)) return;
     if (!outByInn[c.inning]) outByInn[c.inning] = 0;
-    if (isOut(c.result)) {
-      outByInn[c.inning]++;
-      // runOut으로 이닝이 끝났으면 isOut 셀은 최대 2까지만 (3은 runOut 셀이 가져감)
-      const cap = inningEndedByRunOut[c.inning] ? 2 : 3;
-      outMap[cellKey(c.inning, c.order, c.appearance, half)] = Math.min(outByInn[c.inning], cap);
+    outByInn[c.inning]++;
+    const cap = inningEndedByRunOut[c.inning] ? 2 : 3;
+    let num: number;
+    if (c.cellOutNum != null) {
+      num = Math.min(c.cellOutNum, cap);
+    } else {
+      // 점유되지 않은 1·2·3 중 가장 작은 번호 부여
+      const taken = takenByInn[c.inning] || new Set();
+      const used = (usedByInn[c.inning] ||= new Set());
+      num = 1;
+      while (num <= 3 && (taken.has(num) || used.has(num))) num++;
+      num = Math.min(num, cap);
+      used.add(num);
     }
+    outMap[cellKey(c.inning, c.order, c.appearance, half)] = num;
   });
 
   // runOut으로 이닝이 끝난 경우 종료선은 그 이닝의 마지막 타자 셀에 표시

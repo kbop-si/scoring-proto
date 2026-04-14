@@ -626,10 +626,12 @@ button {
   flex: 1;
   min-height: 0;
 }
+/* no | 이닝 | 투수 | 투구 | 타자 | 결과(가변) — 모든 row가 동일 컬럼/높이 */
 .plp-row {
   display: grid;
-  grid-template-columns: 28px 42px 2fr 36px 2fr 1.5fr;
+  grid-template-columns: 28px 42px 70px 36px 70px minmax(60px, 1fr);
   border-bottom: 1px solid #e2e8f0;
+  height: 24px;
 }
 .plp-hdr {
   background: #102c57 !important;
@@ -637,26 +639,28 @@ button {
   font-weight: 700;
 }
 .plp-cell {
-  padding: 6px 4px;
+  padding: 0 4px;
   font-size: 12px;
   text-align: center;
   border-right: 1px solid #e2e8f0;
+  white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  white-space: nowrap;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
 }
+/* 결과 칸만 글자 수에 따라 가로로 확장 (수직은 row height로 고정) */
 .plp-cell:last-child {
-  white-space: normal;
-  word-break: keep-all;
-  overflow: visible;
   text-align: left;
+  justify-content: flex-start;
+  overflow: visible;
+  text-overflow: clip;
+  border-right: none;
 }
-/* 투수(3번째)·타자(5번째) 칸 — 긴 이름 줄바꿈 허용 */
 .plp-cell:nth-child(3),
 .plp-cell:nth-child(5) {
-  white-space: normal;
-  word-break: keep-all;
-  overflow: visible;
   font-size: 11px;
 }
 .plp-hdr .plp-cell {

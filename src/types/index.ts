@@ -45,6 +45,8 @@ export interface CellData {
   inning: number;
   order: number;
   appearance: number;
+  paSeq?: number; // PA 발생 순 (chronological, 셀 생성 시 할당)
+  cellOutNum?: number; // 타자가 아웃당한 시점의 chronological 아웃 번호 (1·2·3)
   pitches: PitchType[];
   result: string | null;
   runnerNotes: RunnerNote[];
@@ -72,8 +74,10 @@ export interface CellData {
 export type CellEventEntry =
   | { kind: 'pitch'; pitch: PitchType }
   | { kind: 'note'; note: string }
-  | { kind: 'runner_steal'; runnerName: string; dest: string; double?: boolean }
-  | { kind: 'runner_cs'; runnerName: string; runOut: string; base: string };
+  | { kind: 'runner_steal'; runnerName: string; dest: string; double?: boolean; advCode?: string }
+  | { kind: 'runner_cs'; runnerName: string; runOut: string; base: string }
+  | { kind: 'result'; result: string }
+  | { kind: 'runner_adv'; runnerName: string; dest: string; advCode?: string; rbi?: boolean };
 
 export interface PitcherData {
   name: string;

@@ -149,7 +149,7 @@ type LogRow = {
 
 function buildPitcherLog(G: GameState): LogRow[] {
   const cells = Object.values(G.cells)
-    .filter((c) => c.pitches.length > 0 || c.result)
+    .filter((c) => c.pitches.length > 0 || c.result || (c.eventLog && c.eventLog.length > 0))
     .sort((a, b) => {
       if (a.inning !== b.inning) return a.inning - b.inning;
       if (a.half !== b.half) return a.half === 'top' ? -1 : 1;
@@ -212,10 +212,40 @@ function buildPitcherLog(G: GameState): LogRow[] {
     const base = { no: 0, inningKey, inning: inningLabel, pitcher, batter: batterName };
 
     // ── 투구 · 이벤트 행 (eventLog 있으면 FIFO 순서, 없으면 pitches 폴백) ──
+    // 단, 같은 셀 내 연속된 runner_adv/steal 그룹에서 타자 본인의 진루가 다른 주자 진루보다
+    // 먼저 표시되도록 부분 정렬 (시스템이 막힘 해소를 위해 타 주자를 먼저 이동시키더라도
+    // 사용자가 의도한 순서는 "타자 본인 → 다른 주자"이므로 표시상 우선)
     let batterShown = false; // 첫 투구/결과 행에만 타자명 표시
     if (cell.eventLog && cell.eventLog.length > 0) {
+      const eventLog = (() => {
+        const log = [...cell.eventLog];
+        const isRunnerAdv = (e: (typeof log)[number]) =>
+          e.kind === 'runner_adv' || e.kind === 'runner_steal' || e.kind === 'runner_cs';
+        const isBatterSelf = (e: (typeof log)[number]) =>
+          (e.kind === 'runner_adv' || e.kind === 'runner_steal' || e.kind === 'runner_cs') &&
+          (e as { runnerName?: string }).runnerName === batterName;
+        // 연속된 runner 그룹 안에서 batter-self를 앞으로 stable sort
+        let i = 0;
+        while (i < log.length) {
+          if (!isRunnerAdv(log[i])) {
+            i++;
+            continue;
+          }
+          let j = i;
+          while (j < log.length && isRunnerAdv(log[j])) j++;
+          const group = log.slice(i, j);
+          group.sort((a, b) => {
+            const ab = isBatterSelf(a) ? 0 : 1;
+            const bb = isBatterSelf(b) ? 0 : 1;
+            return ab - bb; // batter-self 먼저
+          });
+          for (let k = 0; k < group.length; k++) log[i + k] = group[k];
+          i = j;
+        }
+        return log;
+      })();
       let pitchSeq = 0;
-      cell.eventLog.forEach((entry) => {
+      eventLog.forEach((entry) => {
         if (entry.kind === 'pitch') {
           pitchSeq++;
           noMap[pitcher] = (noMap[pitcher] ?? 0) + 1;
@@ -231,16 +261,64 @@ function buildPitcherLog(G: GameState): LogRow[] {
             color: PITCH_COLOR[entry.pitch] ?? '#374151',
           });
         } else if (entry.kind === 'runner_steal') {
-          const label = `${entry.runnerName} 도루`;
+          const ac = (entry as { advCode?: string }).advCode;
+          const causeLbl =
+            ac === 'W' || ac === '(W)'
+              ? '폭투'
+              : ac === 'P' || ac === '(P)'
+                ? '포일'
+                : ac === 'BK' || ac === '(BK)' || ac === '✓BK' || ac === '✓(BK)'
+                  ? '보크'
+                  : '도루';
+          const label = `${entry.runnerName} ${causeLbl}`;
           rows.push({ ...base, no: noMap[pitcher], paStart: false, kind: 'runner', label });
         } else if (entry.kind === 'runner_cs') {
-          const isPickoff = (entry.runOut || '').startsWith('X');
+          const ro = entry.runOut || '';
+          const causeLbl = ro.startsWith('X')
+            ? '견제사'
+            : ro.startsWith('CS')
+              ? '도루아웃'
+              : `주자아웃(${ro})`;
           rows.push({
             ...base,
             no: noMap[pitcher],
             paStart: false,
             kind: 'runner',
-            label: `${entry.runnerName} ${isPickoff ? '견제사' : '도루아웃'}`,
+            label: `${entry.runnerName} ${causeLbl}`,
+          });
+        } else if (entry.kind === 'result') {
+          noMap[pitcher] = (noMap[pitcher] ?? 0) + 1;
+          const resultIsFirst = !batterShown;
+          batterShown = true;
+          rows.push({
+            ...base,
+            no: noMap[pitcher],
+            paStart: resultIsFirst,
+            kind: 'result',
+            result: entry.result,
+            ballType: cell.ballType,
+            isDP: cell.isDoublePlay,
+            isTP: cell.isTriplePlay,
+            hitData: cell.hitData,
+            pitchNum: resultIsFirst ? '1구' : '',
+          });
+        } else if (entry.kind === 'runner_adv') {
+          const ac = entry.advCode;
+          const reason = advLabel(ac);
+          let label: string;
+          if (entry.dest === 'HOME') {
+            label = reason
+              ? `${reason}${entry.rbi ? '(타점)' : ''}`
+              : `${entry.rbi ? '타점 ' : ''}득점`;
+          } else {
+            label = reason || `→${baseChar(entry.dest)}`;
+          }
+          rows.push({
+            ...base,
+            no: noMap[pitcher],
+            paStart: false,
+            kind: 'runner',
+            label: `${entry.runnerName} ${label}`,
           });
         } else {
           // 이벤트 (투수판이탈·마운드방문 등) — 타자명 표시 안 함
@@ -271,8 +349,13 @@ function buildPitcherLog(G: GameState): LogRow[] {
       }
     }
 
-    // ── 결과 행 ────────────────────────────────────────────────────────────
-    if (cell.result) {
+    // ── 결과 행 ─────────────────────────────────────────────────────────────
+    // eventLog에 result/runner_adv/runner_steal entry가 이미 있으면 (신형) 폴백 처리 전부 건너뛰기
+    const hasResultInLog = (cell.eventLog || []).some((e) => e.kind === 'result');
+    const hasRunnerEvtInLog = (cell.eventLog || []).some(
+      (e) => e.kind === 'runner_adv' || e.kind === 'runner_steal'
+    );
+    if (cell.result && !hasResultInLog) {
       noMap[pitcher] = (noMap[pitcher] ?? 0) + 1;
 
       const resultIsFirst = !batterShown;
@@ -305,16 +388,18 @@ function buildPitcherLog(G: GameState): LogRow[] {
         rows.push({ ...base, no: noMap[pitcher], paStart: false, kind: 'runner', label });
       }
 
-      // 이 타자의 행동으로 진루한 다른 주자들 (FIFO 순서, 결과 행 다음에 쌓음)
-      const causedKey = `${cell.inning}-${cell.half}-${cell.order}`;
-      for (const cn of notesByCausedBy[causedKey] || []) {
-        rows.push({
-          ...base,
-          no: noMap[pitcher],
-          paStart: false,
-          kind: 'runner',
-          label: cn.label,
-        });
+      // 이 타자의 행동으로 진루한 다른 주자들 (구형 데이터 폴백 — 신형은 eventLog runner_adv로 처리됨)
+      if (!hasRunnerEvtInLog) {
+        const causedKey = `${cell.inning}-${cell.half}-${cell.order}`;
+        for (const cn of notesByCausedBy[causedKey] || []) {
+          rows.push({
+            ...base,
+            no: noMap[pitcher],
+            paStart: false,
+            kind: 'runner',
+            label: cn.label,
+          });
+        }
       }
       if (
         cell.runOut &&
