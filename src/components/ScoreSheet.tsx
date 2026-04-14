@@ -1048,21 +1048,36 @@ function ScoreCell({
 
                 return (
                   <g>
-                    {hitData.ballType === '뜬' && (
-                      <path
-                        /* x축 중심을 zx + 4에서 zx + 6으로 더 오른쪽으로 이동 */
-                        d={`M ${zx + 5 - 2.9},${zy + (dot?.dy ?? 0)} Q ${zx + 6},${zy + (dot?.dy ?? 0) - 6} ${zx + 6 + 2.9},${zy + (dot?.dy ?? 0)}`}
-                        stroke={zoneColor}
-                        strokeWidth="1.2"
-                        fill="none"
-                        strokeLinecap="round"
-                      />
-                    )}
+                    {hitData.ballType === '뜬' &&
+                      (() => {
+                        // 왼쪽·오른쪽 4 위로, ↘ 추가 3, ↙ 추가 3, ↖ 2 내림, ↓(row=2,col=1) 10 위로
+                        const isSide = hitData.dirCol === 0 || hitData.dirCol === 2;
+                        const isDownRight = hitData.dirRow === 2 && hitData.dirCol === 2;
+                        const isDownLeft = hitData.dirRow === 2 && hitData.dirCol === 0;
+                        const isUpLeft = hitData.dirRow === 0 && hitData.dirCol === 0;
+                        const isDown = hitData.dirRow === 2 && hitData.dirCol === 1;
+                        const upOffset =
+                          (isSide ? 4 : 0) +
+                          (isDownRight ? 3 : 0) +
+                          (isDownLeft ? 3 : 0) -
+                          (isUpLeft ? 2 : 0) +
+                          (isDown ? 10 : 0);
+                        const baseY = (dot?.dy ?? 0) - upOffset;
+                        return (
+                          <path
+                            d={`M ${zx + 5 - 2.9},${zy + baseY} Q ${zx + 6},${zy + baseY - 6} ${zx + 6 + 2.9},${zy + baseY}`}
+                            stroke={zoneColor}
+                            strokeWidth="1.2"
+                            fill="none"
+                            strokeLinecap="round"
+                          />
+                        );
+                      })()}
                     {hitData.ballType === '라' && (
                       <line
-                        x1={zx - 7}
+                        x1={zx}
                         y1={zy - 6.0}
-                        x2={zx + 7}
+                        x2={zx + 10}
                         y2={zy - 6.0}
                         stroke={zoneColor}
                         strokeWidth="1.2"
@@ -1086,12 +1101,14 @@ function ScoreCell({
                     {hitData.ballType === '땅' &&
                       (() => {
                         // 맨 아래(dirRow=2)와 오른쪽(dirCol=2)은 제외, 그 외 방향은 숫자와 겹치지 않게 더 내림
+                        const isTop = hitData.dirRow === 0;
                         const isBottom = hitData.dirRow === 2;
                         const isRight = hitData.dirCol === 2;
                         const rightOffset = isRight ? 1.8 : 0;
                         const downOffset = !isBottom && !isRight ? 3.0 : 0;
-                        const baseY = (dot?.dy ?? 0) + 5.5 + rightOffset + downOffset;
-                        const ctrlY = (dot?.dy ?? 0) + 7.8 + rightOffset + downOffset;
+                        const topOffset = isTop ? 8 : 0;
+                        const baseY = (dot?.dy ?? 0) + 5.5 + rightOffset + downOffset + topOffset;
+                        const ctrlY = (dot?.dy ?? 0) + 7.8 + rightOffset + downOffset + topOffset;
                         return (
                           <path
                             d={`M ${zx + 4 - 5},${zy + baseY} Q ${zx + 4},${zy + ctrlY} ${zx + 4 + 5},${zy + baseY}`}
@@ -1471,6 +1488,8 @@ export default function ScoreSheet({ G, onSelCell }: Props) {
     }
   });
 
+  // 종료선 별도 플래그 (outMap 값은 셀의 chronological 아웃번호 보존)
+  const inningEndLine: Record<string, boolean> = {};
   // 1차 패스: 이닝별 이미 점유된 out 번호 수집 (runOutNum + cellOutNum)
   const takenByInn: Record<number, Set<number>> = {};
   sorted.forEach((c) => {
@@ -1504,32 +1523,31 @@ export default function ScoreSheet({ G, onSelCell }: Props) {
     outMap[cellKey(c.inning, c.order, c.appearance, half)] = num;
   });
 
-  // runOut으로 이닝이 끝난 경우 종료선은 그 이닝의 마지막 타자 셀에 표시
-  // (runOut 자체 셀이 아닌, 타자 기준)
+  // runOut으로 이닝이 끝난 경우 종료선은 그 이닝의 마지막 타자 셀에 별도 플래그로 표시
+  // (outMap 값은 cellOutNum을 보존; 종료선만 inningEndLine으로 표시)
   Object.keys(inningEndedByRunOut).forEach((innStr) => {
     const inn = Number(innStr);
     const innCells = sorted.filter((c) => c.inning === inn && c.result !== null);
     if (innCells.length > 0) {
       const last = innCells[innCells.length - 1];
       const ck = cellKey(last.inning, last.order, last.appearance, half);
-      outMap[ck] = 3;
+      inningEndLine[ck] = true;
     }
   });
 
-  // 견제사/도루실패로 3아웃 시: 해당 이닝에서 마지막 result 있는 타자 셀에 종료선
+  // 견제사/도루실패로 3아웃 시: 해당 이닝에서 마지막 result 있는 타자 셀에 종료선 (별도 플래그)
   Object.entries(outByInn).forEach(([innStr, outs]) => {
     if (outs < 3) return;
     const inn = Number(innStr);
-    // 이 이닝에 outMap으로 3아웃이 이미 매겨져 있으면 스킵
     const prefix = `${half}-${inn}-`;
-    const has3out = Object.entries(outMap).some(([k, v]) => v === 3 && k.startsWith(prefix));
-    if (has3out) return;
+    const hasLine = Object.keys(inningEndLine).some((k) => k.startsWith(prefix));
+    if (hasLine) return;
     // 이 이닝의 마지막 result 있는 셀 찾기
     const innCells = sorted.filter((c) => c.inning === inn && c.result !== null);
     if (innCells.length > 0) {
       const last = innCells[innCells.length - 1];
       const ck = cellKey(last.inning, last.order, last.appearance, half);
-      if (!outMap[ck]) outMap[ck] = 3;
+      inningEndLine[ck] = true;
     }
   });
 
@@ -1824,7 +1842,9 @@ export default function ScoreSheet({ G, onSelCell }: Props) {
                                 width: 80,
                                 minWidth: 80,
                                 position: 'relative',
-                                borderBottom: oNum === 3 ? '2px solid var(--blue)' : undefined,
+                                borderBottom: inningEndLine[ck]
+                                  ? '2px solid var(--blue)'
+                                  : undefined,
                               }}
                             >
                               <ScoreCell
@@ -1833,7 +1853,7 @@ export default function ScoreSheet({ G, onSelCell }: Props) {
                                 isCur={iC}
                                 outNum={oNum ?? c?.runOutNum}
                               />
-                              {oNum === 3 && (
+                              {inningEndLine[ck] && (
                                 <span
                                   style={{
                                     position: 'absolute',

@@ -416,9 +416,26 @@ function buildPitcherLog(G: GameState): LogRow[] {
 
 export default function PitcherLogPanel({ G }: { G: GameState }) {
   const [selInning, setSelInning] = useState<string | null>(null);
+  const [collapsed, setCollapsed] = useState<Set<number>>(new Set());
   const bodyRef = useRef<HTMLDivElement>(null);
 
   const rows = buildPitcherLog(G);
+
+  // 각 row에 paIndex 부여 (paStart마다 1 증가) — 같은 PA 그룹 식별용
+  const paIndexByRow: number[] = [];
+  let curPa = -1;
+  for (const r of rows) {
+    if ((r as { paStart?: boolean }).paStart) curPa++;
+    paIndexByRow.push(curPa);
+  }
+  const togglePa = (idx: number) => {
+    setCollapsed((prev) => {
+      const next = new Set(prev);
+      if (next.has(idx)) next.delete(idx);
+      else next.add(idx);
+      return next;
+    });
+  };
 
   const inningKeys: string[] = [];
   const inningLabels: Record<string, string> = {};
@@ -429,7 +446,16 @@ export default function PitcherLogPanel({ G }: { G: GameState }) {
     }
   }
 
-  const filtered = selInning ? rows.filter((r) => r.inningKey === selInning) : rows;
+  // 접힌 PA의 비-paStart 행은 숨김 (paStart 행은 항상 표시)
+  const filteredAll = rows
+    .map((r, idx) => ({ r, paIdx: paIndexByRow[idx] }))
+    .filter(({ r, paIdx }) => {
+      if (selInning && r.inningKey !== selInning) return false;
+      if (!(r as { paStart?: boolean }).paStart && collapsed.has(paIdx)) return false;
+      return true;
+    });
+  const filtered = filteredAll.map(({ r }) => r);
+  const filteredPaIdx = filteredAll.map(({ paIdx }) => paIdx);
 
   // 새 행 추가될 때마다 자동 스크롤
   useEffect(() => {
@@ -521,6 +547,8 @@ export default function PitcherLogPanel({ G }: { G: GameState }) {
 
             // ── 투구 / 결과 행 ──────────────────────────────────────────
             const isResult = r.kind === 'result';
+            const paIdx = filteredPaIdx[i];
+            const isCollapsed = collapsed.has(paIdx);
             return (
               <div
                 key={i}
@@ -528,10 +556,13 @@ export default function PitcherLogPanel({ G }: { G: GameState }) {
                 style={{
                   borderTop: r.paStart ? '1px solid #cbd5e1' : undefined,
                   background: isResult ? '#f5f3ff' : undefined,
+                  cursor: r.paStart ? 'pointer' : undefined,
                 }}
+                onClick={r.paStart ? () => togglePa(paIdx) : undefined}
+                title={r.paStart ? '클릭하여 접기/펼치기' : undefined}
               >
                 <div className="plp-cell" style={{ color: '#94a3b8' }}>
-                  {r.no}
+                  {r.paStart ? (isCollapsed ? '▶' : '▼') : r.no}
                 </div>
                 <div className="plp-cell">{r.paStart ? r.inning : ''}</div>
                 <div className="plp-cell" style={{ fontWeight: 600 }}>
