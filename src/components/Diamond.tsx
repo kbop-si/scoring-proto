@@ -154,7 +154,7 @@ export default function Diamond({
                   y={fp.y > 180 ? fp.y - 10 : fp.y}
                   textAnchor="middle"
                   fontSize="9"
-                  fill="#fff"
+                  fill="#111"
                   fontWeight="700"
                   style={{ fontFamily: 'monospace' }}
                 >
@@ -165,7 +165,7 @@ export default function Diamond({
                   y={fp.y > 180 ? fp.y : fp.y + 10}
                   textAnchor="middle"
                   fontSize="7"
-                  fill="#ddd"
+                  fill="#111"
                   style={{ fontFamily: 'sans-serif' }}
                 >
                   {p.name}

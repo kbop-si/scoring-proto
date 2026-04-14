@@ -169,6 +169,33 @@ function buildPitcherLog(G: GameState): LogRow[] {
   const noMap: Record<string, number> = {};
   const rows: LogRow[] = [];
 
+  // ── 사전 패스: causedBy 별로 (다른 셀의) 주자 진루 노트 수집 ──
+  // key: `${inning}-${half}-${causedByOrder}` → 그 타자의 행동으로 진루한 주자 이벤트들
+  type CausedNote = { runnerName: string; label: string };
+  const notesByCausedBy: Record<string, CausedNote[]> = {};
+  for (const cell of cells) {
+    if (!cell.runnerNotes || cell.runnerNotes.length === 0) continue;
+    const lu = cell.half === 'top' ? G.awayLineup : G.homeLineup;
+    const runnerName = lu.find((p) => p.order === cell.order)?.name || `${cell.order}번`;
+    for (const n of cell.runnerNotes) {
+      if (n.steal || n.advCode === 'S' || n.advCode === '(S)') continue;
+      if ((n as { force?: boolean }).force) continue; // 볼넷·사구 강제 진루 제외
+      if (!n.causedBy || n.causedBy === cell.order) continue; // 본인 chain 진루는 본인 셀에 둠
+      const reason = advLabel(n.advCode);
+      let label: string;
+      if (n.base === 'HOME') {
+        label = reason ? `${reason}${n.rbi ? '(타점)' : ''}` : `${n.rbi ? '타점 ' : ''}득점`;
+      } else {
+        label = reason || `→${baseChar(n.base)}`;
+      }
+      const key = `${cell.inning}-${cell.half}-${n.causedBy}`;
+      (notesByCausedBy[key] ||= []).push({
+        runnerName,
+        label: `${runnerName} ${label}`,
+      });
+    }
+  }
+
   for (const cell of cells) {
     const battingLU = cell.half === 'top' ? G.awayLineup : G.homeLineup;
     const batter = battingLU.find((p) => p.order === cell.order);
@@ -204,16 +231,16 @@ function buildPitcherLog(G: GameState): LogRow[] {
             color: PITCH_COLOR[entry.pitch] ?? '#374151',
           });
         } else if (entry.kind === 'runner_steal') {
-          const bc = baseChar(entry.dest);
-          const label = `${entry.runnerName} 도루${bc}`;
+          const label = `${entry.runnerName} 도루`;
           rows.push({ ...base, no: noMap[pitcher], paStart: false, kind: 'runner', label });
         } else if (entry.kind === 'runner_cs') {
+          const isPickoff = (entry.runOut || '').startsWith('X');
           rows.push({
             ...base,
             no: noMap[pitcher],
             paStart: false,
             kind: 'runner',
-            label: entry.runOut,
+            label: `${entry.runnerName} ${isPickoff ? '견제사' : '도루아웃'}`,
           });
         } else {
           // 이벤트 (투수판이탈·마운드방문 등) — 타자명 표시 안 함
@@ -263,9 +290,11 @@ function buildPitcherLog(G: GameState): LogRow[] {
         pitchNum: resultIsFirst ? '1구' : '',
       });
 
-      // 주자 진루 노트 — 독립 행
+      // 본인의 chain 진루 노트만 본인 셀에 표시 (다른 주자 진루는 causedBy 셀로 이동됨)
       for (const n of cell.runnerNotes || []) {
         if (n.steal || n.advCode === 'S' || n.advCode === '(S)') continue;
+        if ((n as { force?: boolean }).force) continue; // 볼넷·사구 강제 진루 제외
+        if (n.causedBy && n.causedBy !== cell.order) continue;
         const reason = advLabel(n.advCode);
         let label: string;
         if (n.base === 'HOME') {
@@ -275,7 +304,24 @@ function buildPitcherLog(G: GameState): LogRow[] {
         }
         rows.push({ ...base, no: noMap[pitcher], paStart: false, kind: 'runner', label });
       }
-      if (cell.runOut && !cell.isDPRunner && !cell.runOut.startsWith('CS')) {
+
+      // 이 타자의 행동으로 진루한 다른 주자들 (FIFO 순서, 결과 행 다음에 쌓음)
+      const causedKey = `${cell.inning}-${cell.half}-${cell.order}`;
+      for (const cn of notesByCausedBy[causedKey] || []) {
+        rows.push({
+          ...base,
+          no: noMap[pitcher],
+          paStart: false,
+          kind: 'runner',
+          label: cn.label,
+        });
+      }
+      if (
+        cell.runOut &&
+        !cell.isDPRunner &&
+        !cell.runOut.startsWith('CS') &&
+        !cell.runOut.startsWith('X')
+      ) {
         rows.push({
           ...base,
           no: noMap[pitcher],

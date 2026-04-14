@@ -265,8 +265,8 @@ export const SAMPLE: { away: Player[]; home: Player[] } = {
   away: [
     // 타순 1-9 (투수 제외)
     { name: '고승민', num: '2', pos: 6, order: 1, hitType: 1 },
-    { name: '김대현', num: '3', pos: 3, order: 2, hitType: 2 },
-    { name: '김동혁', num: '4', pos: 8, order: 3, hitType: 3 },
+    { name: '김시현', num: '3', pos: 3, order: 2, hitType: 2 },
+    { name: '김우동', num: '4', pos: 8, order: 3, hitType: 3 },
     { name: '김동현', num: '5', pos: 5, order: 4, hitType: 1 },
     { name: '박건우', num: '6', pos: 9, order: 5, hitType: 2 },
     { name: '박승욱', num: '7', pos: 7, order: 6, hitType: 3 },

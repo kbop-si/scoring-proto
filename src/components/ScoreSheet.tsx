@@ -26,6 +26,17 @@ function getMaxRows(G: GameState, half: 'top' | 'bottom', ord: number): number {
   return Math.max(mx + 1, 1);
 }
 
+const BIDX: Record<string, number> = { '1B': 1, '2B': 2, '3B': 3, HOME: 4 };
+
+function getStartBaseIdx(r: string | null): number {
+  if (!r) return 0;
+  if (['HR', 'GHR', 'GCW'].includes(r)) return 4;
+  if (/^>>>[789]$/.test(r) || r === '>>>hit' || r === 'H3') return 3;
+  if (/^>[789](-[789])?$/.test(r) || r === '>hit' || r === 'H2') return 2;
+  if (isOnBase(r)) return 1;
+  return 0;
+}
+
 function ScoreCell({
   cell,
   isSel,
@@ -49,25 +60,81 @@ function ScoreCell({
   const hitData: HitData | undefined = cell?.hitData;
 
   const SUP_DIGITS = ['¹', '²', '³', '⁴', '⁵', '⁶', '⁷', '⁸', '⁹'];
-  const noteAtBase: Record<string, string> = {};
-  type HomeNoteItem = { kan: string; rbi?: boolean } | { advLbl: string };
+  // 한자+화살표+advCode 모두 이전 루 위치에 표시 (화살표로 간 방향 표시)
+  const noteAtBase: Record<string, React.ReactNode> = {};
+  type HomeNoteItem = { kan: string; rbi?: boolean; arrow?: string } | { advLbl: React.ReactNode };
   const homeNoteItems: HomeNoteItem[] = [];
+  const CHAIN_ARROW: Record<string, string> = { '2B': '↖', '3B': '↙', HOME: '↘' };
+  // 도착 루의 이전 루 (표시 위치)
+  const PREV_BASE: Record<string, string> = { '2B': '1B', '3B': '2B', HOME: '3B' };
 
   if (result === 'GHR') noteAtBase['2B'] = 'GH'; // 구형 데이터
 
+  // 연결동작 화살표는 마지막(가장 멀리 진루한) chain note 1개에만 표시
+  const CHAIN_RANK: Record<string, number> = { '1B': 1, '2B': 2, '3B': 3, HOME: 4 };
+  let lastChainBase: string | null = null;
+  let lastChainRank = 0;
   notes.forEach((n) => {
-    // 수비수 번호가 이미 advCode에 포함된 경우(E3, 6 등) sup 생략
-    const hasFielder = /\d/.test(n.advCode || '');
+    // 타자 본인의 chain 진루는 causedBy 없이 chain=true만 기록되므로 함께 인정
+    if (n.chain) {
+      const rk = CHAIN_RANK[n.base] || 0;
+      if (rk >= lastChainRank) {
+        lastChainRank = rk;
+        lastChainBase = n.base;
+      }
+    }
+  });
+
+  let noteIdx = 0;
+  notes.forEach((n) => {
+    const rawCode = n.advCode || '';
+
+    const hasFielder = /\d/.test(rawCode);
     const sup =
-      n.advCode && !hasFielder && n.causedBy
+      rawCode && !hasFielder && n.causedBy
         ? (SUP_DIGITS[n.causedBy - 1] ?? String(n.causedBy))
         : '';
-    const advLbl = n.advCode
-      ? n.advCode.endsWith(')')
-        ? n.advCode.slice(0, -1) + sup + ')'
-        : n.advCode + sup
-      : null;
 
+    // advLbl을 ReactNode로 생성
+    let advLbl: React.ReactNode | null = null;
+    if (rawCode) {
+      if (rawCode === 'SD') {
+        advLbl = (
+          <>
+            <span style={{ textDecoration: 'underline' }}>S</span>
+            {sup}
+          </>
+        );
+      } else if (rawCode === '(SD)') {
+        advLbl = (
+          <>
+            (<span style={{ textDecoration: 'underline' }}>S</span>
+            {sup})
+          </>
+        );
+      } else if (rawCode.endsWith(')')) {
+        advLbl = (
+          <>
+            {rawCode.slice(0, -1)}
+            {sup})
+          </>
+        );
+      } else {
+        advLbl = (
+          <>
+            {rawCode}
+            {sup}
+          </>
+        );
+      }
+    }
+
+    // 연결동작 화살표: 마지막 chain note에만 표시
+    const arrow =
+      n.chain && n.causedBy && n.base === lastChainBase ? CHAIN_ARROW[n.base] || '' : '';
+
+    // 화살표는 별도 위치(아래 chain-arrow div)에서 그려지므로 텍스트와 합치지 않음
+    void arrow;
     if (n.base === 'HOME') {
       if (advLbl) {
         homeNoteItems.push({ advLbl });
@@ -76,27 +143,107 @@ function ScoreCell({
         homeNoteItems.push({ kan, rbi: n.rbi });
       }
     } else {
-      const lbl = advLbl ?? (n.causedBy ? `(${KAN[n.causedBy - 1] || String(n.causedBy)})` : '');
-      if (lbl) noteAtBase[n.base] = noteAtBase[n.base] ? noteAtBase[n.base] + lbl : lbl;
+      const ki = noteIdx++;
+      if (advLbl) {
+        const node = <span key={`n${ki}`}>{advLbl}</span>;
+        noteAtBase[n.base] = noteAtBase[n.base] ? (
+          <>
+            {noteAtBase[n.base]}
+            {node}
+          </>
+        ) : (
+          node
+        );
+      } else if (n.causedBy) {
+        const lbl = `(${KAN[n.causedBy - 1] || String(n.causedBy)})`;
+        noteAtBase[n.base] = noteAtBase[n.base] ? (
+          <>
+            {noteAtBase[n.base]}
+            {lbl}
+          </>
+        ) : (
+          lbl
+        );
+      }
     }
   });
 
+  // DEBUG: 셀에 notes 개수 표시
+  if (notes.length > 0) {
+    console.log(
+      `[CELL ${cell?.order}] notes:`,
+      notes.length,
+      notes.map((n) => `${n.base}:cb=${n.causedBy}`).join(', ')
+    );
+  }
   const runOutBase = cell?.runOutBase || null;
   const runOutNum = cell?.runOutNum;
   const outLbl = outNum ? ['Ⅰ', 'Ⅱ', 'Ⅲ'][outNum - 1] : '';
   const onBase = isOnBase(result) && !runOutNum;
+
+  // ↺ 2베이스 이상 이동 감지
+  const multiBaseSkips: string[] = [];
+  // HOME 도착 멀티스킵: 한자(causedBy)를 첫 중간 베이스로 이동, 큰 화살표는 HOME 변에 그림
+  let homeSkipKanjiTarget: string | null = null;
+  let homeSkipCausedBy: number | null = null;
+  if (onBase || scored) {
+    const startIdx = getStartBaseIdx(result);
+    let curIdx = startIdx;
+    for (const n of notes) {
+      const destIdx = BIDX[n.base] || 0;
+      if (destIdx > curIdx && destIdx - curIdx >= 2) {
+        const isHomeMulti = n.base === 'HOME' && !!n.causedBy && !n.advCode;
+        const firstIntermediate = ['', '1B', '2B', '3B', 'HOME'][curIdx + 1];
+        if (isHomeMulti && firstIntermediate && firstIntermediate !== '1B') {
+          // 첫 중간 베이스에 한자 표시 (HOME 한자 대신), 화살표는 HOME 변에
+          homeSkipKanjiTarget = firstIntermediate;
+          homeSkipCausedBy = n.causedBy!;
+          // 첫 중간 베이스 다음부터 HOME까지 모두 화살표
+          for (let i = curIdx + 2; i <= destIdx; i++) {
+            const sb = ['', '1B', '2B', '3B', 'HOME'][i];
+            if (sb) multiBaseSkips.push(sb);
+          }
+        } else {
+          for (let i = curIdx + 1; i < destIdx; i++) {
+            const skipBase = ['', '1B', '2B', '3B', 'HOME'][i];
+            if (skipBase) multiBaseSkips.push(skipBase);
+          }
+        }
+      }
+      if (destIdx > curIdx) curIdx = destIdx;
+    }
+  }
+
+  // HOME 멀티스킵 재배치: HOME 한자 항목을 제거하고, 첫 중간 베이스에 한자 표기
+  if (homeSkipKanjiTarget && homeSkipCausedBy) {
+    const targetKan = KAN[homeSkipCausedBy - 1] || String(homeSkipCausedBy);
+    // homeNoteItems에서 동일 한자 1개 제거 (advLbl 항목은 유지)
+    for (let i = 0; i < homeNoteItems.length; i++) {
+      const it = homeNoteItems[i];
+      if ('kan' in it && it.kan === targetKan) {
+        homeNoteItems.splice(i, 1);
+        break;
+      }
+    }
+    // 중간 베이스에 한자 (없을 때만)
+    if (!noteAtBase[homeSkipKanjiTarget]) {
+      noteAtBase[homeSkipKanjiTarget] = `(${targetKan})`;
+    }
+  }
+
+  const isDP = cell?.isDoublePlay || false;
+  const isDPRunner = cell?.isDPRunner || false;
+  const hasSteal = (cell?.eventLog || []).some((e) => e.kind === 'runner_steal');
+  const hasPickoff = (cell?.runOut || '').startsWith('X');
   const fill = onBase ? '#eee' : 'none';
   const strokeC = '#888';
   const strokeW = isSel ? '1.5' : '0.8';
   const strokeDash = '3,3';
-  const isKDef = /^ꓘ[\d-]+$/.test(result || '');
   const rcol = RESULT_COL[result || ''] || '#111';
   const isWalk = result === 'B' || result === 'IB' || result === 'IB2' || result === 'HP';
-  const lines = !isWalk
-    ? isKDef
-      ? [{ x1: 20, y1: 38, x2: 38, y2: 20, c: '#111', w: 2.5 }]
-      : BASE_LINES[result || ''] || []
-    : [];
+  const lines = !isWalk ? BASE_LINES[result || ''] || [] : [];
+  // 연결동작 화살표용: 볼넷/사구도 1B 진루(length=1)로 계산
+  const baseLinesCount = isWalk ? 1 : (BASE_LINES[result || ''] || []).length;
   const scoredCircle = scored || result === 'HR' || result === 'GHR';
   const earnedColor =
     result === 'HR' || result === 'GHR'
@@ -117,18 +264,23 @@ function ScoreCell({
     switch (base) {
       case '2B':
         return {
-          top: 5,
-          left: 60,
+          top: 0,
+          right: 2,
         };
       case '3B':
         return {
-          top: 2,
-          left: 23,
+          top: 0,
+          left: 22,
         };
       case 'HOME':
         return {
-          bottom: 10,
-          left: 30,
+          bottom: 2,
+          left: 22,
+        };
+      case '1B':
+        return {
+          bottom: 2,
+          right: 2,
         };
       default:
         return {
@@ -149,27 +301,156 @@ function ScoreCell({
     ...getBasePosition(base),
   });
 
-  return (
-    <div className={cls}>
-      <div className="sc-pitches">
+  const pitchMarkStyle: React.CSSProperties = {
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: 12,
+    height: 12,
+  };
+  const stealMarkStyle: React.CSSProperties = {
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: 12,
+    height: 12,
+    fontSize: 11,
+    color: '#111',
+    fontWeight: 700,
+    lineHeight: 1,
+  };
+
+  const eventLog = cell?.eventLog || [];
+  const renderPitches = () => {
+    if (eventLog.length > 0) {
+      const items: React.ReactNode[] = [];
+      let i = 0;
+      while (i < eventLog.length) {
+        const entry = eventLog[i];
+        if (entry.kind === 'pitch') {
+          const p = entry.pitch;
+          items.push(
+            <span
+              key={i}
+              className={`pm pm-${String(p).toLowerCase()}`}
+              title={p}
+              style={pitchMarkStyle}
+            >
+              <PitchMark code={p} size={12} />
+            </span>
+          );
+          i++;
+        } else if (entry.kind === 'runner_steal') {
+          // 도루/이중도루 모두 '/' 1개. 이중도루는 연속 항목 묶어서 1개만 표시
+          const nextEntry = eventLog[i + 1];
+          items.push(
+            <span key={i} title={entry.double ? '더블스틸' : '도루'} style={stealMarkStyle}>
+              /
+            </span>
+          );
+          if (entry.double && nextEntry?.kind === 'runner_steal' && nextEntry.double) {
+            i += 2;
+          } else {
+            i++;
+          }
+        } else if (entry.kind === 'runner_cs') {
+          // 견제사/도루실패: 세로선 + 가로줄 (1B:1개, 2B:2개, 3B:3개)
+          const csBase = entry.base;
+          const lineCount = csBase === '1B' ? 1 : csBase === '3B' ? 3 : 2;
+          const title = entry.runOut.startsWith('X') ? `견제사(${csBase})` : `도루실패(${csBase})`;
+          items.push(
+            <span
+              key={i}
+              title={title}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                width: 12,
+                height: 12,
+              }}
+            >
+              <svg width="12" height="12" viewBox="0 0 12 12">
+                <line
+                  x1="6"
+                  y1="1"
+                  x2="6"
+                  y2="11"
+                  stroke="#111"
+                  strokeWidth="1.3"
+                  strokeLinecap="round"
+                />
+                {Array.from({ length: lineCount }, (_, j) => {
+                  const y = lineCount === 1 ? 6 : lineCount === 2 ? 4.5 + j * 3 : 3.5 + j * 2.5;
+                  return (
+                    <line
+                      key={j}
+                      x1="2"
+                      y1={y}
+                      x2="10"
+                      y2={y}
+                      stroke="#111"
+                      strokeWidth="1.3"
+                      strokeLinecap="round"
+                    />
+                  );
+                })}
+              </svg>
+            </span>
+          );
+          i++;
+        } else {
+          i++;
+        }
+      }
+      return <>{items}</>;
+    }
+    return (
+      <>
         {pitches.map((p, i) => (
           <span
             key={i}
             className={`pm pm-${String(p).toLowerCase()}`}
             title={p}
+            style={pitchMarkStyle}
+          >
+            <PitchMark code={p} size={12} />
+          </span>
+        ))}
+        {hasSteal && (
+          <span title="도루" style={stealMarkStyle}>
+            /
+          </span>
+        )}
+      </>
+    );
+  };
+
+  return (
+    <div className={cls}>
+      <div className="sc-pitches">
+        {renderPitches()}
+        {result === 'HP' && (
+          <span
+            title="사구(맞은 투구)"
             style={{
               display: 'inline-flex',
               alignItems: 'center',
               justifyContent: 'center',
               width: 12,
               height: 12,
+              fontSize: 11,
+              color: '#111',
+              fontWeight: 700,
+              lineHeight: 1,
             }}
           >
-            <PitchMark code={p} size={12} />
+            —
           </span>
-        ))}
+        )}
         {result &&
           !['B', 'IB', 'IB2', 'HP', 'K', 'K3B', 'KW', 'KP', 'KE'].includes(result) &&
+          !/^ꓘ/.test(result) &&
           !/^#\dE$/.test(result) &&
           !/^Ob\dE$/.test(result) && (
             <span
@@ -382,7 +663,7 @@ function ScoreCell({
                   : earned === false
                     ? '○'
                     : earned === 'half'
-                      ? '⊕'
+                      ? '○'
                       : '●'}
               </text>
             )}
@@ -414,6 +695,88 @@ function ScoreCell({
                 ℓ
               </text>
             )}
+
+            {/* 견제사 마크는 sc-pitches(볼카운트) 영역에 표시 */}
+
+            {/* 병살 호(arc) 마크 — 타자: ), 주자: )) */}
+            {isDP && (
+              <>
+                <path
+                  d="M 42,13 A 8,8 0 0 1 42,27"
+                  fill="none"
+                  stroke="#111"
+                  strokeWidth="1.8"
+                  strokeLinecap="round"
+                />
+                <path
+                  d="M 46,13 A 8,8 0 0 1 46,27"
+                  fill="none"
+                  stroke="#111"
+                  strokeWidth="1.8"
+                  strokeLinecap="round"
+                />
+              </>
+            )}
+            {isDPRunner && (
+              <>
+                <path
+                  d="M 42,13 A 8,8 0 0 1 42,27"
+                  fill="none"
+                  stroke="#111"
+                  strokeWidth="1.8"
+                  strokeLinecap="round"
+                />
+                <path
+                  d="M 46,13 A 8,8 0 0 1 46,27"
+                  fill="none"
+                  stroke="#111"
+                  strokeWidth="1.8"
+                  strokeLinecap="round"
+                />
+              </>
+            )}
+
+            {/* 2베이스 이상 이동: 건너뛴 루에 곡선 화살표 */}
+            {multiBaseSkips.map((base, si) => {
+              const allArrows: Record<string, { path: string; head: string }> = {
+                '1B': {
+                  path: 'M 22,34 Q 38,32 34,18',
+                  head: 'M 34,18 L 37,22 L 31,21 Z',
+                },
+                '2B': {
+                  path: 'M 34,18 Q 32,2 18,6',
+                  head: 'M 18,6 L 22,3 L 21,9 Z',
+                },
+                '2B_shift': {
+                  // 2B에 한자 있을 때 → 3B 변으로 이동
+                  path: 'M 18,6 Q 2,8 6,22',
+                  head: 'M 6,22 L 3,18 L 9,19 Z',
+                },
+                '3B': {
+                  path: 'M 18,6 Q 2,8 6,22',
+                  head: 'M 6,22 L 3,18 L 9,19 Z',
+                },
+                HOME: {
+                  // 3B→홈 변
+                  path: 'M 6,22 Q 8,38 18,34',
+                  head: 'M 18,34 L 14,31 L 15,37 Z',
+                },
+              };
+              let key = base;
+              if (base === '2B' && noteAtBase['2B']) {
+                key = '2B_shift';
+                // 3B skip도 있으면 중복 방지
+                if (multiBaseSkips.includes('3B')) return null;
+              }
+              const a = allArrows[key];
+              if (!a) return null;
+              return (
+                <g key={`skip-${si}`}>
+                  <path d={a.path} fill="none" stroke="#111" strokeWidth="1.2" />
+                  <path d={a.head} fill="#111" stroke="none" />
+                </g>
+              );
+            })}
 
             {!hitData && ballType === '땅' && (
               <path
@@ -528,7 +891,7 @@ function ScoreCell({
                         y={hrZy}
                         textAnchor="middle"
                         dominantBaseline="middle"
-                        fontSize="18"
+                        fontSize="15"
                         fontWeight="900"
                         fontFamily="monospace"
                         fill={zoneColor}
@@ -769,86 +1132,184 @@ function ScoreCell({
                       {zoneLbl}
                     </text>
 
-                    {hitData.ballType === '땅' && (
-                      <path
-                        /* x축은 zx + 4 유지 */
-                        /* 시작/끝점 y좌표를 +7.5로, 제어점 y좌표를 +9.8로 더 하향 조정 */
-                        d={`M ${zx + 4 - 5},${zy + (dot?.dy ?? 0) + 7.5} Q ${zx + 4},${zy + (dot?.dy ?? 0) + 9.8} ${zx + 4 + 5},${zy + (dot?.dy ?? 0) + 7.5}`}
-                        stroke={zoneColor}
-                        strokeWidth="1.2"
-                        fill="none"
-                        strokeLinecap="round"
-                      />
-                    )}
+                    {hitData.ballType === '땅' &&
+                      (() => {
+                        // 맨 아래(dirRow=2)와 오른쪽(dirCol=2)은 제외, 그 외 방향은 숫자와 겹치지 않게 더 내림
+                        const isBottom = hitData.dirRow === 2;
+                        const isRight = hitData.dirCol === 2;
+                        const rightOffset = isRight ? 1.8 : 0;
+                        const downOffset = !isBottom && !isRight ? 3.0 : 0;
+                        const baseY = (dot?.dy ?? 0) + 5.5 + rightOffset + downOffset;
+                        const ctrlY = (dot?.dy ?? 0) + 7.8 + rightOffset + downOffset;
+                        return (
+                          <path
+                            d={`M ${zx + 4 - 5},${zy + baseY} Q ${zx + 4},${zy + ctrlY} ${zx + 4 + 5},${zy + baseY}`}
+                            stroke={zoneColor}
+                            strokeWidth="1.2"
+                            fill="none"
+                            strokeLinecap="round"
+                          />
+                        );
+                      })()}
                     {dot && (
-                      <circle cx={zx + dot.dx + 4} cy={zy + dot.dy} r="1.35" fill={zoneColor} />
+                      <circle cx={zx + dot.dx + 4} cy={zy + dot.dy + 2} r="1.35" fill={zoneColor} />
                     )}
                   </g>
                 );
               })()}
           </svg>
+
+          {/* 연결동작 작은 화살표 — 마지막 chain 베이스의 다이아몬드 꼭지점 근처에 표시 */}
+          {lastChainBase &&
+            (() => {
+              const arrowChar = CHAIN_ARROW[lastChainBase] || '';
+              if (!arrowChar) return null;
+              const apos: React.CSSProperties =
+                lastChainBase === '2B'
+                  ? { top: 16, left: 45 }
+                  : lastChainBase === '3B'
+                    ? { top: -10, left: 15 }
+                    : lastChainBase === 'HOME'
+                      ? { top: 22, left: -7 }
+                      : { top: 18, left: 38 };
+              return (
+                <div
+                  key="chain-arrow"
+                  style={{
+                    position: 'absolute',
+                    pointerEvents: 'none',
+                    fontSize: 10,
+                    fontWeight: 900,
+                    color: '#111',
+                    lineHeight: 1,
+                    ...apos,
+                  }}
+                >
+                  {arrowChar}
+                </div>
+              );
+            })()}
+
+          {/* 진루 노트 — 이전 루 위치에 한자+화살표 함께 표시 */}
+          {(['1B', '2B', '3B', 'HOME'] as const).map((base) => {
+            if (!noteAtBase[base]) return null;
+            // 다이아몬드(48x48) 꼭지점: 2B=top(24,2) 1B=right(46,24) 3B=left(2,24) HOME=bottom(24,46)
+            // 각 변 중점 근처에 배치 (top/left 픽셀 지정)
+            const pos: React.CSSProperties =
+              base === '2B'
+                ? { top: -10, left: 30 }
+                : base === '3B'
+                  ? { top: -10, left: -10 }
+                  : base === 'HOME'
+                    ? { top: 34, left: -2 }
+                    : { top: 34, left: 30 };
+            return (
+              <div
+                key={`note-${base}`}
+                style={{
+                  position: 'absolute',
+                  pointerEvents: 'none',
+                  whiteSpace: 'nowrap',
+                  ...pos,
+                }}
+              >
+                <span style={{ fontSize: 13, color: '#111', fontWeight: 800, lineHeight: 1 }}>
+                  {noteAtBase[base]}
+                </span>
+              </div>
+            );
+          })}
+
+          {homeNoteItems.length > 0 && (
+            <div
+              style={{
+                position: 'absolute',
+                bottom: -8,
+                left: -8,
+                display: 'flex',
+                alignItems: 'center',
+                pointerEvents: 'none',
+                whiteSpace: 'nowrap',
+                gap: 1,
+              }}
+            >
+              {homeNoteItems.map((item, i) => {
+                if ('advLbl' in item) {
+                  return (
+                    <span
+                      key={i}
+                      style={{ fontSize: 13, color: '#111', fontWeight: 800, lineHeight: 1 }}
+                    >
+                      {item.advLbl}
+                    </span>
+                  );
+                }
+                const ringColor = '#111';
+                const hasArrow = 'arrow' in item && item.arrow;
+                return (
+                  <span key={i} style={{ display: 'inline-flex', alignItems: 'center', gap: 0 }}>
+                    <svg width="18" height="18" viewBox="0 0 18 18" style={{ display: 'block' }}>
+                      <circle
+                        cx="9"
+                        cy="9"
+                        r="8"
+                        fill="none"
+                        stroke={ringColor}
+                        strokeWidth="1.8"
+                      />
+                      <text
+                        x="9"
+                        y="13.5"
+                        textAnchor="middle"
+                        fontSize="12"
+                        fontWeight="900"
+                        fontFamily="serif"
+                        fill="#000"
+                        stroke="#000"
+                        strokeWidth="0.6"
+                        paintOrder="stroke"
+                      >
+                        {item.kan}
+                      </text>
+                    </svg>
+                    {hasArrow && (
+                      <span style={{ fontSize: 13, color: '#111', fontWeight: 800, lineHeight: 1 }}>
+                        {item.arrow}
+                      </span>
+                    )}
+                  </span>
+                );
+              })}
+            </div>
+          )}
         </div>
       </div>
 
-      {(['2B', '3B'] as const).map((base) => {
-        if (!noteAtBase[base]) return null;
-        return (
-          <div key={base} style={getNoteGroupStyle(base)}>
+      {result && !hitData && (
+        <div
+          className="sc-result"
+          style={{
+            color: rcol,
+            fontSize: 18,
+            fontWeight: 'bold',
+            fontFamily: result.startsWith('SF') ? "'IBM Plex Mono', monospace" : undefined,
+          }}
+        >
+          {result.startsWith('SF') ? (
             <span
               style={{
-                fontSize: 11,
-                color: '#111',
-                fontWeight: 800,
+                display: 'inline-block',
+                borderTop: `1.5px solid ${rcol}`,
+                borderLeft: `1.5px solid ${rcol}`,
+                padding: '1px 1px 0 2px',
                 lineHeight: 1,
-                whiteSpace: 'nowrap',
               }}
             >
-              {noteAtBase[base]}
+              {`F${result.slice(2)}`}
             </span>
-          </div>
-        );
-      })}
-
-      {homeNoteItems.length > 0 && (
-        <div style={{ ...getNoteGroupStyle('HOME'), width: 'auto', gap: 1, flexWrap: 'nowrap' }}>
-          {homeNoteItems.map((item, i) => {
-            if ('advLbl' in item) {
-              return (
-                <span
-                  key={i}
-                  style={{ fontSize: 10, color: '#111', fontWeight: 800, lineHeight: 1 }}
-                >
-                  {item.advLbl}
-                </span>
-              );
-            }
-            const ringColor = '#111';
-            return (
-              <svg key={i} width="18" height="18" viewBox="0 0 18 18" style={{ display: 'block' }}>
-                <circle cx="9" cy="9" r="8" fill="none" stroke={ringColor} strokeWidth="1.8" />
-                <text
-                  x="9"
-                  y="13.5"
-                  textAnchor="middle"
-                  fontSize="12"
-                  fontWeight="900"
-                  fontFamily="serif"
-                  fill="#000"
-                  stroke="#000"
-                  strokeWidth="0.6"
-                  paintOrder="stroke"
-                >
-                  {item.kan}
-                </text>
-              </svg>
-            );
-          })}
-        </div>
-      )}
-
-      {result && !hitData && !runOut && (
-        <div className="sc-result" style={{ color: rcol, fontSize: 20, fontWeight: 'bold' }}>
-          {RESULT_SYMBOL[result] ?? result}
+          ) : (
+            (RESULT_SYMBOL[result] ?? result)
+          )}
         </div>
       )}
 
@@ -856,11 +1317,8 @@ function ScoreCell({
         <div
           style={{
             position: 'absolute',
-            width: NOTE_GROUP_WIDTH,
-            height: NOTE_GROUP_HEIGHT,
             display: 'flex',
             alignItems: 'center',
-            justifyContent: 'center',
             pointerEvents: 'none',
             fontFamily: "'IBM Plex Mono', monospace",
             fontSize: 15,
@@ -868,10 +1326,16 @@ function ScoreCell({
             color: '#111',
             lineHeight: 1,
             whiteSpace: 'nowrap',
-            ...getBasePosition(runOutBase || '1B'),
+            ...(runOutBase === '2B'
+              ? { top: 0, left: 57 }
+              : runOutBase === '3B'
+                ? { top: 0, left: 20 }
+                : runOutBase === 'HOME'
+                  ? { bottom: 2, left: 20 }
+                  : { bottom: 2, left: 22 }),
           }}
         >
-          {runOut}
+          {runOut.startsWith('X') ? runOut.slice(1) + 'T' : runOut}
         </div>
       )}
 
@@ -947,8 +1411,17 @@ function calcStats(G: GameState, half: 'top' | 'bottom', ord: number) {
       ibb++;
     }
     if (r === 'HP') hbp++;
-    // 낫아웃(KW/KP/KE)도 삼진으로 집계 (record.md §1-17)
-    if (r === 'K' || r === 'K3B' || r === 'KT' || r === 'KW' || r === 'KP' || r === 'KE') k++;
+    // 낫아웃(KW/KP/KE)도 삼진으로 집계 (record.md §1-17); KT/KSG(ꓘ prefix, 아웃)도 포함
+    if (
+      r === 'K' ||
+      r === 'K3B' ||
+      r === 'KT' ||
+      r === 'KW' ||
+      r === 'KP' ||
+      r === 'KE' ||
+      (/^ꓘ[\d-]+T?$/.test(r) && !/[보자E]/.test(r))
+    )
+      k++;
     if (r === 'BUNT') sh++;
     if (isSF) sf++;
     if (c.scored) run++;
@@ -1020,15 +1493,61 @@ export default function ScoreSheet({ G, onSelCell }: Props) {
     .filter((c) => c.half === half)
     .sort((a, b) => a.inning - b.inning || a.order - b.order || a.appearance - b.appearance);
 
+  // 이닝이 runOutNum=3 (견제사·도루실패·DP 마지막 주자)으로 끝난 경우 표시
+  const inningEndedByRunOut: Record<number, string> = {};
+  sorted.forEach((c) => {
+    if (c.runOutNum === 3 && c.runOutInning) {
+      if (!inningEndedByRunOut[c.runOutInning]) {
+        inningEndedByRunOut[c.runOutInning] = cellKey(c.inning, c.order, c.appearance, half);
+      }
+    }
+  });
+
   sorted.forEach((c) => {
     if (c.isDPRunner && c.runOutNum && c.runOutInning) {
+      if (!outByInn[c.runOutInning]) outByInn[c.runOutInning] = 0;
+      outByInn[c.runOutInning] = Math.max(outByInn[c.runOutInning], c.runOutNum);
+    }
+    // 견제사/도루실패 아웃도 outByInn에 반영
+    if (!c.isDPRunner && c.runOutNum && c.runOutInning) {
       if (!outByInn[c.runOutInning]) outByInn[c.runOutInning] = 0;
       outByInn[c.runOutInning] = Math.max(outByInn[c.runOutInning], c.runOutNum);
     }
     if (!outByInn[c.inning]) outByInn[c.inning] = 0;
     if (isOut(c.result)) {
       outByInn[c.inning]++;
-      outMap[cellKey(c.inning, c.order, c.appearance, half)] = Math.min(outByInn[c.inning], 3);
+      // runOut으로 이닝이 끝났으면 isOut 셀은 최대 2까지만 (3은 runOut 셀이 가져감)
+      const cap = inningEndedByRunOut[c.inning] ? 2 : 3;
+      outMap[cellKey(c.inning, c.order, c.appearance, half)] = Math.min(outByInn[c.inning], cap);
+    }
+  });
+
+  // runOut으로 이닝이 끝난 경우 종료선은 그 이닝의 마지막 타자 셀에 표시
+  // (runOut 자체 셀이 아닌, 타자 기준)
+  Object.keys(inningEndedByRunOut).forEach((innStr) => {
+    const inn = Number(innStr);
+    const innCells = sorted.filter((c) => c.inning === inn && c.result !== null);
+    if (innCells.length > 0) {
+      const last = innCells[innCells.length - 1];
+      const ck = cellKey(last.inning, last.order, last.appearance, half);
+      outMap[ck] = 3;
+    }
+  });
+
+  // 견제사/도루실패로 3아웃 시: 해당 이닝에서 마지막 result 있는 타자 셀에 종료선
+  Object.entries(outByInn).forEach(([innStr, outs]) => {
+    if (outs < 3) return;
+    const inn = Number(innStr);
+    // 이 이닝에 outMap으로 3아웃이 이미 매겨져 있으면 스킵
+    const prefix = `${half}-${inn}-`;
+    const has3out = Object.entries(outMap).some(([k, v]) => v === 3 && k.startsWith(prefix));
+    if (has3out) return;
+    // 이 이닝의 마지막 result 있는 셀 찾기
+    const innCells = sorted.filter((c) => c.inning === inn && c.result !== null);
+    if (innCells.length > 0) {
+      const last = innCells[innCells.length - 1];
+      const ck = cellKey(last.inning, last.order, last.appearance, half);
+      if (!outMap[ck]) outMap[ck] = 3;
     }
   });
 
@@ -1322,8 +1841,8 @@ export default function ScoreSheet({ G, onSelCell }: Props) {
                               style={{
                                 width: 80,
                                 minWidth: 80,
-                                borderBottom:
-                                  oNum === 3 || c?.runOutNum === 3 ? '2px solid #111' : undefined,
+                                position: 'relative',
+                                borderBottom: oNum === 3 ? '2px solid var(--blue)' : undefined,
                               }}
                             >
                               <ScoreCell
@@ -1332,6 +1851,22 @@ export default function ScoreSheet({ G, onSelCell }: Props) {
                                 isCur={iC}
                                 outNum={oNum ?? c?.runOutNum}
                               />
+                              {oNum === 3 && (
+                                <span
+                                  style={{
+                                    position: 'absolute',
+                                    right: 1,
+                                    bottom: -8,
+                                    fontSize: 11,
+                                    fontWeight: 900,
+                                    color: 'var(--blue)',
+                                    lineHeight: 1,
+                                    pointerEvents: 'none',
+                                  }}
+                                >
+                                  //
+                                </span>
+                              )}
                             </td>
                           );
                         })}

@@ -91,6 +91,8 @@ function getAdvCode(reason: string, fielderSeq?: FielderEntry[]): string | undef
   const fstr = fielderSeq && fielderSeq.length > 0 ? buildFielderStr(fielderSeq) : '';
   // 도루
   if (reason.includes('도루') || reason.includes('스틸')) {
+    if (reason === '이중도루') return 'SD';
+    if (reason === '(S) 무관심이중도루') return '(SD)';
     return reason.startsWith('(S)') ? '(S)' : 'S';
   }
   // 폭투
@@ -135,6 +137,14 @@ export default function GameScreen({ setup, onEnd }: Props) {
   const [chainPendingBase, setChainPendingBase] = useState<Base | null>(null);
   const [chainCausedBy, setChainCausedBy] = useState<number | null>(null);
   const [chainBatterOpen, setChainBatterOpen] = useState(false);
+  // destHasRunner 차단 시 저장된 CHAIN_BATTER_SKIP 파라미터
+  const [pendingSkipParams, setPendingSkipParams] = useState<{
+    toBase: Base | 'HOME';
+    earned: boolean | 'half';
+    rbi?: boolean;
+    scorePitcher?: string;
+    advCode?: string;
+  } | null>(null);
   const [chainTransit, setChainTransit] = useState<{
     runner: Runner;
     fromBase: Base;
@@ -246,9 +256,11 @@ export default function GameScreen({ setup, onEnd }: Props) {
       showToast('진루 사유 선택 필요');
       return;
     }
+    const hasRunners = Object.values(G.runners).some(Boolean);
     setUI((p) => ({ ...p, batAdvOpen: false, batAdvHitData: null }));
 
     if (UI.batAdvHitData) {
+      if (hasRunners) setChainCausedBy(G.curBatterOrder);
       dispatch({ type: 'BAT_ADV', result: 'HIT', hitData: UI.batAdvHitData });
       const names = ['', '1루타', '2루타', '3루타', '홈런'];
       const bat = curLU[G.curBatterOrder - 1];
@@ -257,12 +269,13 @@ export default function GameScreen({ setup, onEnd }: Props) {
     }
 
     const result = UI.batAdvResult!;
+    if (hasRunners && result !== 'HR' && result !== 'GHR') setChainCausedBy(G.curBatterOrder);
     dispatch({ type: 'BAT_ADV', result, ballType: UI.batAdvBallType ?? undefined });
 
     if (result === 'HR' || result === 'GHR') {
       const bat = curLU[G.curBatterOrder - 1];
       showToast(`${bat?.name || '타자'} 홈런!`);
-    } else if (!Object.values(G.runners).some(Boolean)) {
+    } else if (!hasRunners) {
       const bat = curLU[G.curBatterOrder - 1];
       showToast(`${bat?.name || '타자'} → ${result}`);
     }
@@ -276,6 +289,9 @@ export default function GameScreen({ setup, onEnd }: Props) {
       chain = false
     ) => {
       setUI((p) => ({ ...p, batAdvOpen: false, batAdvResult: null, batAdvHitData: null }));
+      // 주자가 있으면 chainCausedBy 설정 (연결동작 표시용)
+      const hasRunners = Object.values(G.runners).some(Boolean);
+      if (hasRunners && !chainCausedBy) setChainCausedBy(G.curBatterOrder);
       if (chain && hitData) {
         const destMap: Record<number, Base> = { 1: '1B', 2: '2B', 3: '3B' };
         const dest = destMap[hitData.bases];
@@ -323,11 +339,11 @@ export default function GameScreen({ setup, onEnd }: Props) {
       if (!UI.stkPitchType) return;
       const pt = UI.stkPitchType;
       setUI((p) => ({ ...p, stkOpen: false, stkPitchType: null }));
-      const safeResult = result as 'K' | 'KW' | 'KP' | 'KE';
-      dispatch({ type: 'STRIKEOUT', result: safeResult, pitchType: pt });
-      if (result === 'K') {
+      dispatch({ type: 'STRIKEOUT', result, pitchType: pt });
+      const isKOut = result === 'K' || result === 'K3B' || /^ꓘ[\d-]+T?$/.test(result);
+      if (isKOut) {
         const newOuts = G.outs + 1;
-        showToast(`삼진! K  ${newOuts}아웃`);
+        showToast(`삼진! ${result}  ${newOuts}아웃`);
         if (newOuts >= 3)
           showToast(
             `3아웃! ${G.inning}회 ${G.half === 'top' ? '초' : '말'} 종료 — [다음이닝] 버튼 클릭`
@@ -347,6 +363,9 @@ export default function GameScreen({ setup, onEnd }: Props) {
 
   const applyBatOutResult = useCallback(
     (result: string, dp?: boolean, tp?: boolean) => {
+      // SF 등 아웃 결과 입력 시점에 현재 타자를 chainCausedBy로 갱신 (주자 있을 때)
+      const hasRunners = Object.values(G.runners).some(Boolean);
+      if (hasRunners) setChainCausedBy(G.curBatterOrder);
       dispatch({ type: 'BAT_OUT', result, dp, tp });
       const newOuts = G.outs + 1 + (dp ? 1 : tp ? 2 : 0);
       showToast(`아웃 (${result})  ${Math.min(newOuts, 3)}아웃`);
@@ -365,11 +384,14 @@ export default function GameScreen({ setup, onEnd }: Props) {
       showToast('다이아몬드에서 주자를 먼저 클릭하세요');
       return;
     }
+    // 다음 루를 기본 목적지로 설정
+    const nextBase: Record<string, Base | 'HOME'> = { '1B': '2B', '2B': '3B', '3B': 'HOME' };
+    const defaultDest = nextBase[UI.selRunnerBase] || null;
     setUI((p) => ({
       ...p,
       runAdvOpen: true,
       runAdvResult: null,
-      runAdvDest: null,
+      runAdvDest: defaultDest,
       runAdvEarned: true as boolean | 'half',
       runAdvFielder: null,
       runAdvRbi: false,
@@ -404,8 +426,15 @@ export default function GameScreen({ setup, onEnd }: Props) {
       setChainPendingBase(null);
 
       if (chainTransit) {
-        // 연결동작 중 진루: 루 주자를 최종 위치로 이동
         const { runner, atBase } = chainTransit;
+        // 목적지에 기존 주자 있으면 → 기존 주자 먼저 이동하도록 대기
+        const destHasRunner = toBase !== 'HOME' && !!G.runners[toBase as Base];
+        if (destHasRunner) {
+          // chainTransit 유지, pendingBase를 toBase로 다시 설정 → 기존 주자 이동 유도
+          setChainPendingBase(toBase as Base);
+          showToast(`${toBase}에 주자가 있습니다. 먼저 이동하세요`);
+          return;
+        }
         setChainTransit(null);
         if (chain && toBase !== 'HOME') {
           setChainBases((prev) => new Set([...prev, toBase as Base]));
@@ -415,7 +444,7 @@ export default function GameScreen({ setup, onEnd }: Props) {
         dispatch({
           type: 'CHAIN_TRANSIT_ADV',
           runner,
-          fromBase: atBase,
+          fromBase: chainTransit.fromBase,
           toBase,
           earned,
           rbi,
@@ -427,11 +456,20 @@ export default function GameScreen({ setup, onEnd }: Props) {
         else showToast(`${runner.name} → ${toBase} (chain)`);
       } else {
         if (!G.pendingBatter) return;
+        // 목적지에 기존 주자 있으면 → 파라미터 저장 후 대기
+        const batterAdvCode =
+          typeof UI.runAdvResult === 'string' ? getAdvCode(UI.runAdvResult, fielderSeq) : undefined;
+        const destHasRunner = toBase !== 'HOME' && !!G.runners[toBase as Base];
+        if (destHasRunner) {
+          setPendingSkipParams({ toBase, earned, rbi, scorePitcher, advCode: batterAdvCode });
+          setChainPendingBase(toBase as Base);
+          showToast(`${toBase}에 주자가 있습니다. 먼저 이동하세요`);
+          return;
+        }
         if (chain && toBase !== 'HOME') {
           setChainBases((prev) => new Set([...prev, toBase as Base]));
         }
-        const batterAdvCode =
-          typeof UI.runAdvResult === 'string' ? getAdvCode(UI.runAdvResult, fielderSeq) : undefined;
+        setPendingSkipParams(null);
         dispatch({
           type: 'CHAIN_BATTER_SKIP',
           toBase,
@@ -501,9 +539,20 @@ export default function GameScreen({ setup, onEnd }: Props) {
         runAdvPitcher: '',
       }));
 
-      // chain 연결동작 + 목적 베이스에 기존 주자 있음 → auto-push 방지
+      // chainCausedBy가 있으면 자동으로 chain 모드
+      const effectiveChain = chain || !!chainCausedBy;
+      console.log('[confirmRunAdv]', {
+        base,
+        dest,
+        chainCausedBy,
+        effectiveChain,
+        chain,
+        destHasRunner: dest !== 'HOME' && !!G.runners[dest as Base],
+      });
+
+      // chain 연결동작 + 목적 베이스에 기존 주자 있음 → auto-push 방지, 수동 선택
       const destHasRunner = dest !== 'HOME' && !!G.runners[dest as Base];
-      if (chain && destHasRunner) {
+      if (effectiveChain && destHasRunner) {
         dispatch({ type: 'REMOVE_RUNNER', base });
         setChainBases((prev) => {
           const n = new Set(prev);
@@ -527,7 +576,7 @@ export default function GameScreen({ setup, onEnd }: Props) {
       setChainBases((prev) => {
         const next = new Set(prev);
         next.delete(base);
-        if (chain && dest !== 'HOME') next.add(dest as Base);
+        if (effectiveChain && dest !== 'HOME') next.add(dest as Base);
         return next;
       });
 
@@ -541,7 +590,10 @@ export default function GameScreen({ setup, onEnd }: Props) {
         scorePitcher,
         steal: isSteal || undefined,
         advCode,
-        causedBy: chainCausedBy ?? undefined,
+        // chain 체크 시에만 chainCausedBy 사용, 아니면 reducer가 현재 타자로 자동 귀속
+        causedBy: chain ? (chainCausedBy ?? undefined) : undefined,
+        // 작은 화살표는 사용자가 명시적으로 연결동작 체크한 경우에만
+        chain,
       });
 
       if (dest === 'HOME')
@@ -712,18 +764,14 @@ export default function GameScreen({ setup, onEnd }: Props) {
   // ── Runner toggle ─────────────────────────────────────────────────────────
   const toggleRunnerSel = useCallback(
     (base: Base) => {
-      // 연결동작 중인 주자 또는 pendingBatter 상태: 클릭 즉시 RunAdv 모달 오픈
-      if (chainBases.has(base) || (G.pendingBatter && G.runners[base])) {
-        setUI((prev) => ({
-          ...prev,
-          selRunnerBase: base,
-          runAdvOpen: true,
-          runAdvResult: null,
-          runAdvDest: null,
-          runAdvEarned: true as boolean | 'half',
-          runAdvRbi: false,
-          runAdvPitcher: '',
-        }));
+      // 연결동작 중인 주자: 일반 주자와 동일하게 선택 → 목적지 클릭 → 모달
+      if (chainBases.has(base)) {
+        setUI((prev) => {
+          const next = prev.selRunnerBase === base ? null : base;
+          if (next) showToast(`${G.runners[base]?.name || base} 선택됨 — 목적지 루를 클릭하세요`);
+          else showToast('주자 선택 취소');
+          return { ...prev, selRunnerBase: next };
+        });
         return;
       }
       setUI((prev) => {
@@ -752,15 +800,25 @@ export default function GameScreen({ setup, onEnd }: Props) {
     const BASES: Base[] = ['1B', '2B', '3B'];
     const destIdx = BASES.indexOf(dest);
     const blocked = destIdx >= 0 && BASES.slice(0, destIdx + 1).some((b) => G.runners[b]);
-    if (!blocked) {
+    if (!blocked && !chainPendingBase) {
+      // chainPendingBase가 있으면 auto-place 안 함 (연결동작 진행 중)
       dispatch({ type: 'PLACE_BATTER' });
-      // chain-pending이 해소됐으면 제거
-      if (chainPendingBase === dest) setChainPendingBase(null);
     } else if (prevPendingRef.current !== G.pendingBatter) {
       if (!chainPendingBase) showToast('주자를 먼저 이동하세요');
     }
     prevPendingRef.current = G.pendingBatter;
   }, [G.pendingBatter, G.runners, chainPendingBase, dispatch, showToast]);
+
+  // pendingSkipParams가 있고 목적지가 비면 자동 dispatch
+  useEffect(() => {
+    if (!pendingSkipParams || !G.pendingBatter) return;
+    const tb = pendingSkipParams.toBase;
+    if (tb === 'HOME' || !G.runners[tb as Base]) {
+      dispatch({ type: 'CHAIN_BATTER_SKIP', ...pendingSkipParams });
+      setPendingSkipParams(null);
+      if (chainPendingBase) setChainPendingBase(null);
+    }
+  }, [pendingSkipParams, G.pendingBatter, G.runners, chainPendingBase, dispatch]);
 
   // ── Game flow ─────────────────────────────────────────────────────────────
   const handlePlaceBatter = useCallback(() => {
@@ -886,6 +944,41 @@ export default function GameScreen({ setup, onEnd }: Props) {
                   onBatterContextMenu={openBatterSubst}
                   onChainPendingClick={handleChainPendingClick}
                   onChainEnd={() => {
+                    if (chainTransit && chainPendingBase) {
+                      if (!G.runners[chainPendingBase]) {
+                        // 대기 위치 비어있으면 거기에 배치
+                        dispatch({
+                          type: 'CHAIN_TRANSIT_ADV',
+                          runner: chainTransit.runner,
+                          fromBase: chainTransit.atBase,
+                          toBase: chainPendingBase,
+                          earned: chainTransit.earned ?? true,
+                          rbi: chainTransit.rbi,
+                          scorePitcher: chainTransit.scorePitcher,
+                          causedBy: chainCausedBy ?? undefined,
+                        });
+                      } else if (!G.runners[chainTransit.fromBase]) {
+                        // 대기 위치 차있으면 원래 위치로 복귀
+                        dispatch({
+                          type: 'CHAIN_TRANSIT_ADV',
+                          runner: chainTransit.runner,
+                          fromBase: chainTransit.atBase,
+                          toBase: chainTransit.fromBase,
+                          earned: chainTransit.earned ?? true,
+                        });
+                      }
+                    }
+                    if (G.pendingBatter && chainPendingBase && !chainTransit) {
+                      const pb = chainPendingBase;
+                      if (!G.runners[pb]) {
+                        if (pendingSkipParams && pendingSkipParams.toBase === pb) {
+                          dispatch({ type: 'CHAIN_BATTER_SKIP', ...pendingSkipParams });
+                        } else {
+                          dispatch({ type: 'CHAIN_BATTER_SKIP', toBase: pb, earned: true });
+                        }
+                      }
+                    }
+                    setPendingSkipParams(null);
                     setChainBases(new Set());
                     setChainPendingBase(null);
                     setChainTransit(null);

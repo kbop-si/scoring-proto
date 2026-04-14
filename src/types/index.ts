@@ -25,6 +25,8 @@ export interface RunnerNote {
   rbi?: boolean;
   steal?: boolean; // 도루에 의한 진루 (통계용)
   advCode?: string; // 진루 사유 코드 표시 — S/(S)/W/(W)/P/(P)/BK/(BK)/✓BK/✓(BK)
+  force?: boolean; // 볼넷/사구 강제진루 (연결동작 화살표 표시 안 함)
+  chain?: boolean; // 연결동작에 의한 진루 (화살표 표시용)
 }
 
 export interface HitData {
@@ -58,6 +60,7 @@ export interface CellData {
   lobCell?: boolean; // 잔루 — 이닝 종료 시 홈에 못 들어온 주자 셀에 표기 (ℓ)
   isDoublePlay?: boolean; // 병살타 여부 (result 문자열에 포함 안 됨)
   isTriplePlay?: boolean; // 삼중살 여부 (result 문자열에 포함 안 됨)
+  chainSkip?: Base; // 연결동작 2베이스 이상 이동 시 최초 건너뛴 베이스 ('2B' | '3B')
   defFielders?: number[]; // 수비수 번호 내부 기록 — FC/INT/Ob 등 result에 직접 안 붙는 경우
   isDPRunner?: boolean; // 병살/삼중살에서 아웃된 주자 셀 (outMap pre-population 구분용)
   sideNotes?: string[]; // 마운드방문/타자타임/투수판이탈 등 투구 영역에 표시
@@ -69,8 +72,8 @@ export interface CellData {
 export type CellEventEntry =
   | { kind: 'pitch'; pitch: PitchType }
   | { kind: 'note'; note: string }
-  | { kind: 'runner_steal'; runnerName: string; dest: string }
-  | { kind: 'runner_cs'; runnerName: string; runOut: string };
+  | { kind: 'runner_steal'; runnerName: string; dest: string; double?: boolean }
+  | { kind: 'runner_cs'; runnerName: string; runOut: string; base: string };
 
 export interface PitcherData {
   name: string;
@@ -276,7 +279,7 @@ export type GameAction =
   | { type: 'PITCH'; pitchType: PitchType }
   | { type: 'BAT_ADV'; result: string; ballType?: '땅' | '뜬' | '라'; hitData?: HitData }
   | { type: 'BAT_OUT'; result: string; dp?: boolean; tp?: boolean }
-  | { type: 'STRIKEOUT'; result: 'K' | 'KW' | 'KP' | 'KE'; pitchType: PitchType }
+  | { type: 'STRIKEOUT'; result: string; pitchType: PitchType }
   | {
       type: 'RUN_ADV';
       base: Base;
@@ -288,6 +291,7 @@ export type GameAction =
       steal?: boolean;
       advCode?: string;
       causedBy?: number;
+      chain?: boolean;
     }
   | { type: 'RUN_OUT'; base: Base; result: string }
   | { type: 'NEXT_BATTER' }
