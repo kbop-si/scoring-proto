@@ -225,8 +225,6 @@ export const BASE_LINES: Record<
   DP_E: S1,
   TP_E: S1,
   E기록: S1,
-  선행주자아웃: S1,
-  '→선행주자아웃': S1,
   K다른주자: S1,
   GCW: [
     { x1: 20, y1: 38, x2: 38, y2: 20, c: '#111', w: 2.5 },

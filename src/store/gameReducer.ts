@@ -675,7 +675,12 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
       let cellUpdate: Partial<CellData>;
       if (action.hitData) {
         const hd: HitData = action.hitData;
-        result = hd.bases === 1 ? 'H1' : hd.bases === 2 ? 'H2' : hd.bases === 3 ? 'H3' : 'HR';
+        // 선행주자아웃은 안타가 아니므로 H1으로 변환하지 않고 hitType을 result 코드로 사용
+        if (hd.hitType === '선행주자아웃' || hd.hitType === '→선행주자아웃') {
+          result = hd.hitType;
+        } else {
+          result = hd.bases === 1 ? 'H1' : hd.bases === 2 ? 'H2' : hd.bases === 3 ? 'H3' : 'HR';
+        }
         cellUpdate = { result, hitData: hd, ballType: hd.ballType };
       } else {
         result = action.result;
@@ -739,6 +744,8 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
         SH진루: '1B',
         DP_E: '1B',
         TP_E: '1B',
+        선행주자아웃: '1B',
+        '→선행주자아웃': '1B',
       };
       const dest = BASE_MAP[result] || '1B';
       const forceTypes = [

@@ -309,6 +309,16 @@ export default function GameScreen({ setup, onEnd }: Props) {
             setChainPendingBase(dest);
           }
         }
+      } else if (chain && !hitData) {
+        // 실책/기타 진루(E·FC·#·ob·DP_E·E기록·번트 등) — 1B 기본 + 연결동작 활성화
+        const dest: Base = '1B';
+        const blocked = !!G.runners['1B'];
+        setChainCausedBy(G.curBatterOrder);
+        if (!blocked) {
+          setChainBases((prev) => new Set([...prev, dest]));
+        } else {
+          setChainPendingBase(dest);
+        }
       }
       if (hitData) {
         dispatch({ type: 'BAT_ADV', result: 'HIT', hitData });

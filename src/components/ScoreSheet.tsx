@@ -1102,9 +1102,16 @@ function ScoreCell({
                           />
                         );
                       })()}
-                    {dot && (
-                      <circle cx={zx + dot.dx + 4} cy={zy + dot.dy + 2} r="1.35" fill={zoneColor} />
-                    )}
+                    {dot &&
+                      hitData.hitType !== '선행주자아웃' &&
+                      hitData.hitType !== '→선행주자아웃' && (
+                        <circle
+                          cx={zx + dot.dx + 4}
+                          cy={zy + dot.dy + 2}
+                          r="1.35"
+                          fill={zoneColor}
+                        />
+                      )}
                   </g>
                 );
               })()}

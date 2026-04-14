@@ -211,41 +211,11 @@ function buildPitcherLog(G: GameState): LogRow[] {
 
     const base = { no: 0, inningKey, inning: inningLabel, pitcher, batter: batterName };
 
-    // ── 투구 · 이벤트 행 (eventLog 있으면 FIFO 순서, 없으면 pitches 폴백) ──
-    // 단, 같은 셀 내 연속된 runner_adv/steal 그룹에서 타자 본인의 진루가 다른 주자 진루보다
-    // 먼저 표시되도록 부분 정렬 (시스템이 막힘 해소를 위해 타 주자를 먼저 이동시키더라도
-    // 사용자가 의도한 순서는 "타자 본인 → 다른 주자"이므로 표시상 우선)
+    // ── 투구 · 이벤트 행 (eventLog FIFO 순수 입력순, 재정렬 없음) ──
     let batterShown = false; // 첫 투구/결과 행에만 타자명 표시
     if (cell.eventLog && cell.eventLog.length > 0) {
-      const eventLog = (() => {
-        const log = [...cell.eventLog];
-        const isRunnerAdv = (e: (typeof log)[number]) =>
-          e.kind === 'runner_adv' || e.kind === 'runner_steal' || e.kind === 'runner_cs';
-        const isBatterSelf = (e: (typeof log)[number]) =>
-          (e.kind === 'runner_adv' || e.kind === 'runner_steal' || e.kind === 'runner_cs') &&
-          (e as { runnerName?: string }).runnerName === batterName;
-        // 연속된 runner 그룹 안에서 batter-self를 앞으로 stable sort
-        let i = 0;
-        while (i < log.length) {
-          if (!isRunnerAdv(log[i])) {
-            i++;
-            continue;
-          }
-          let j = i;
-          while (j < log.length && isRunnerAdv(log[j])) j++;
-          const group = log.slice(i, j);
-          group.sort((a, b) => {
-            const ab = isBatterSelf(a) ? 0 : 1;
-            const bb = isBatterSelf(b) ? 0 : 1;
-            return ab - bb; // batter-self 먼저
-          });
-          for (let k = 0; k < group.length; k++) log[i + k] = group[k];
-          i = j;
-        }
-        return log;
-      })();
       let pitchSeq = 0;
-      eventLog.forEach((entry) => {
+      cell.eventLog.forEach((entry) => {
         if (entry.kind === 'pitch') {
           pitchSeq++;
           noMap[pitcher] = (noMap[pitcher] ?? 0) + 1;

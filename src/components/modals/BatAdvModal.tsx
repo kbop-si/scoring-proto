@@ -58,10 +58,24 @@ const HIT_LABEL: Record<string, string> = {
   INT: '내야안타',
   BUNT: '번트안타',
   OBUNT: '외야번트',
+  선행주자아웃: '선행주자아웃',
+  '→선행주자아웃': '→선행주자아웃',
 };
 
-// 수비위치+타구방향+구질이 필요한 결과
-const NEEDS_HIT = new Set(['1B', '2B', '3B', 'HR', 'GHR', 'GCW', 'INT', 'BUNT', 'OBUNT']);
+// 수비위치+타구방향+구질이 필요한 결과 (선행주자아웃류 포함 — 안타가 아니지만 동일 UI 사용)
+const NEEDS_HIT = new Set([
+  '1B',
+  '2B',
+  '3B',
+  'HR',
+  'GHR',
+  'GCW',
+  'INT',
+  'BUNT',
+  'OBUNT',
+  '선행주자아웃',
+  '→선행주자아웃',
+]);
 // 실책 수비수 번호가 필요한 결과 — 필드 클릭 한 번으로 바로 확정
 const NEEDS_FIELDER = new Set(['E', 'E번트', 'KE', '#', 'ob']);
 
@@ -83,7 +97,15 @@ function toBallTypeShort(b: BallType): '땅' | '뜬' | '라' {
 }
 
 function basesForType(hitType: string): 0 | 1 | 2 | 3 | 4 {
-  if (hitType === '1B' || hitType === 'INT' || hitType === 'BUNT' || hitType === 'OBUNT') return 1;
+  if (
+    hitType === '1B' ||
+    hitType === 'INT' ||
+    hitType === 'BUNT' ||
+    hitType === 'OBUNT' ||
+    hitType === '선행주자아웃' ||
+    hitType === '→선행주자아웃'
+  )
+    return 1;
   if (hitType === '2B') return 2;
   if (hitType === '3B') return 3;
   return 4; // HR, GHR, GCW
