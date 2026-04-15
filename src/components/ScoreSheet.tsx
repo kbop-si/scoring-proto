@@ -299,6 +299,88 @@ function ScoreCell({
   };
 
   const eventLog = cell?.eventLog || [];
+
+  const renderNote = (note: string, key: string | number): React.ReactNode => {
+    if (note === 'M_R') {
+      return (
+        <div
+          key={key}
+          style={{ fontSize: 10, fontWeight: 900, lineHeight: 1.2, color: '#fa0000' }}
+        >
+          M
+        </div>
+      );
+    }
+    if (note === 'M_B') {
+      return (
+        <div
+          key={key}
+          style={{ fontSize: 10, fontWeight: 900, lineHeight: 1.2, color: '#0004ff' }}
+        >
+          M
+        </div>
+      );
+    }
+    if (note === 'BT') {
+      return (
+        <div
+          key={key}
+          style={{
+            width: 12,
+            height: 12,
+            borderRadius: '50%',
+            border: '2px solid #0003cc',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            fontSize: 8,
+            fontWeight: 900,
+            color: '#0003cc',
+          }}
+        >
+          t
+        </div>
+      );
+    }
+    if (note === 'PL') {
+      return (
+        <div
+          key={key}
+          style={{
+            width: 12,
+            height: 12,
+            borderRadius: '50%',
+            border: '2px solid #00b909',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            fontSize: 8,
+            fontWeight: 900,
+            color: '#00b909',
+            lineHeight: 1,
+            boxSizing: 'border-box',
+          }}
+        >
+          d
+        </div>
+      );
+    }
+    return (
+      <div
+        key={key}
+        style={{
+          fontSize: 8,
+          fontWeight: 700,
+          lineHeight: 1.4,
+          whiteSpace: 'nowrap',
+          color: '#111',
+        }}
+      >
+        {note}
+      </div>
+    );
+  };
+
   const renderPitches = () => {
     if (eventLog.length > 0) {
       const items: React.ReactNode[] = [];
@@ -377,6 +459,9 @@ function ScoreCell({
             </span>
           );
           i++;
+        } else if (entry.kind === 'note') {
+          items.push(renderNote(String(entry.note).trim(), `n${i}`));
+          i++;
         } else {
           i++;
         }
@@ -449,7 +534,7 @@ function ScoreCell({
             </span>
           )}
 
-        {sideNotes.map((n, i) => {
+        {!eventLog.some((e) => e.kind === 'note') && sideNotes.map((n, i) => {
           const note = String(n).trim();
 
           if (note === 'M_R') {
