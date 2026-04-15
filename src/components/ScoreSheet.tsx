@@ -303,20 +303,14 @@ function ScoreCell({
   const renderNote = (note: string, key: string | number): React.ReactNode => {
     if (note === 'M_R') {
       return (
-        <div
-          key={key}
-          style={{ fontSize: 10, fontWeight: 900, lineHeight: 1.2, color: '#fa0000' }}
-        >
+        <div key={key} style={{ fontSize: 10, fontWeight: 900, lineHeight: 1.2, color: '#fa0000' }}>
           M
         </div>
       );
     }
     if (note === 'M_B') {
       return (
-        <div
-          key={key}
-          style={{ fontSize: 10, fontWeight: 900, lineHeight: 1.2, color: '#0004ff' }}
-        >
+        <div key={key} style={{ fontSize: 10, fontWeight: 900, lineHeight: 1.2, color: '#0004ff' }}>
           M
         </div>
       );
@@ -534,102 +528,103 @@ function ScoreCell({
             </span>
           )}
 
-        {!eventLog.some((e) => e.kind === 'note') && sideNotes.map((n, i) => {
-          const note = String(n).trim();
+        {!eventLog.some((e) => e.kind === 'note') &&
+          sideNotes.map((n, i) => {
+            const note = String(n).trim();
 
-          if (note === 'M_R') {
+            if (note === 'M_R') {
+              return (
+                <div
+                  key={`n${i}`}
+                  style={{
+                    fontSize: 10,
+                    fontWeight: 900,
+                    lineHeight: 1.2,
+                    color: '#fa0000',
+                  }}
+                >
+                  M
+                </div>
+              );
+            }
+
+            if (note === 'M_B') {
+              return (
+                <div
+                  key={`n${i}`}
+                  style={{
+                    fontSize: 10,
+                    fontWeight: 900,
+                    lineHeight: 1.2,
+                    color: '#0004ff',
+                  }}
+                >
+                  M
+                </div>
+              );
+            }
+
+            if (note === 'BT') {
+              return (
+                <div
+                  key={i}
+                  style={{
+                    width: 12,
+                    height: 12,
+                    borderRadius: '50%',
+                    border: '2px solid #0003cc',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontSize: 8,
+                    fontWeight: 900,
+                    color: '#0003cc',
+                  }}
+                >
+                  t
+                </div>
+              );
+            }
+
+            if (note === 'PL') {
+              return (
+                <div
+                  key={`n${i}`}
+                  style={{
+                    width: 12,
+                    height: 12,
+                    borderRadius: '50%',
+                    border: '2px solid #00b909',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontSize: 8,
+                    fontWeight: 900,
+                    color: '#00b909',
+                    lineHeight: 1,
+                    boxSizing: 'border-box',
+                  }}
+                >
+                  d
+                </div>
+              );
+            }
+
             return (
               <div
                 key={`n${i}`}
                 style={{
-                  fontSize: 10,
-                  fontWeight: 900,
-                  lineHeight: 1.2,
-                  color: '#fa0000',
-                }}
-              >
-                M
-              </div>
-            );
-          }
-
-          if (note === 'M_B') {
-            return (
-              <div
-                key={`n${i}`}
-                style={{
-                  fontSize: 10,
-                  fontWeight: 900,
-                  lineHeight: 1.2,
-                  color: '#0004ff',
-                }}
-              >
-                M
-              </div>
-            );
-          }
-
-          if (note === 'BT') {
-            return (
-              <div
-                key={i}
-                style={{
-                  width: 12,
-                  height: 12,
-                  borderRadius: '50%',
-                  border: '2px solid #0003cc',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
                   fontSize: 8,
-                  fontWeight: 900,
-                  color: '#0003cc',
+                  fontWeight: 700,
+                  lineHeight: 1.4,
+                  whiteSpace: 'nowrap',
+                  color: '#111',
                 }}
               >
-                t
+                {note}
               </div>
             );
-          }
-
-          if (note === 'PL') {
-            return (
-              <div
-                key={`n${i}`}
-                style={{
-                  width: 12,
-                  height: 12,
-                  borderRadius: '50%',
-                  border: '2px solid #00b909',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  fontSize: 8,
-                  fontWeight: 900,
-                  color: '#00b909',
-                  lineHeight: 1,
-                  boxSizing: 'border-box',
-                }}
-              >
-                d
-              </div>
-            );
-          }
-
-          return (
-            <div
-              key={`n${i}`}
-              style={{
-                fontSize: 8,
-                fontWeight: 700,
-                lineHeight: 1.4,
-                whiteSpace: 'nowrap',
-                color: '#111',
-              }}
-            >
-              {note}
-            </div>
-          );
-        })}
+          })}
       </div>
 
       <div
