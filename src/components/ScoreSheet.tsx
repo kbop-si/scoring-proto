@@ -460,7 +460,7 @@ function ScoreCell({
                   fontSize: 10,
                   fontWeight: 900,
                   lineHeight: 1.2,
-                  color: '#111',
+                  color: '#fa0000',
                 }}
               >
                 M
@@ -476,7 +476,7 @@ function ScoreCell({
                   fontSize: 10,
                   fontWeight: 900,
                   lineHeight: 1.2,
-                  color: '#111',
+                  color: '#0004ff',
                 }}
               >
                 M
@@ -492,13 +492,13 @@ function ScoreCell({
                   width: 12,
                   height: 12,
                   borderRadius: '50%',
-                  border: '2px solid #111',
+                  border: '2px solid #0003cc',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
                   fontSize: 8,
                   fontWeight: 900,
-                  color: '#111',
+                  color: '#0003cc',
                 }}
               >
                 t
@@ -514,13 +514,13 @@ function ScoreCell({
                   width: 12,
                   height: 12,
                   borderRadius: '50%',
-                  border: '2px solid #111',
+                  border: '2px solid #00b909',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
                   fontSize: 8,
                   fontWeight: 900,
-                  color: '#111',
+                  color: '#00b909',
                   lineHeight: 1,
                   boxSizing: 'border-box',
                 }}
