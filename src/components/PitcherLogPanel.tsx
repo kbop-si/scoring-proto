@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import type { GameState, PitchType, HitData } from '../types';
+import { cellKey as makeCellKey } from '../store/gameReducer';
 
 const PITCH_LABEL: Record<PitchType, string> = {
   S: '스트라이크',
@@ -121,8 +122,9 @@ function advLabel(advCode?: string): string {
 const SIDE_NOTE_LABEL: Record<string, string> = {
   PL: '투수판이탈',
   BT: '타자타임',
-  M_R: '마운드방문(감독)',
-  M_B: '마운드방문(코치)',
+  M_R: '마운드방문(코칭스태프)',
+  M_B: '마운드방문(포수)',
+  M_BD: '마운드방문(포수덕아웃)',
 };
 
 type LogRow = {
@@ -132,8 +134,11 @@ type LogRow = {
   pitcher: string;
   batter: string;
   paStart: boolean;
+  // 편집을 위한 source 매핑 — eventLog 기반 행에만 부여
+  cellKey?: string;
+  entryIdx?: number;
 } & (
-  | { kind: 'pitch'; pitchNum: string; label: string; color: string }
+  | { kind: 'pitch'; pitchNum: string; label: string; color: string; pitchCode?: PitchType }
   | {
       kind: 'result';
       result: string;
@@ -143,7 +148,14 @@ type LogRow = {
       hitData?: HitData;
       pitchNum?: string;
     }
-  | { kind: 'runner'; label: string } // 도루·도루실패·주자아웃
+  | {
+      kind: 'runner';
+      label: string;
+      // 진루 사유 편집을 위한 메타 (runner_steal/runner_adv 행만)
+      advCode?: string;
+      runnerName?: string;
+      dest?: string;
+    } // 도루·도루실패·주자아웃
   | { kind: 'event'; label: string } // 견제·마운드방문 등
 );
 
@@ -210,34 +222,75 @@ function buildPitcherLog(G: GameState): LogRow[] {
     const batter = battingLU.find((p) => p.order === cell.order);
     const changes = cell.half === 'top' ? topCh : botCh;
     const initPitcher = cell.half === 'top' ? topInit : botInit;
-    const applicable = changes.filter(
-      (ch) => ch.inning < cell.inning || (ch.inning === cell.inning && ch.order <= cell.order)
+    // 이전 이닝까지 적용된 교체 (이 cell이 시작될 때의 투수)
+    const priorChanges = changes.filter(
+      (ch) => ch.inning < cell.inning || (ch.inning === cell.inning && ch.order < cell.order)
     );
-    const pitcher = applicable.length > 0 ? applicable[applicable.length - 1].name : initPitcher;
+    const startPitcher =
+      priorChanges.length > 0 ? priorChanges[priorChanges.length - 1].name : initPitcher;
+    // 이 cell의 PA 도중 발생한 mid-PA 교체
+    const midChange = changes.find(
+      (ch) => ch.inning === cell.inning && ch.order === cell.order && ch.mid
+    );
+    // PA 시작 시점의 투수 vs PA 도중 교체된 투수
+    let curPitcher = startPitcher;
+    const midChangeAfterPitches =
+      midChange?.mid != null
+        ? (midChange.mid.balls ?? 0) + (midChange.mid.strikes ?? 0)
+        : Number.POSITIVE_INFINITY;
+    const newPitcherName = midChange?.name;
+    // 구형 데이터 폴백 / 결과 행에 쓰일 default pitcher (이 cell의 최신 적용 투수)
+    const pitcher = newPitcherName ?? startPitcher;
     const batterName = batter?.name || `${cell.order}번`;
     const inningLabel = `${cell.inning}회${cell.half === 'top' ? '초' : '말'}`;
     const inningKey = `${cell.inning}-${cell.half}`;
-
-    const base = { no: 0, inningKey, inning: inningLabel, pitcher, batter: batterName };
-
+    const ck = makeCellKey(cell.inning, cell.order, cell.appearance, cell.half);
+    const base = {
+      no: 0,
+      inningKey,
+      inning: inningLabel,
+      pitcher,
+      batter: batterName,
+      cellKey: ck,
+    };
     // ── 투구 · 이벤트 행 (eventLog FIFO 순수 입력순, 재정렬 없음) ──
     let batterShown = false; // 첫 투구/결과 행에만 타자명 표시
     if (cell.eventLog && cell.eventLog.length > 0) {
       let pitchSeq = 0;
-      cell.eventLog.forEach((entry) => {
+      cell.eventLog.forEach((entry, entryIdx) => {
+        // 매 이벤트마다 현재 투수 결정 (mid-PA 교체 시점 이후로 전환)
+        if (newPitcherName && curPitcher !== newPitcherName && pitchSeq >= midChangeAfterPitches) {
+          curPitcher = newPitcherName;
+        }
+        const base = {
+          no: 0,
+          inningKey,
+          inning: inningLabel,
+          pitcher: curPitcher,
+          batter: batterName,
+          cellKey: ck,
+          entryIdx,
+        };
+
         if (entry.kind === 'pitch') {
           pitchSeq++;
-          noMap[pitcher] = (noMap[pitcher] ?? 0) + 1;
+          // 이 투구가 mid 시점 이후 첫 투구면 새 투수 적용
+          if (newPitcherName && curPitcher !== newPitcherName && pitchSeq > midChangeAfterPitches) {
+            curPitcher = newPitcherName;
+            base.pitcher = curPitcher;
+          }
+          noMap[curPitcher] = (noMap[curPitcher] ?? 0) + 1;
           const isFirst = !batterShown;
           batterShown = true;
           rows.push({
             ...base,
-            no: noMap[pitcher],
+            no: noMap[curPitcher],
             paStart: isFirst,
             kind: 'pitch',
             pitchNum: `${pitchSeq}구`,
             label: PITCH_LABEL[entry.pitch] ?? entry.pitch,
             color: PITCH_COLOR[entry.pitch] ?? '#374151',
+            pitchCode: entry.pitch,
           });
         } else if (entry.kind === 'runner_steal') {
           const ac = (entry as { advCode?: string }).advCode;
@@ -250,7 +303,16 @@ function buildPitcherLog(G: GameState): LogRow[] {
                   ? '보크'
                   : '도루';
           const label = `${entry.runnerName} ${causeLbl}`;
-          rows.push({ ...base, no: noMap[pitcher], paStart: false, kind: 'runner', label });
+          rows.push({
+            ...base,
+            no: noMap[curPitcher] ?? 0,
+            paStart: false,
+            kind: 'runner',
+            label,
+            advCode: ac,
+            runnerName: entry.runnerName,
+            dest: entry.dest,
+          });
         } else if (entry.kind === 'runner_cs') {
           const ro = entry.runOut || '';
           const causeLbl = ro.startsWith('X')
@@ -260,18 +322,18 @@ function buildPitcherLog(G: GameState): LogRow[] {
               : `주자아웃(${ro})`;
           rows.push({
             ...base,
-            no: noMap[pitcher],
+            no: noMap[curPitcher] ?? 0,
             paStart: false,
             kind: 'runner',
             label: `${entry.runnerName} ${causeLbl}`,
           });
         } else if (entry.kind === 'result') {
-          noMap[pitcher] = (noMap[pitcher] ?? 0) + 1;
+          noMap[curPitcher] = (noMap[curPitcher] ?? 0) + 1;
           const resultIsFirst = !batterShown;
           batterShown = true;
           rows.push({
             ...base,
-            no: noMap[pitcher],
+            no: noMap[curPitcher],
             paStart: resultIsFirst,
             kind: 'result',
             result: entry.result,
@@ -294,16 +356,25 @@ function buildPitcherLog(G: GameState): LogRow[] {
           }
           rows.push({
             ...base,
-            no: noMap[pitcher],
+            no: noMap[curPitcher] ?? 0,
             paStart: false,
             kind: 'runner',
             label: `${entry.runnerName} ${label}`,
+            advCode: ac,
+            runnerName: entry.runnerName,
+            dest: entry.dest,
           });
         } else {
           // 이벤트 (투수판이탈·마운드방문 등) — 타자명 표시 안 함
           const label =
             SIDE_NOTE_LABEL[(entry as { note: string }).note] ?? (entry as { note: string }).note;
-          rows.push({ ...base, no: noMap[pitcher], paStart: false, kind: 'event', label });
+          rows.push({
+            ...base,
+            no: noMap[curPitcher] ?? 0,
+            paStart: false,
+            kind: 'event',
+            label,
+          });
         }
       });
     } else {
@@ -414,7 +485,32 @@ function buildPitcherLog(G: GameState): LogRow[] {
   return rows;
 }
 
-export default function PitcherLogPanel({ G }: { G: GameState }) {
+export type EditRowInfo =
+  | { kind: 'pitch'; cellKey: string; entryIdx: number; currentPitch: PitchType }
+  | { kind: 'hit'; cellKey: string; currentResult: string; currentHitData?: HitData }
+  | {
+      kind: 'runner_reason';
+      cellKey: string;
+      entryIdx: number;
+      currentAdvCode?: string;
+      runnerName: string;
+      dest: string;
+    }
+  | { kind: 'bat_result_code'; cellKey: string; currentResult: string }
+  | {
+      kind: 'bat_out_code';
+      cellKey: string;
+      currentResult: string;
+      currentBallType?: '땅' | '뜬' | '라';
+    };
+
+export default function PitcherLogPanel({
+  G,
+  onEditRow,
+}: {
+  G: GameState;
+  onEditRow?: (info: EditRowInfo) => void;
+}) {
   const [selInning, setSelInning] = useState<string | null>(null);
   const [collapsed, setCollapsed] = useState<Set<number>>(new Set());
   const bodyRef = useRef<HTMLDivElement>(null);
@@ -507,6 +603,25 @@ export default function PitcherLogPanel({ G }: { G: GameState }) {
           filtered.map((r, i) => {
             // ── 주자 이벤트 행 ──────────────────────────────────────────
             if (r.kind === 'runner') {
+              const runnerRow = r as Extract<LogRow, { kind: 'runner' }>;
+              const canEditRunner =
+                !!runnerRow.cellKey &&
+                runnerRow.entryIdx !== undefined &&
+                !!runnerRow.runnerName &&
+                !!runnerRow.dest;
+              const handleRunnerEdit = (e: React.MouseEvent) => {
+                e.stopPropagation();
+                if (canEditRunner) {
+                  onEditRow?.({
+                    kind: 'runner_reason',
+                    cellKey: runnerRow.cellKey!,
+                    entryIdx: runnerRow.entryIdx!,
+                    currentAdvCode: runnerRow.advCode,
+                    runnerName: runnerRow.runnerName!,
+                    dest: runnerRow.dest!,
+                  });
+                }
+              };
               return (
                 <div key={i} className="plp-row" style={{ background: '#f0fdf4' }}>
                   <div className="plp-cell" style={{ color: '#94a3b8' }}>
@@ -520,7 +635,17 @@ export default function PitcherLogPanel({ G }: { G: GameState }) {
                   <div className="plp-cell" style={{ fontSize: 10, color: '#374151' }}>
                     {r.batter}
                   </div>
-                  <div className="plp-cell" style={{ fontWeight: 700, color: '#059669' }}>
+                  <div
+                    className="plp-cell"
+                    style={{
+                      fontWeight: 700,
+                      color: '#059669',
+                      cursor: canEditRunner && onEditRow ? 'pointer' : undefined,
+                      textDecoration: canEditRunner && onEditRow ? 'underline dotted' : undefined,
+                    }}
+                    onClick={canEditRunner && onEditRow ? handleRunnerEdit : undefined}
+                    title={canEditRunner && onEditRow ? '클릭하여 사유 변경' : undefined}
+                  >
                     {r.label}
                   </div>
                 </div>
@@ -549,6 +674,80 @@ export default function PitcherLogPanel({ G }: { G: GameState }) {
             const isResult = r.kind === 'result';
             const paIdx = filteredPaIdx[i];
             const isCollapsed = collapsed.has(paIdx);
+
+            // 편집 가능 여부 판정
+            const pitchRow = !isResult ? (r as Extract<LogRow, { kind: 'pitch' }>) : null;
+            const resultRow = isResult ? (r as Extract<LogRow, { kind: 'result' }>) : null;
+            const canEditPitch =
+              !!pitchRow &&
+              !!pitchRow.pitchCode &&
+              !!pitchRow.cellKey &&
+              pitchRow.entryIdx !== undefined;
+            const isHitResult =
+              !!resultRow &&
+              (resultRow.result === 'H1' || resultRow.result === 'H2' || resultRow.result === 'H3');
+            // 1B 도달 결과 (안타·실책·번트 등) — code 변경 가능 그룹
+            const isOneBaseResult =
+              !!resultRow &&
+              (resultRow.result === 'H1' ||
+                resultRow.result === 'INT' ||
+                resultRow.result === 'BUNT' ||
+                resultRow.result === 'OBUNT' ||
+                /^E\d/.test(resultRow.result));
+            // 아웃 결과 — 수비번호 또는 F#/L#/BU#/SH# 등 (병살/삼중살은 제외 — out count 변경 위험)
+            const isOutResult =
+              !!resultRow &&
+              !resultRow.isDP &&
+              !resultRow.isTP &&
+              (/^\d+(-\d+)*[TUR]?$/.test(resultRow.result) || // 1, 6-3, 6-3-T 등
+                /^F\d/.test(resultRow.result) || // F1, F8
+                /^f\d/.test(resultRow.result) || // f1
+                /^L\d/.test(resultRow.result) || // L1, L8
+                /^IF\d/.test(resultRow.result) || // IF
+                /^SF\d/.test(resultRow.result) || // SF
+                /^BU\d/.test(resultRow.result) || // BU1
+                /^SH\d/.test(resultRow.result));
+            const canEditResult =
+              !!resultRow && !!resultRow.cellKey && (isHitResult || isOneBaseResult || isOutResult);
+            const editable = canEditPitch || canEditResult;
+
+            const handleEditClick = (e: React.MouseEvent) => {
+              e.stopPropagation();
+              if (canEditPitch && pitchRow) {
+                onEditRow?.({
+                  kind: 'pitch',
+                  cellKey: pitchRow.cellKey!,
+                  entryIdx: pitchRow.entryIdx!,
+                  currentPitch: pitchRow.pitchCode!,
+                });
+              } else if (canEditResult && resultRow) {
+                // 안타류: 일반 클릭 = zone 변경 / Shift+클릭 = 결과 코드 변경
+                // 1B 도달 결과: 결과 코드 변경
+                // 아웃 결과: 결과/ballType 변경
+                if (isHitResult && !e.shiftKey) {
+                  onEditRow?.({
+                    kind: 'hit',
+                    cellKey: resultRow.cellKey!,
+                    currentResult: resultRow.result,
+                    currentHitData: resultRow.hitData,
+                  });
+                } else if (isOutResult) {
+                  onEditRow?.({
+                    kind: 'bat_out_code',
+                    cellKey: resultRow.cellKey!,
+                    currentResult: resultRow.result,
+                    currentBallType: resultRow.ballType,
+                  });
+                } else {
+                  onEditRow?.({
+                    kind: 'bat_result_code',
+                    cellKey: resultRow.cellKey!,
+                    currentResult: resultRow.result,
+                  });
+                }
+              }
+            };
+
             return (
               <div
                 key={i}
@@ -585,15 +784,25 @@ export default function PitcherLogPanel({ G }: { G: GameState }) {
                   style={{
                     fontWeight: 700,
                     color: isResult ? '#7c3aed' : (r as { color: string }).color,
+                    cursor: editable && onEditRow ? 'pointer' : undefined,
+                    textDecoration: editable && onEditRow ? 'underline dotted' : undefined,
                   }}
+                  onClick={editable && onEditRow ? handleEditClick : undefined}
+                  title={
+                    editable && onEditRow
+                      ? isHitResult
+                        ? '클릭: 방향 변경 / Shift+클릭: 종류 변경'
+                        : '클릭하여 수정'
+                      : undefined
+                  }
                 >
                   {isResult
                     ? formatCellResult(
-                        (r as Extract<LogRow, { kind: 'result' }>).result,
-                        (r as Extract<LogRow, { kind: 'result' }>).ballType,
-                        (r as Extract<LogRow, { kind: 'result' }>).isDP,
-                        (r as Extract<LogRow, { kind: 'result' }>).isTP,
-                        (r as Extract<LogRow, { kind: 'result' }>).hitData
+                        resultRow!.result,
+                        resultRow!.ballType,
+                        resultRow!.isDP,
+                        resultRow!.isTP,
+                        resultRow!.hitData
                       )
                     : (r as { label: string }).label}
                 </div>

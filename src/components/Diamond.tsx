@@ -8,6 +8,7 @@ interface Props {
   chainBases: Set<Base>;
   chainPendingBase: Base | null;
   chainTransitRunner?: Runner | null;
+  showChainEndButton?: boolean;
   onRunnerToggle: (base: Base) => void;
   onBaseTargetClick: (dest: string) => void;
   onRunnerDestClick?: (dest: Base | 'HOME') => void;
@@ -32,6 +33,7 @@ export default function Diamond({
   chainBases,
   chainPendingBase,
   chainTransitRunner,
+  showChainEndButton = true,
   onRunnerToggle,
   onBaseTargetClick,
   onRunnerDestClick,
@@ -59,7 +61,7 @@ export default function Diamond({
         <span style={{ fontSize: 9, color: '#94a3b8' }}>
           {G.inning}회 {G.half === 'top' ? '초' : '말'}
         </span>
-        {(chainBases.size > 0 || !!chainPendingBase) && (
+        {showChainEndButton && (chainBases.size > 0 || !!chainPendingBase) && (
           <button
             onClick={onChainEnd}
             style={{
@@ -209,7 +211,8 @@ export default function Diamond({
           if (!r) return null;
           const pos = BASE_XY[base];
           const isChain = chainBases.has(base);
-          const isPending = !!G.pendingBatter && !isChain;
+          const isCollisionTarget = chainPendingBase === base && !!chainTransitRunner;
+          const isPending = (!!G.pendingBatter || isCollisionTarget) && !isChain;
           return (
             <div
               key={base}

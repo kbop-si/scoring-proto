@@ -12,6 +12,7 @@ import type {
   HitData,
   RunnerNote,
   PitcherStats,
+  SubstitutionLog,
 } from '../types';
 import { SAMPLE } from '../data/constants';
 
@@ -41,7 +42,9 @@ export function isOut(r: string | null): boolean {
     r.startsWith('BU') ||
     r.startsWith('SF') ||
     /^\d([-→]\d)*(T|U|R)?$/.test(r) ||
-    /^[fFL]/.test(r) ||
+    // 플라이/파울플라이/라인드라이브: F<숫자>, f<숫자>, L<숫자>
+    // (FC<숫자>=야수선택은 진루이므로 제외)
+    (/^[fFL]\d/.test(r) && !r.startsWith('FC')) ||
     /^IF/.test(r) ||
     r === 'x2' ||
     r === 'xB' ||
@@ -59,6 +62,7 @@ export function isOnBase(r: string | null): boolean {
   if (/^E[\d-]+$/.test(r)) return true; // 실책 진루 E6, E5, E6-3 등
   if (/^E번트\d$/.test(r)) return true; // 번트 실책 E번트6 등
   if (/^KE\d$/.test(r)) return true; // 낫아웃 수비실책 KE2 등
+  if (/^FC[\d-]+$/.test(r)) return true; // 야수선택 FC4, FC4-3 등
   if (/^ꓘ/.test(r) && /[보자E]/.test(r)) return true; // 다른주자수비 출루 (buildKDef: 보/자/E 포함)
   if (/^#\dE$/.test(r)) return true; // 타격방해 #2E 등
   if (/^Ob\dE$/.test(r)) return true; // 주루방해 Ob3E 등
@@ -333,6 +337,7 @@ export const initialGameState: GameState = {
   history: [],
   gameEvents: [],
   pitcherChanges: [],
+  substitutions: [],
 };
 
 // ── Reducer ───────────────────────────────────────────────────────────────────
@@ -406,7 +411,15 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
     case 'CHANGE_LU_POS': {
       const luKey = action.team === 'away' ? 'awayLineup' : 'homeLineup';
       const lu = [...state[luKey]];
-      lu[action.idx] = { ...lu[action.idx], pos: action.pos };
+      const oldPos = lu[action.idx].pos;
+      // 동일 포지션을 가진 다른 선수가 있으면 자동 스왑 — 라인업 내 중복 방지
+      if (oldPos !== action.pos) {
+        const swapIdx = lu.findIndex((p, i) => i !== action.idx && p.pos === action.pos);
+        if (swapIdx >= 0) {
+          lu[swapIdx] = { ...lu[swapIdx], pos: oldPos };
+        }
+      }
+      lu[action.idx] = { ...lu[action.idx], pos: action.pos, needsPosReview: false };
       return { ...state, [luKey]: lu };
     }
 
@@ -681,15 +694,41 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
         } else {
           result = hd.bases === 1 ? 'H1' : hd.bases === 2 ? 'H2' : hd.bases === 3 ? 'H3' : 'HR';
         }
-        cellUpdate = { result, hitData: hd, ballType: hd.ballType };
+        // HR류는 hd.hrTime(BatAdvModal 입력값) 우선, 없으면 Date.now()
+        const ts = hd.hrTime ?? Date.now();
+        cellUpdate = { result, hitData: hd, ballType: hd.ballType, timestamp: ts };
       } else {
         result = action.result;
-        cellUpdate = { result, ...(ballType ? { ballType } : {}) };
+        cellUpdate = { result, ...(ballType ? { ballType } : {}), timestamp: Date.now() };
+      }
+
+      // BB 책임 룰: result가 BB류이고 PA 도중 투수 교체로 pendingBBChargeTo가 있으면 전임 투수에 귀속
+      const bbResults = ['B', 'IB', 'IB2'];
+      let bbChargedTo: string | undefined;
+      let updatedPitcherChanges = state.pitcherChanges;
+      if (bbResults.includes(result)) {
+        const lastIdx = state.pitcherChanges.length - 1;
+        const last = lastIdx >= 0 ? state.pitcherChanges[lastIdx] : null;
+        if (
+          last &&
+          last.pendingBBChargeTo &&
+          last.inning === state.inning &&
+          last.half === state.half &&
+          last.order === state.curBatterOrder
+        ) {
+          bbChargedTo = last.pendingBBChargeTo;
+          updatedPitcherChanges = [...state.pitcherChanges];
+          updatedPitcherChanges[lastIdx] = { ...last, pendingBBChargeTo: undefined };
+        }
       }
 
       const cell = {
         ...cells[key],
         ...cellUpdate,
+        ...(bbChargedTo ? { bbChargedTo } : {}),
+        ...(action.deflection ? { deflection: action.deflection } : {}),
+        // BAT_ADV는 항상 진루 결과 — 이전 상태(BAT_OUT 등)에서 남은 cellOutNum 명시적 제거
+        cellOutNum: undefined,
         eventLog: [...(cells[key].eventLog || []), { kind: 'result' as const, result }],
       };
       cells = { ...cells, [key]: cell };
@@ -935,6 +974,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
           awayER,
           homeER,
           pendingBatter: { runner: batObj, dest: dest as Base },
+          pitcherChanges: updatedPitcherChanges,
           history: saveHist(state),
         };
       }
@@ -961,13 +1001,14 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
         awayER,
         homeER,
         pendingBatter: null,
+        pitcherChanges: updatedPitcherChanges,
         history: saveHist(state),
       };
     }
 
     // ── BAT_OUT ──────────────────────────────────────────────────────────────
     case 'BAT_OUT': {
-      const { result, dp: isDP, tp: isTP } = action;
+      const { result, dp: isDP, tp: isTP, ballType } = action;
       const key = state.selCellKey;
       let cells = ensureCell(state.cells, key);
       // 현재 타자의 chronological 아웃 번호
@@ -984,6 +1025,8 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
           eventLog: [...(cells[key].eventLog || []), { kind: 'result' as const, result }],
           ...(isDP ? { isDoublePlay: true } : {}),
           ...(isTP ? { isTriplePlay: true } : {}),
+          ...(ballType ? { ballType } : {}),
+          ...(action.deflection ? { deflection: action.deflection } : {}),
         },
       };
 
@@ -1083,9 +1126,24 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
       const { base, runner, dest, earned } = action;
       // 현재 타자 셀에 투구/결과 기록이 있으면 현재 타자, 없으면 이전 타자가 일으킨 진루
       // (예: 4번 SF 후 5번이 아직 안 던진 상태에서 주자 진루 → 4번에 귀속)
-      // 단, 도루(steal)는 항상 현재 타자(현재 PA 진행 중)
+      // 단, 자력 진루(도루/폭투/포일/보크)는 항상 현재 타자(현재 PA 진행 중)
+      const RUN_ADV_SELF_CODES = [
+        'S',
+        '(S)',
+        'SD',
+        '(SD)',
+        'W',
+        '(W)',
+        'P',
+        '(P)',
+        'BK',
+        '(BK)',
+        '✓BK',
+        '✓(BK)',
+      ];
+      const isRunAdvSelf = !!action.steal || RUN_ADV_SELF_CODES.includes(action.advCode || '');
       let inferredCausedBy = state.curBatterOrder;
-      if (!action.causedBy && !action.steal) {
+      if (!action.causedBy && !isRunAdvSelf) {
         const curCell = state.cells[state.selCellKey];
         const hasBattingRecord = !!curCell && (curCell.pitches.length > 0 || !!curCell.result);
         if (!hasBattingRecord) {
@@ -1149,6 +1207,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
                   earned,
                   scorePitcher: action.scorePitcher,
                   runnerNotes,
+                  ...(action.deflection ? { deflection: action.deflection } : {}),
                 },
               };
               // 타점은 타자 셀에 기록
@@ -1265,6 +1324,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
                         chain: action.chain,
                       },
                     ],
+                    ...(action.deflection ? { deflection: action.deflection } : {}),
                   },
                 };
               }
@@ -1364,6 +1424,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
         let found = false;
 
         const runOutNum = outs; // 이 주자 아웃이 몇 번째 아웃인지
+        const deflPatch = action.deflection ? { deflection: action.deflection } : {};
         for (let app = 0; app <= 5; app++) {
           const rk = cellKey(runner.inning, runner.order, app, runner.half);
           if (cells[rk]) {
@@ -1375,6 +1436,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
                 runOutBase: outBase,
                 runOutNum,
                 runOutInning: state.inning,
+                ...deflPatch,
               },
             };
             found = true;
@@ -1395,6 +1457,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
                   runOutBase: outBase,
                   runOutNum,
                   runOutInning: state.inning,
+                  ...deflPatch,
                 },
               };
               found = true;
@@ -1417,6 +1480,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
             runOutBase: outBase,
             runOutNum,
             runOutInning: state.inning,
+            ...deflPatch,
           };
           cells = { ...cells, [rk]: newCell };
         }
@@ -1530,6 +1594,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
                   earned,
                   scorePitcher,
                   runnerNotes: [...existing, homeNote],
+                  ...(action.deflection ? { deflection: action.deflection } : {}),
                 },
               };
               if (rbi && state.selCellKey && cells[state.selCellKey]) {
@@ -1569,6 +1634,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
                       // causedBy 없음: 타자 자신의 chain 진루
                       { base: toBase as Base, advCode, chain: true },
                     ],
+                    ...(action.deflection ? { deflection: action.deflection } : {}),
                   },
                 };
                 break;
@@ -1626,6 +1692,23 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
     case 'CHAIN_TRANSIT_ADV': {
       const { runner, fromBase, toBase, earned, rbi, scorePitcher, advCode } = action;
       const chainTransitCausedBy = action.causedBy ?? state.curBatterOrder;
+      const SELF_ADV_CODES = [
+        'S',
+        '(S)',
+        'SD',
+        '(SD)',
+        'W',
+        '(W)',
+        'P',
+        '(P)',
+        'BK',
+        '(BK)',
+        '✓BK',
+        '✓(BK)',
+      ];
+      const isSelfAdv = !!action.steal || SELF_ADV_CODES.includes(advCode || '');
+      // 사용자가 명시적으로 chain 체크한 경우만 시각적 chain 마크 표시
+      const markChain = !!action.chain;
       console.log('[CHAIN_TRANSIT_ADV]', {
         fromBase,
         toBase,
@@ -1671,7 +1754,11 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
                 ) {
                   existing = [
                     ...existing,
-                    { causedBy: chainTransitCausedBy, base: noteBase, chain: true } as RunnerNote,
+                    {
+                      causedBy: chainTransitCausedBy,
+                      base: noteBase,
+                      chain: markChain || undefined,
+                    } as RunnerNote,
                   ];
                 }
               }
@@ -1681,7 +1768,8 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
                 base: 'HOME',
                 rbi,
                 advCode,
-                chain: true,
+                chain: markChain || undefined,
+                steal: isSelfAdv || undefined,
               };
               cells = {
                 ...cells,
@@ -1691,6 +1779,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
                   earned,
                   scorePitcher,
                   runnerNotes: [...existing, homeNote],
+                  ...(action.deflection ? { deflection: action.deflection } : {}),
                 },
               };
               if (rbi && state.selCellKey && cells[state.selCellKey]) {
@@ -1731,8 +1820,18 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
                 // 최종 루에만 advCode 붙임, 중간 루는 causedBy(한자)만
                 const isLast = bi === toIdx;
                 const noteEntry: RunnerNote = isLast
-                  ? { causedBy: chainTransitCausedBy, base: noteBase, advCode, chain: true }
-                  : { causedBy: chainTransitCausedBy, base: noteBase, chain: true };
+                  ? {
+                      causedBy: chainTransitCausedBy,
+                      base: noteBase,
+                      advCode,
+                      chain: markChain || undefined,
+                      steal: isSelfAdv || undefined,
+                    }
+                  : {
+                      causedBy: chainTransitCausedBy,
+                      base: noteBase,
+                      chain: markChain || undefined,
+                    };
                 if (
                   !existing.find((n) => n.base === noteBase && n.causedBy === chainTransitCausedBy)
                 ) {
@@ -1741,6 +1840,8 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
                     [rk]: {
                       ...cells[rk],
                       runnerNotes: [...existing, noteEntry],
+                      // 최종 루에만 deflection 부착 (중간 루 중복 방지)
+                      ...(isLast && action.deflection ? { deflection: action.deflection } : {}),
                     },
                   };
                 }
@@ -1751,24 +1852,42 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
         }
       }
 
-      // 현재 타자 셀 eventLog에 기록 (FIFO 보존)
+      // 현재 타자 셀 eventLog에 기록 (FIFO 보존, insertIndex 있으면 해당 위치 splice)
       if (state.selCellKey) {
         cells = ensureCell(cells, state.selCellKey);
         const sc = cells[state.selCellKey];
+        const isDouble = advCode === 'SD' || advCode === '(SD)';
+        const eventEntry = isSelfAdv
+          ? {
+              kind: 'runner_steal' as const,
+              runnerName: runner.name,
+              dest: toBase,
+              advCode,
+              double: isDouble || undefined,
+            }
+          : {
+              kind: 'runner_adv' as const,
+              runnerName: runner.name,
+              dest: toBase,
+              advCode,
+              rbi,
+            };
+        const baseLog = sc.eventLog || [];
+        const newLog =
+          typeof action.insertIndex === 'number' &&
+          action.insertIndex >= 0 &&
+          action.insertIndex <= baseLog.length
+            ? [
+                ...baseLog.slice(0, action.insertIndex),
+                eventEntry,
+                ...baseLog.slice(action.insertIndex),
+              ]
+            : [...baseLog, eventEntry];
         cells = {
           ...cells,
           [state.selCellKey]: {
             ...sc,
-            eventLog: [
-              ...(sc.eventLog || []),
-              {
-                kind: 'runner_adv' as const,
-                runnerName: runner.name,
-                dest: toBase,
-                advCode,
-                rbi,
-              },
-            ],
+            eventLog: newLog,
           },
         };
       }
@@ -1909,36 +2028,72 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
 
     // ── SUBST ────────────────────────────────────────────────────────────────
     case 'SUBST': {
-      const { side, pos, player } = action;
+      const { side, pos, player, mid } = action;
       const luKey = side === 'away' ? 'awayLineup' : 'homeLineup';
       const benchKey = side === 'away' ? 'awayBench' : 'homeBench';
       const lu = [...state[luKey]];
       const bench = [...state[benchKey]];
-      const idx = lu.findIndex((x) => x.pos === pos);
+      const targetIdx = lu.findIndex((x) => x.pos === pos);
+      const existingIdx = lu.findIndex((x) => x.num === player.num && x.name === player.name);
 
-      if (idx >= 0) {
-        const old = lu[idx];
-        lu[idx] = { ...player, order: old.order, pos };
-        bench.push({ ...old });
+      let oldPlayer: Player | null = null;
+      let logOrder: number | undefined;
+
+      if (existingIdx >= 0 && targetIdx >= 0 && existingIdx !== targetIdx) {
+        // 라인업 내 선수가 새 포지션으로 이동 → 두 선수 포지션 swap
+        oldPlayer = lu[targetIdx];
+        const oldPosOfNewPlayer = lu[existingIdx].pos;
+        lu[existingIdx] = { ...lu[existingIdx], pos };
+        lu[targetIdx] = { ...lu[targetIdx], pos: oldPosOfNewPlayer };
+        // 새 선수의 본인 배팅 타순 (= existingIdx의 order, 변경 안 됨)
+        logOrder = lu[existingIdx].order;
+      } else if (targetIdx >= 0) {
+        // 벤치에서 새로 들어옴 → 기존 포지션 선수와 교체
+        oldPlayer = lu[targetIdx];
+        lu[targetIdx] = { ...player, order: oldPlayer.order, pos };
+        bench.push({ ...oldPlayer });
         bench.splice(bench.indexOf(player), 1);
+        // 새 선수가 인계받은 타순 (= 빠진 선수의 order)
+        logOrder = oldPlayer.order;
       }
 
-      return { ...state, [luKey]: lu, [benchKey]: bench };
+      const subEntry: SubstitutionLog = {
+        inning: state.inning,
+        half: state.half,
+        side,
+        kind: 'D',
+        pos,
+        newName: player.name,
+        newNum: player.num,
+        oldName: oldPlayer?.name ?? '',
+        oldNum: oldPlayer?.num ?? '',
+        order: logOrder,
+        atOrder: state.curBatterOrder,
+        mid,
+      };
+
+      return {
+        ...state,
+        [luKey]: lu,
+        [benchKey]: bench,
+        substitutions: [...state.substitutions, subEntry],
+      };
     }
 
     // ── PITCHER_CHANGE ───────────────────────────────────────────────────────
     case 'PITCHER_CHANGE': {
-      const { side, player } = action;
+      const { side, player, mid } = action;
       const luKey = side === 'away' ? 'awayLineup' : 'homeLineup';
       const benchKey = side === 'away' ? 'awayBench' : 'homeBench';
       const lu = [...state[luKey]];
       const bench = [...state[benchKey]];
       const idx = lu.findIndex((x) => x.pos === 1);
 
+      let oldPlayer: Player | null = null;
       if (idx >= 0) {
-        const old = lu[idx];
-        lu[idx] = { ...player, order: old.order, pos: 1 };
-        bench.push({ ...old });
+        oldPlayer = lu[idx];
+        lu[idx] = { ...player, order: oldPlayer.order, pos: 1 };
+        bench.push({ ...oldPlayer });
         bench.splice(bench.indexOf(player), 1);
       }
 
@@ -1949,6 +2104,12 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
         state.pitchStrikes
       );
       const incoming = loadPitcherStats(newStatsMap, player);
+
+      // BB 책임 룰: PA 도중 교체이고 전임 투수가 불리한 카운트(볼 ≥ 2 또는 카운트가 타자 우위)에서
+      // 카운트를 이어받은 경우, 다음 BB는 전임 투수 책임. 단순화하여 mid 정보가 있으면
+      // 이후 첫 BAT_ADV에서 BB일 때 전임투수 charge로 전환.
+      const inheritsBB = !!mid && (mid.balls >= 2 || mid.balls > mid.strikes);
+      const prevPitcherName = state.pitcher.name;
 
       return {
         ...state,
@@ -1965,6 +2126,11 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
             half: state.half,
             order: state.curBatterOrder,
             name: player.name,
+            num: player.num,
+            oldName: oldPlayer?.name,
+            oldNum: oldPlayer?.num,
+            mid,
+            pendingBBChargeTo: inheritsBB ? prevPitcherName : undefined,
           },
         ],
       };
@@ -1972,7 +2138,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
 
     // ── SUBST_RUNNER ─────────────────────────────────────────────────────────
     case 'SUBST_RUNNER': {
-      const { base, player, side } = action;
+      const { base, player, side, mid } = action;
       const prev = state.runners[base];
       if (!prev) return state;
 
@@ -1983,7 +2149,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
       const idx = lu.findIndex((x) => x.order === prev.order);
       if (idx >= 0) {
         const old = lu[idx];
-        lu[idx] = { ...player, order: old.order, pos: old.pos };
+        lu[idx] = { ...player, order: old.order, pos: old.pos, needsPosReview: true };
         bench.push({ ...old });
         const pi = bench.findIndex((x) => x.num === player.num && x.name === player.name);
         if (pi >= 0) bench.splice(pi, 1);
@@ -1995,44 +2161,119 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
         order: prev.order,
         half: prev.half,
         inning: prev.inning,
+        pinchRunner: { num: prev.num, name: prev.name, mid },
       };
+
+      const subEntry: SubstitutionLog = {
+        inning: state.inning,
+        half: state.half,
+        side,
+        kind: 'R',
+        pos: 0,
+        newName: player.name,
+        newNum: player.num,
+        oldName: prev.name,
+        oldNum: prev.num,
+        order: prev.order,
+        atOrder: state.curBatterOrder,
+        base,
+        mid,
+      };
+
+      // 대주자가 기용된 베이스의 셀(원래 주자의 PA 셀)에 Ⓡ 마커
+      let cells = state.cells;
+      if (prev.inning) {
+        for (let app = 0; app <= 5; app++) {
+          const rk = cellKey(prev.inning, prev.order, app, prev.half);
+          if (cells[rk]) {
+            cells = {
+              ...cells,
+              [rk]: {
+                ...cells[rk],
+                pinchRunnerMark: { base, pinchName: player.name, mid },
+              },
+            };
+            break;
+          }
+        }
+      }
 
       return {
         ...state,
         runners: { ...state.runners, [base]: newRunner },
         [luKey]: lu,
         [benchKey]: bench,
+        substitutions: [...state.substitutions, subEntry],
+        cells,
       };
     }
 
     // ── SUBST_BATTER ─────────────────────────────────────────────────────────
     case 'SUBST_BATTER': {
-      const { player, side } = action;
+      const { player, side, mid } = action;
       const luKey = side === 'away' ? 'awayLineup' : 'homeLineup';
       const benchKey = side === 'away' ? 'awayBench' : 'homeBench';
       const lu = [...state[luKey]];
       const bench = [...state[benchKey]];
       const idx = lu.findIndex((x) => x.order === state.curBatterOrder);
+      let oldPlayer: Player | null = null;
       if (idx >= 0) {
-        const old = lu[idx];
-        lu[idx] = { ...player, order: old.order, pos: old.pos };
-        bench.push({ ...old });
+        oldPlayer = lu[idx];
+        lu[idx] = { ...player, order: oldPlayer.order, pos: oldPlayer.pos, needsPosReview: true };
+        bench.push({ ...oldPlayer });
         const pi = bench.findIndex((x) => x.num === player.num && x.name === player.name);
         if (pi >= 0) bench.splice(pi, 1);
       }
 
-      // 현재 타석 셀 초기화 (새 타자로)
+      // 현재 타석 셀: 결과가 없으면 pinchHitter 정보 기록한 채로 유지
       const key = state.selCellKey;
-      const cells = { ...state.cells };
+      let cells = { ...state.cells };
       if (cells[key] && !cells[key].result) {
-        delete cells[key];
+        // 기존 카운트/투구는 보존, 전임 타자 정보를 셀에 표기
+        cells = {
+          ...cells,
+          [key]: {
+            ...cells[key],
+            pinchHitter: oldPlayer ? { num: oldPlayer.num, name: oldPlayer.name, mid } : undefined,
+          },
+        };
+      } else if (!cells[key] && oldPlayer) {
+        cells = {
+          ...cells,
+          [key]: {
+            half: state.half,
+            inning: state.inning,
+            order: state.curBatterOrder,
+            appearance: 0,
+            pitches: [],
+            result: null,
+            runnerNotes: [],
+            pinchHitter: { num: oldPlayer.num, name: oldPlayer.name, mid },
+          },
+        };
       }
+
+      const subEntry: SubstitutionLog = {
+        inning: state.inning,
+        half: state.half,
+        side,
+        kind: 'H',
+        pos: 0,
+        newName: player.name,
+        newNum: player.num,
+        oldName: oldPlayer?.name ?? '',
+        oldNum: oldPlayer?.num ?? '',
+        order: state.curBatterOrder,
+        atOrder: state.curBatterOrder,
+        mid,
+      };
 
       return {
         ...state,
         [luKey]: lu,
         [benchKey]: bench,
         cells,
+        substitutions: [...state.substitutions, subEntry],
       };
     }
 
@@ -2163,6 +2404,267 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
         detail: action.detail,
       };
       return { ...state, gameEvents: [...state.gameEvents, ev] };
+    }
+
+    // ── EDIT_PITCH (PitcherLogPanel 편집) ────────────────────────────────────
+    case 'EDIT_PITCH': {
+      const { cellKey: ck, entryIdx, newPitch } = action;
+      const cell = state.cells[ck];
+      if (!cell || !cell.eventLog) return state;
+      if (entryIdx < 0 || entryIdx >= cell.eventLog.length) return state;
+      const targetEntry = cell.eventLog[entryIdx];
+      if (targetEntry.kind !== 'pitch') return state;
+
+      const newEventLog = cell.eventLog.map((e, i) =>
+        i === entryIdx ? { kind: 'pitch' as const, pitch: newPitch } : e
+      );
+      // pitches 배열에서 같은 위치의 pitch 교체
+      let pitchSeq = -1;
+      let targetPitchIdx = -1;
+      cell.eventLog.forEach((e, i) => {
+        if (e.kind === 'pitch') pitchSeq++;
+        if (i === entryIdx) targetPitchIdx = pitchSeq;
+      });
+      const newPitches =
+        targetPitchIdx >= 0 && targetPitchIdx < cell.pitches.length
+          ? cell.pitches.map((p, i) => (i === targetPitchIdx ? newPitch : p))
+          : cell.pitches;
+
+      // 현재 진행 중인 PA(아직 결과 없는 selCellKey 셀) 편집이면 카운트 재계산
+      const isCurrentPA = ck === state.selCellKey && !cell.result;
+      let updatedState = state;
+      if (isCurrentPA) {
+        let balls = 0;
+        let strikes = 0;
+        for (const p of newPitches) {
+          switch (p) {
+            case 'S':
+            case 'SW':
+            case 'BS':
+            case 'PC3':
+              strikes++;
+              break;
+            case 'F':
+            case 'FE':
+              if (strikes < 2) strikes++;
+              break;
+            case 'BF':
+              strikes++; // 번트파울 — 2스트 후에도 추가 (K3B 트리거)
+              break;
+            case 'B':
+            case 'PC1':
+            case 'PC2':
+              balls++;
+              break;
+          }
+        }
+        updatedState = {
+          ...state,
+          balls: Math.min(balls, 4),
+          strikes: Math.min(strikes, 3),
+        };
+      }
+
+      return {
+        ...updatedState,
+        cells: {
+          ...state.cells,
+          [ck]: { ...cell, eventLog: newEventLog, pitches: newPitches },
+        },
+        history: saveHist(state),
+      };
+    }
+
+    // ── EDIT_HIT_ZONE (안타 방향 변경 — 8안 → 9안 등) ─────────────────────────
+    case 'EDIT_HIT_ZONE': {
+      const { cellKey: ck, newZone } = action;
+      const cell = state.cells[ck];
+      if (!cell || !cell.hitData) return state;
+      return {
+        ...state,
+        cells: {
+          ...state.cells,
+          [ck]: {
+            ...cell,
+            hitData: { ...cell.hitData, zone: newZone },
+          },
+        },
+        history: saveHist(state),
+      };
+    }
+
+    // ── EDIT_HIT_DATA (안타류 result + hitData 교체 — 같은 베이스 내) ────────
+    // BatAdvModal editMode 에서 사용. 베이스 변경 없음을 호출자가 보장.
+    // newHitData 가 undefined 면 hitData 제거 (안타 → 실책 같이 hitData 없는 결과로 전환)
+    case 'EDIT_HIT_DATA': {
+      const { cellKey: ck, newHitData, newResult, newBallType, newDeflection } = action;
+      const cell = state.cells[ck];
+      if (!cell) return state;
+      const newEventLog = (cell.eventLog || []).map((e) =>
+        e.kind === 'result' ? { ...e, result: newResult } : e
+      );
+      // newDeflection: undefined = 유지, null = 제거, value = 교체
+      const deflPatch =
+        newDeflection === undefined
+          ? {}
+          : newDeflection === null
+            ? { deflection: undefined }
+            : { deflection: newDeflection };
+      return {
+        ...state,
+        cells: {
+          ...state.cells,
+          [ck]: {
+            ...cell,
+            result: newResult,
+            hitData: newHitData,
+            ballType: newHitData ? newHitData.ballType : newBallType,
+            eventLog: newEventLog,
+            ...deflPatch,
+          },
+        },
+        history: saveHist(state),
+      };
+    }
+
+    // ── EDIT_RUNNER_REASON (도루 ↔ 폭투 ↔ 포일 ↔ 보크) ───────────────────────
+    // 진루 사유(advCode) 만 변경 — dest/rbi/steal/causedBy 등 부작용은 그대로
+    case 'EDIT_RUNNER_REASON': {
+      const { cellKey: ck, entryIdx, newAdvCode } = action;
+      const cell = state.cells[ck];
+      if (!cell || !cell.eventLog) return state;
+      if (entryIdx < 0 || entryIdx >= cell.eventLog.length) return state;
+      const target = cell.eventLog[entryIdx];
+      if (target.kind !== 'runner_steal' && target.kind !== 'runner_adv') return state;
+
+      // 도루(S/(S)/SD/(SD)) 계열인지 판정
+      const stealCodes = ['S', '(S)', 'SD', '(SD)'];
+      const newIsSteal = stealCodes.includes(newAdvCode);
+
+      // eventLog entry 교체 — kind도 도루 ↔ 일반 진루로 전환 가능
+      const newEventLog = cell.eventLog.map((e, i) => {
+        if (i !== entryIdx) return e;
+        if (newIsSteal) {
+          const isDouble = newAdvCode === 'SD' || newAdvCode === '(SD)';
+          const dest =
+            target.kind === 'runner_steal' ? target.dest : (target as { dest: string }).dest;
+          const runnerName =
+            target.kind === 'runner_steal'
+              ? target.runnerName
+              : (target as { runnerName: string }).runnerName;
+          return {
+            kind: 'runner_steal' as const,
+            runnerName,
+            dest,
+            advCode: newAdvCode,
+            double: isDouble || undefined,
+          };
+        } else {
+          // runner_adv 로 전환
+          const dest =
+            target.kind === 'runner_adv' ? target.dest : (target as { dest: string }).dest;
+          const runnerName =
+            target.kind === 'runner_adv'
+              ? target.runnerName
+              : (target as { runnerName: string }).runnerName;
+          const rbi = target.kind === 'runner_adv' ? target.rbi : undefined;
+          return {
+            kind: 'runner_adv' as const,
+            runnerName,
+            dest,
+            advCode: newAdvCode,
+            ...(rbi ? { rbi } : {}),
+          };
+        }
+      });
+
+      // 같은 cell의 runnerNotes 에서 일치하는 노트 advCode 도 갱신
+      // (advCode는 진루 사유 표시용, base/causedBy는 그대로)
+      const targetRunnerName =
+        target.kind === 'runner_steal' || target.kind === 'runner_adv' ? target.runnerName : '';
+      const targetDest =
+        target.kind === 'runner_steal' || target.kind === 'runner_adv' ? target.dest : '';
+      let updatedCells: typeof state.cells = {
+        ...state.cells,
+        [ck]: { ...cell, eventLog: newEventLog },
+      };
+      // 모든 cells의 runnerNotes에서 해당 주자의 같은 dest 노트의 advCode/steal 갱신
+      Object.entries(updatedCells).forEach(([k, c]) => {
+        if (!c.runnerNotes || c.runnerNotes.length === 0) return;
+        let touched = false;
+        const newNotes = c.runnerNotes.map((n) => {
+          if (n.base !== targetDest) return n;
+          // runnerName으로 매칭은 어려움 — base가 같으면 변경 (보수적)
+          // 더 정확한 매칭이 필요하면 추가 식별자 도입 필요
+          if (n.advCode === target.advCode) {
+            touched = true;
+            return { ...n, advCode: newAdvCode, steal: newIsSteal || undefined };
+          }
+          return n;
+        });
+        if (touched) {
+          updatedCells = { ...updatedCells, [k]: { ...c, runnerNotes: newNotes } };
+        }
+      });
+      void targetRunnerName; // future use — runner 매칭 정확도 개선용
+
+      return {
+        ...state,
+        cells: updatedCells,
+        history: saveHist(state),
+      };
+    }
+
+    // ── EDIT_BAT_RESULT_CODE (안타 ↔ 내야안타 ↔ 실책 등 — 동일 베이스) ────────
+    // 1루 도달 결과 코드 안에서만 교환 — 주자/실점 변동 없음
+    case 'EDIT_BAT_RESULT_CODE': {
+      const { cellKey: ck, newResult } = action;
+      const cell = state.cells[ck];
+      if (!cell) return state;
+
+      const newEventLog = (cell.eventLog || []).map((e) =>
+        e.kind === 'result' ? { ...e, result: newResult } : e
+      );
+
+      return {
+        ...state,
+        cells: {
+          ...state.cells,
+          [ck]: {
+            ...cell,
+            result: newResult,
+            eventLog: newEventLog,
+          },
+        },
+        history: saveHist(state),
+      };
+    }
+
+    // ── EDIT_BAT_OUT_CODE (1땅 ↔ 6땅 ↔ F1 등 — 동일 아웃 카운트) ─────────────
+    // 아웃 결과의 fielder/ballType만 변경 — outs/주자/cellOutNum 변동 없음
+    case 'EDIT_BAT_OUT_CODE': {
+      const { cellKey: ck, newResult, newBallType } = action;
+      const cell = state.cells[ck];
+      if (!cell) return state;
+
+      const newEventLog = (cell.eventLog || []).map((e) =>
+        e.kind === 'result' ? { ...e, result: newResult } : e
+      );
+
+      return {
+        ...state,
+        cells: {
+          ...state.cells,
+          [ck]: {
+            ...cell,
+            result: newResult,
+            eventLog: newEventLog,
+            // ballType: 새 값 명시되면 갱신, undefined면 cell에서 제거
+            ballType: newBallType,
+          },
+        },
+        history: saveHist(state),
+      };
     }
 
     default:

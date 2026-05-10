@@ -1,5 +1,6 @@
-import { useState } from 'react';
-import type { HitData, Player } from '../../types';
+import { useState, useEffect } from 'react';
+import type { DeflectionInfo, HitData, Player } from '../../types';
+import DeflectionPicker from './DeflectionPicker';
 
 interface Props {
   open: boolean;
@@ -10,12 +11,16 @@ interface Props {
     result: string,
     ballType?: '땅' | '뜬' | '라',
     hitData?: HitData,
-    chain?: boolean
+    chain?: boolean,
+    deflection?: DeflectionInfo
   ) => void;
   onClose: () => void;
   selectedHit: HitData | null;
   onSelectHit: (data: HitData) => void;
   defLU?: Player[];
+  // 편집 모드 — 베이스 잠금 (현재 베이스 외 disabled). 저장은 호출자가 EDIT_HIT_DATA dispatch
+  editMode?: boolean;
+  editLockBases?: 0 | 1 | 2 | 3 | 4;
 }
 
 type BallType = '땅볼' | '뜬공' | '라이너';
@@ -77,7 +82,29 @@ const NEEDS_HIT = new Set([
   '→선행주자아웃',
 ]);
 // 실책 수비수 번호가 필요한 결과 — 필드 클릭 한 번으로 바로 확정
-const NEEDS_FIELDER = new Set(['E', 'E번트', 'KE', '#', 'ob']);
+const NEEDS_FIELDER = new Set(['E', 'E번트', 'KE', '#', 'ob', 'FC', 'FC번트']);
+// ballType 라디오를 사용하는 결과 (NEEDS_HIT 외 — FC류는 방향 없이 ballType만)
+const NEEDS_BALLTYPE = new Set(['FC', 'FC번트']);
+
+// 디플렉션이 가능한 결과 — 안타/실책/야선/선행주자아웃류 (홈런/4구류 제외)
+const NEEDS_DEFL = new Set([
+  '1B',
+  '2B',
+  '3B',
+  'INT',
+  'BUNT',
+  'OBUNT',
+  '선행주자아웃',
+  '→선행주자아웃',
+  'E',
+  'E기록',
+  'E번트',
+  'FC',
+  'FC번트',
+  '#',
+  'ob',
+  'DP_E',
+]);
 
 const GHR_DISTS = [90, 95, 100, 105, 110, 115, 120, 125, 130, 135, 140, 145, 150];
 
@@ -115,6 +142,8 @@ function buildErrorResult(base: string, seq: number[]): string {
   const lastPos = seq[seq.length - 1];
   if (base === '#') return `#${lastPos}E`;
   if (base === 'ob') return `Ob${lastPos}E`;
+  if (base === 'FC') return `FC${seq.join('-')}`;
+  if (base === 'FC번트') return `FC번트${seq.join('-')}`;
   return `E${seq.join('-')}`;
 }
 
@@ -156,12 +185,14 @@ export default function BatAdvModal({
   onClose,
   onSelectHit,
   defLU = [],
+  editMode = false,
+  editLockBases,
 }: Props) {
   const [pendingResult, setPendingResult] = useState<string | null>(null);
   const [selDirRow, setSelDirRow] = useState<number | null>(null);
   const [selDirCol, setSelDirCol] = useState<number | null>(null);
   const [selBall, setSelBall] = useState<BallType | null>(null);
-  const [deflection, setDeflection] = useState(false);
+  const [deflection, setDeflection] = useState<DeflectionInfo | null>(null);
   const [defSeq, setDefSeq] = useState<DefRow[]>([]);
   const [연결동작, set연결동작] = useState(false);
   const [장외홈런, set장외홈런] = useState(false);
@@ -170,13 +201,30 @@ export default function BatAdvModal({
   const [ghrH, setGhrH] = useState(0);
   const [ghrM, setGhrM] = useState(0);
 
+  // 모달이 열릴 때마다 모든 로컬 상태 초기화 (이전 입력 잔재 방지)
+  useEffect(() => {
+    if (open) {
+      setPendingResult(null);
+      setSelDirRow(null);
+      setSelDirCol(null);
+      setSelBall(null);
+      setDeflection(null);
+      setDefSeq([]);
+      set연결동작(false);
+      set장외홈런(false);
+      setHrDist(110);
+      setGhrDist(110);
+      setGhrH(0);
+      setGhrM(0);
+    }
+  }, [open]);
+
   // ── 안타 상태 업데이트만 (자동완료 없음, 확인 버튼으로 처리) ───────────────
   const tryAutoHit = (
     zone: number | null,
     row: number | null,
     col: number | null,
     ball: BallType | null,
-    defl: boolean,
     hitType: string
   ) => {
     if (zone === null || row === null || col === null || !ball) return;
@@ -187,7 +235,6 @@ export default function BatAdvModal({
       dirRow: row,
       dirCol: col,
       ballType: toBallTypeShort(ball),
-      deflection: defl,
       bases,
     };
     onSelectHit(hd);
@@ -202,15 +249,18 @@ export default function BatAdvModal({
     setSelDirRow(row);
     setSelDirCol(col);
     const zone = defSeq[defSeq.length - 1]?.pos ?? null;
-    tryAutoHit(zone, row, col, selBall, deflection, pendingResult);
+    tryAutoHit(zone, row, col, selBall, pendingResult);
   };
 
   // ── 구질 선택 ─────────────────────────────────────────────────────────────
   const handleBall = (b: BallType) => {
-    if (!pendingResult || !NEEDS_HIT.has(pendingResult)) return;
+    if (!pendingResult) return;
+    if (!NEEDS_HIT.has(pendingResult) && !NEEDS_BALLTYPE.has(pendingResult)) return;
     setSelBall(b);
-    const zone = defSeq[defSeq.length - 1]?.pos ?? null;
-    tryAutoHit(zone, selDirRow, selDirCol, b, deflection, pendingResult);
+    if (NEEDS_HIT.has(pendingResult)) {
+      const zone = defSeq[defSeq.length - 1]?.pos ?? null;
+      tryAutoHit(zone, selDirRow, selDirCol, b, pendingResult);
+    }
   };
 
   // ── 필드 수비수 번호 클릭 ─────────────────────────────────────────────────
@@ -227,7 +277,7 @@ export default function BatAdvModal({
       }
       if (NEEDS_HIT.has(pendingResult)) {
         const zone = next[next.length - 1]?.pos ?? null;
-        tryAutoHit(zone, selDirRow, selDirCol, selBall, deflection, pendingResult);
+        tryAutoHit(zone, selDirRow, selDirCol, selBall, pendingResult);
       }
       return next;
     });
@@ -240,18 +290,25 @@ export default function BatAdvModal({
     setSelDirRow(null);
     setSelDirCol(null);
     setSelBall(null);
-    setDeflection(false);
+    setDeflection(null);
   };
 
   // ── 비-안타 확인 ──────────────────────────────────────────────────────────
   const handleConfirm = () => {
     if (!pendingResult) return;
+    const defl = NEEDS_DEFL.has(pendingResult) ? (deflection ?? undefined) : undefined;
+    // FC류는 ballType도 함께 전달
+    const bt = NEEDS_BALLTYPE.has(pendingResult)
+      ? selBall
+        ? toBallTypeShort(selBall)
+        : undefined
+      : undefined;
     if (NEEDS_FIELDER.has(pendingResult)) {
       if (!defSeq.length) return;
       const seq = defSeq.map((r) => r.pos);
-      onAutoConfirm(buildErrorResult(pendingResult, seq), undefined, undefined, 연결동작);
+      onAutoConfirm(buildErrorResult(pendingResult, seq), bt, undefined, 연결동작, defl);
     } else {
-      onAutoConfirm(pendingResult, undefined, undefined, 연결동작);
+      onAutoConfirm(pendingResult, bt, undefined, 연결동작, defl);
     }
   };
 
@@ -262,7 +319,7 @@ export default function BatAdvModal({
     setSelDirRow(null);
     setSelDirCol(null);
     setSelBall(null);
-    setDeflection(false);
+    setDeflection(null);
     set장외홈런(false);
     setHrDist(110);
     setGhrDist(110);
@@ -454,29 +511,35 @@ export default function BatAdvModal({
                 </div>
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                {(['땅볼', '뜬공', '라이너', '번트'] as BallType[]).map((b) => (
-                  <label
-                    key={b}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 6,
-                      cursor: 'pointer',
-                      fontSize: 12,
-                      opacity: !pendingResult || !NEEDS_HIT.has(pendingResult) ? 0.3 : 1,
-                    }}
-                  >
-                    <input
-                      type="radio"
-                      name="batadv_ball"
-                      checked={selBall === b}
-                      disabled={!pendingResult || !NEEDS_HIT.has(pendingResult)}
-                      onChange={() => handleBall(b)}
-                      style={{ accentColor: 'var(--blue)' }}
-                    />
-                    {b}
-                  </label>
-                ))}
+                {(['땅볼', '뜬공', '라이너', '번트'] as BallType[]).map((b) => {
+                  // FC류는 ballType radio도 활성화 (방향 없이 ballType만)
+                  const ballEnabled =
+                    pendingResult &&
+                    (NEEDS_HIT.has(pendingResult) || NEEDS_BALLTYPE.has(pendingResult));
+                  return (
+                    <label
+                      key={b}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 6,
+                        cursor: 'pointer',
+                        fontSize: 12,
+                        opacity: ballEnabled ? 1 : 0.3,
+                      }}
+                    >
+                      <input
+                        type="radio"
+                        name="batadv_ball"
+                        checked={selBall === b}
+                        disabled={!ballEnabled}
+                        onChange={() => handleBall(b)}
+                        style={{ accentColor: 'var(--blue)' }}
+                      />
+                      {b}
+                    </label>
+                  );
+                })}
               </div>
             </div>
           </div>
@@ -673,18 +736,30 @@ export default function BatAdvModal({
                 className="btn-ok"
                 onClick={() => {
                   if (!hitReady) return;
+                  // HR/GHR/GCW일 때 ghrH/ghrM 입력값으로 hrTime 생성 (오늘 날짜 + 입력 시간)
+                  const isHrType =
+                    pendingResult === 'HR' || pendingResult === 'GHR' || pendingResult === 'GCW';
+                  let hrTime: number | undefined;
+                  if (isHrType && (ghrH || ghrM)) {
+                    const t = new Date();
+                    t.setHours(ghrH, ghrM, 0, 0);
+                    hrTime = t.getTime();
+                  }
                   const hd: HitData = {
                     zone: zone!,
                     hitType: pendingResult,
                     dirRow: selDirRow!,
                     dirCol: selDirCol!,
                     ballType: toBallTypeShort(selBall!),
-                    deflection,
                     bases: basesForType(pendingResult),
                     ...(pendingResult === 'HR' ? { dist: hrDist } : {}),
                     ...(pendingResult === 'GHR' ? { dist: ghrDist } : {}),
+                    ...(hrTime ? { hrTime } : {}),
                   };
-                  onAutoConfirm('HIT', undefined, hd, 연결동작);
+                  const defl = NEEDS_DEFL.has(pendingResult)
+                    ? (deflection ?? undefined)
+                    : undefined;
+                  onAutoConfirm('HIT', undefined, hd, 연결동작, defl);
                 }}
                 disabled={!hitReady}
                 style={{ opacity: hitReady ? 1 : 0.4 }}
@@ -715,11 +790,21 @@ export default function BatAdvModal({
             style={{
               display: 'flex',
               alignItems: 'center',
-              justifyContent: 'flex-end',
+              justifyContent: 'space-between',
               padding: '5px 10px',
               borderBottom: '1px solid var(--border2)',
+              gap: 10,
             }}
           >
+            <div style={{ flex: 1 }}>
+              {pendingResult && NEEDS_DEFL.has(pendingResult) && (
+                <DeflectionPicker
+                  value={deflection}
+                  defLU={defLU}
+                  onChange={(v) => setDeflection(v)}
+                />
+              )}
+            </div>
             <label
               style={{
                 display: 'flex',
@@ -747,13 +832,43 @@ export default function BatAdvModal({
               <div style={{ padding: '10px', borderBottom: '1px solid var(--border2)' }}>
                 <div className="rs-title">루타, 홈런</div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                  <Btn label="1루타" sel={s('1B')} onClick={() => pick('1B')} />
-                  <Btn label="2루타" sel={s('2B')} onClick={() => pick('2B')} />
-                  <Btn label="3루타" sel={s('3B')} onClick={() => pick('3B')} />
+                  <Btn
+                    label="1루타"
+                    sel={s('1B')}
+                    onClick={() => pick('1B')}
+                    disabled={editMode && editLockBases !== 1}
+                  />
+                  <Btn
+                    label="2루타"
+                    sel={s('2B')}
+                    onClick={() => pick('2B')}
+                    disabled={editMode && editLockBases !== 2}
+                  />
+                  <Btn
+                    label="3루타"
+                    sel={s('3B')}
+                    onClick={() => pick('3B')}
+                    disabled={editMode && editLockBases !== 3}
+                  />
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 4 }}>
-                    <Btn label="내야안타" sel={s('INT')} onClick={() => pick('INT')} />
-                    <Btn label="내야번트" sel={s('BUNT')} onClick={() => pick('BUNT')} />
-                    <Btn label="외야번트" sel={s('OBUNT')} onClick={() => pick('OBUNT')} />
+                    <Btn
+                      label="내야안타"
+                      sel={s('INT')}
+                      onClick={() => pick('INT')}
+                      disabled={editMode && editLockBases !== 1}
+                    />
+                    <Btn
+                      label="내야번트"
+                      sel={s('BUNT')}
+                      onClick={() => pick('BUNT')}
+                      disabled={editMode && editLockBases !== 1}
+                    />
+                    <Btn
+                      label="외야번트"
+                      sel={s('OBUNT')}
+                      onClick={() => pick('OBUNT')}
+                      disabled={editMode && editLockBases !== 1}
+                    />
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
                     <Btn
@@ -761,6 +876,7 @@ export default function BatAdvModal({
                       sel={s('HR')}
                       onClick={() => pick('HR')}
                       style={{ flex: 1 }}
+                      disabled={editMode && editLockBases !== 4}
                     />
                     <select
                       value={hrDist}
@@ -803,12 +919,18 @@ export default function BatAdvModal({
                       sel={s('GHR')}
                       onClick={() => pick('GHR')}
                       style={{ flex: 1 }}
+                      disabled={editMode && editLockBases !== 4}
                     />
                   </div>
                   <div
                     style={{ display: 'flex', alignItems: 'center', gap: 4, paddingLeft: 4 }}
                   ></div>
-                  <Btn label="캣워크 홈런" sel={s('GCW')} onClick={() => pick('GCW')} />
+                  <Btn
+                    label="캣워크 홈런"
+                    sel={s('GCW')}
+                    onClick={() => pick('GCW')}
+                    disabled={editMode && editLockBases !== 4}
+                  />
                   <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                     <span
                       style={{

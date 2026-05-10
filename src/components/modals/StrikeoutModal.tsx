@@ -312,7 +312,7 @@ export default function StrikeoutModal({ open, pitchType, defLU, onConfirm, onCl
                 color: showDefPanel ? '#fff' : 'var(--text)',
               }}
             >
-              <span style={{ fontFamily: 'monospace' }}>ꓘ수비수 다른주자수비 출루</span>
+              <span style={{ fontFamily: 'monospace' }}> → 다른주자수비 출루</span>
               <span style={{ fontSize: 10, opacity: 0.7 }}>
                 {showDefPanel ? '▲ 접기' : '▼ 수비정보'}
               </span>
@@ -574,7 +574,7 @@ export default function StrikeoutModal({ open, pitchType, defLU, onConfirm, onCl
                 onClick={() => kdefResult && handleConfirm(kdefResult)}
                 style={{ marginTop: 12, width: '100%', opacity: kdefResult ? 1 : 0.4 }}
               >
-                확인 ({kdefResult ?? 'ꓘ수비수'})
+                확인
               </button>
             </div>
           </div>

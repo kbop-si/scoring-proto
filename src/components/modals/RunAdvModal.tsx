@@ -1,5 +1,6 @@
-import { useState } from 'react';
-import type { Base, Player } from '../../types';
+import { useState, useEffect } from 'react';
+import type { Base, DeflectionInfo, Player } from '../../types';
+import DeflectionPicker from './DeflectionPicker';
 
 // BatAdvModal과 동일한 FPOS (78·89 복합 포함)
 const RFPOS: { key: number; x: number; y: number }[] = [
@@ -40,7 +41,6 @@ export type FielderEntry = {
   error: boolean;
   throwDir: '좌' | '중' | '우' | '';
   throwHeight: '저' | '중' | '고' | '';
-  deflection: boolean;
   shift: boolean;
 };
 
@@ -60,7 +60,7 @@ interface Props {
   onSetEarned: (v: boolean | 'half') => void;
   onSetRbi: (v: boolean) => void;
   onSetPitcher: (v: string) => void;
-  onConfirm: (chain: boolean, fielderSeq: FielderEntry[]) => void;
+  onConfirm: (chain: boolean, fielderSeq: FielderEntry[], deflection?: DeflectionInfo) => void;
   onClose: () => void;
 }
 
@@ -140,15 +140,12 @@ export default function RunAdvModal({
         error: false,
         throwDir: '',
         throwHeight: '',
-        deflection: false,
         shift: false,
       },
     ]);
 
-  const toggleField = (
-    idx: number,
-    field: 'assist' | 'putout' | 'error' | 'deflection' | 'shift'
-  ) => setDefSeq((prev) => prev.map((r, i) => (i === idx ? { ...r, [field]: !r[field] } : r)));
+  const toggleField = (idx: number, field: 'assist' | 'putout' | 'error' | 'shift') =>
+    setDefSeq((prev) => prev.map((r, i) => (i === idx ? { ...r, [field]: !r[field] } : r)));
 
   const setSelectField = (idx: number, field: 'throwDir' | 'throwHeight', val: string) =>
     setDefSeq((prev) =>
@@ -163,6 +160,24 @@ export default function RunAdvModal({
   const [견제루, set견제루] = useState<1 | 2 | 3>(1);
   const [도루자기록, set도루자기록] = useState(false);
   const [단독홈도루, set단독홈도루] = useState(false);
+  const [deflection, setDeflection] = useState<DeflectionInfo | null>(null);
+
+  // 모달이 열릴 때마다 로컬 상태 초기화 (이전 입력 잔재 방지)
+  useEffect(() => {
+    if (open) {
+      setDefSeq([]);
+      set연결동작(false);
+      set견제삽입(false);
+      set견제루(1);
+      set도루자기록(false);
+      set단독홈도루(false);
+      setDeflection(null);
+    }
+  }, [open]);
+
+  // 디플렉션 적용 가능: '일반 진루'에서 '다른주자수비' 제외
+  const DEFL_REASONS = new Set(['타자의 도움', 'ob 주루방해', 'E 실책', '(E) 기록실책']);
+  const canDefl = !!selectedReason && DEFL_REASONS.has(selectedReason);
 
   return (
     <div className={`ov${open ? ' open' : ''}`} id="ov-run-adv">
@@ -321,7 +336,6 @@ export default function RunAdvModal({
                                 '실책',
                                 '송구방향',
                                 '송구높이',
-                                '디플',
                                 '시프트',
                                 '',
                               ].map((h) => (
@@ -343,9 +357,7 @@ export default function RunAdvModal({
                           <tbody>
                             {defSeq.map((row, i) => {
                               const player = defLU?.find((p) => p.pos === row.pos);
-                              const chk = (
-                                field: 'assist' | 'putout' | 'error' | 'deflection' | 'shift'
-                              ) => (
+                              const chk = (field: 'assist' | 'putout' | 'error' | 'shift') => (
                                 <input
                                   type="checkbox"
                                   checked={row[field] as boolean}
@@ -435,15 +447,6 @@ export default function RunAdvModal({
                                     }}
                                   >
                                     {mini3('throwHeight', ['저', '중', '고'])}
-                                  </td>
-                                  <td
-                                    style={{
-                                      border: '1px solid var(--border2)',
-                                      padding: '3px',
-                                      textAlign: 'center',
-                                    }}
-                                  >
-                                    {chk('deflection')}
                                   </td>
                                   <td
                                     style={{
@@ -835,11 +838,21 @@ export default function RunAdvModal({
               단독홈도루
             </label>
 
+            {canDefl && (
+              <DeflectionPicker
+                value={deflection}
+                defLU={defLU}
+                onChange={(v) => setDeflection(v)}
+              />
+            )}
+
             <div style={{ flex: 1 }} />
 
             <button
               className="btn-ok"
-              onClick={() => onConfirm(연결동작, fielderSeq)}
+              onClick={() =>
+                onConfirm(연결동작, fielderSeq, canDefl ? (deflection ?? undefined) : undefined)
+              }
               disabled={!canConfirm}
               style={{ opacity: canConfirm ? 1 : 0.4 }}
             >

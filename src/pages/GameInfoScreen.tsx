@@ -622,7 +622,33 @@ export default function GameInfoScreen({
             }}
           >
             <button
-              onClick={() => onConfirm({ stadium, gameNum })}
+              onClick={() => {
+                const startTime =
+                  startH || startM ? `${startH || '0'}:${(startM || '0').padStart(2, '0')}` : '';
+                const endTime =
+                  endH || endM ? `${endH || '0'}:${(endM || '0').padStart(2, '0')}` : '';
+                onConfirm({
+                  stadium,
+                  gameNum,
+                  startTime,
+                  endTime,
+                  attendance: spectators,
+                  umpireHome: uHome,
+                  umpire1B: u1B,
+                  umpire2B: u2B,
+                  umpire3B: u3B,
+                  umpireLeft: uLeft,
+                  umpireRight: uRight,
+                  umpireStandby: uWait,
+                  recorder1: rec1,
+                  recorder2: rec2,
+                  temperature: temp,
+                  humidity: hum,
+                  windDir,
+                  windSpeed,
+                  weatherLog,
+                });
+              }}
               style={{
                 minWidth: 72,
                 height: 32,

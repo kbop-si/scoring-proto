@@ -9,6 +9,15 @@ export interface Player {
   pos: number; // 0=DH, 1=P, 2=C, 3-9=fielder
   order: number; // 1-9 batting order, 0=pitcher slot (no AB)
   hitType: number; //1=우타, 2= 좌타, 3=스위치
+  // 대타/대주자로 들어와 다음 수비 시점에 포지션 재배치가 필요한 상태
+  // (이닝 교대 시 알람 + 라인업 행 강조용. CHANGE_LU_POS로 해제)
+  needsPosReview?: boolean;
+}
+
+export interface PinchInfo {
+  num: string;
+  name: string;
+  mid?: { balls: number; strikes: number };
 }
 
 export interface Runner {
@@ -17,6 +26,7 @@ export interface Runner {
   order: number;
   half: Half;
   inning: number;
+  pinchRunner?: PinchInfo; // 이 주자가 대주자라면 원래 주자 정보
 }
 
 export interface RunnerNote {
@@ -35,9 +45,16 @@ export interface HitData {
   dirRow: number; // 0-2 (0=deep/top, 1=mid, 2=near/bottom of 3x3 grid)
   dirCol: number; // 0-2 (0=left, 1=center, 2=right)
   ballType: '땅' | '뜬' | '라';
-  deflection: boolean;
   bases: 0 | 1 | 2 | 3 | 4; // 0=out, 1=single, 2=double, 3=triple, 4=HR
   dist?: number; // 홈런 비거리 (HR)
+  hrTime?: number; // 홈런 시각 (epoch ms, BatAdvModal에서 입력)
+}
+
+// 디플렉션 정보 — 셀 좌측에 작은 수비수번호 + 땅/뜬/라 표시
+// (수비수 1명 + 타구유형 1개. 번트인 경우 ballType='땅'으로 저장)
+export interface DeflectionInfo {
+  pos: number; // 1-9
+  ballType: '땅' | '뜬' | '라';
 }
 
 export interface CellData {
@@ -67,7 +84,13 @@ export interface CellData {
   isDPRunner?: boolean; // 병살/삼중살에서 아웃된 주자 셀 (outMap pre-population 구분용)
   sideNotes?: string[]; // 마운드방문/타자타임/투수판이탈 등 투구 영역에 표시
   hitData?: HitData; // 구조화된 타구 데이터
+  deflection?: DeflectionInfo; // 디플렉션 — 셀 좌측 작은 번호 표시
   eventLog?: CellEventEntry[]; // 투구·이벤트 FIFO 순서 기록
+  timestamp?: number; // 결과 기록 시점 (ms epoch) — 홈런 등 시각 표시용
+  pinchHitter?: PinchInfo; // 이 셀의 타자가 대타로 들어왔다면 (전임 타자 정보 — 전임에 표기)
+  cycleStart?: boolean; // 타자일순 시작 셀 (overflow appearance>0의 첫 셀)
+  bbChargedTo?: string; // BB 책임 투수 (PA 도중 교체 시 전임 투수)
+  pinchRunnerMark?: { base: Base; pinchName: string; mid?: { balls: number; strikes: number } };
 }
 
 // 투구와 이벤트(마운드방문 등)의 순서를 보존하는 엔트리
@@ -99,6 +122,28 @@ export interface PitcherChange {
   half: Half;
   order: number; // 교체 시점 타자 순서
   name: string; // 새 투수 이름
+  num?: string;
+  oldName?: string;
+  oldNum?: string;
+  mid?: { balls: number; strikes: number }; // 교체 시점 볼카운트 (PA 도중 교체)
+  // PA 도중 교체 후 BB 발생 시 전임 투수 책임 — 첫 BAT_ADV(BB)에서 소비됨
+  pendingBBChargeTo?: string; // 전임 투수 이름
+}
+
+export interface SubstitutionLog {
+  inning: number;
+  half: Half;
+  side: 'away' | 'home';
+  kind: 'H' | 'R' | 'D'; // H=대타, R=대주자, D=수비교대
+  pos: number; // 새 포지션 (H/R는 0 또는 미사용)
+  newName: string;
+  newNum: string;
+  oldName: string;
+  oldNum: string;
+  order?: number; // 새 선수의 배팅 라인업 순서 (이 행이 어느 타순 칸에 표시될지 결정)
+  atOrder?: number; // 교체 발생 시점에 타석에 있던 타자의 타순 (X,Y) 표기용
+  base?: Base; // R인 경우 기용된 루
+  mid?: { balls: number; strikes: number }; // 볼카운트 도중 교체 시점
 }
 
 export interface PitcherStats {
@@ -146,6 +191,7 @@ export interface GameState {
   history: HistorySnapshot[];
   gameEvents: GameEvent[];
   pitcherChanges: PitcherChange[];
+  substitutions: SubstitutionLog[];
   // 경기 정보
   stadium?: string;
   gameNum?: string;
@@ -281,8 +327,21 @@ export interface GameSetup {
 
 export type GameAction =
   | { type: 'PITCH'; pitchType: PitchType }
-  | { type: 'BAT_ADV'; result: string; ballType?: '땅' | '뜬' | '라'; hitData?: HitData }
-  | { type: 'BAT_OUT'; result: string; dp?: boolean; tp?: boolean }
+  | {
+      type: 'BAT_ADV';
+      result: string;
+      ballType?: '땅' | '뜬' | '라';
+      hitData?: HitData;
+      deflection?: DeflectionInfo;
+    }
+  | {
+      type: 'BAT_OUT';
+      result: string;
+      dp?: boolean;
+      tp?: boolean;
+      ballType?: '땅' | '뜬' | '라';
+      deflection?: DeflectionInfo;
+    }
   | { type: 'STRIKEOUT'; result: string; pitchType: PitchType }
   | {
       type: 'RUN_ADV';
@@ -296,8 +355,9 @@ export type GameAction =
       advCode?: string;
       causedBy?: number;
       chain?: boolean;
+      deflection?: DeflectionInfo;
     }
-  | { type: 'RUN_OUT'; base: Base; result: string }
+  | { type: 'RUN_OUT'; base: Base; result: string; deflection?: DeflectionInfo }
   | { type: 'NEXT_BATTER' }
   | { type: 'NEXT_INNING' }
   | { type: 'CLEAR_CELL' }
@@ -310,6 +370,7 @@ export type GameAction =
       rbi?: boolean;
       scorePitcher?: string;
       advCode?: string;
+      deflection?: DeflectionInfo;
     }
   | { type: 'REMOVE_RUNNER'; base: Base }
   | {
@@ -322,13 +383,39 @@ export type GameAction =
       scorePitcher?: string;
       advCode?: string;
       causedBy?: number;
+      steal?: boolean;
+      chain?: boolean;
+      insertIndex?: number;
+      deflection?: DeflectionInfo;
     }
   | { type: 'UNDO' }
   | { type: 'SEL_CELL'; key: string }
-  | { type: 'SUBST'; side: 'away' | 'home'; pos: number; player: Player }
-  | { type: 'SUBST_RUNNER'; base: Base; player: Player; side: 'away' | 'home' }
-  | { type: 'SUBST_BATTER'; player: Player; side: 'away' | 'home' }
-  | { type: 'PITCHER_CHANGE'; side: 'away' | 'home'; player: Player }
+  | {
+      type: 'SUBST';
+      side: 'away' | 'home';
+      pos: number;
+      player: Player;
+      mid?: { balls: number; strikes: number };
+    }
+  | {
+      type: 'SUBST_RUNNER';
+      base: Base;
+      player: Player;
+      side: 'away' | 'home';
+      mid?: { balls: number; strikes: number };
+    }
+  | {
+      type: 'SUBST_BATTER';
+      player: Player;
+      side: 'away' | 'home';
+      mid?: { balls: number; strikes: number };
+    }
+  | {
+      type: 'PITCHER_CHANGE';
+      side: 'away' | 'home';
+      player: Player;
+      mid?: { balls: number; strikes: number };
+    }
   | { type: 'CHANGE_LU_POS'; team: 'away' | 'home'; idx: number; pos: number }
   | { type: 'CHANGE_LU_ORDER'; team: 'away' | 'home'; idx: number; order: number }
   | { type: 'ADD_BENCH_TO_LU'; team: 'away' | 'home'; benchIdx: number; luIdx: number | null }
@@ -345,4 +432,22 @@ export type GameAction =
   | { type: 'SET_GAME_INFO'; awayTeam: string; homeTeam: string; date: string; league: string }
   | { type: 'INIT_GAME'; setup: GameSetup }
   | { type: 'GAME_EVENT'; eventType: 'mound' | 'batter_timeout' | 'pitcher_leave'; detail?: string }
-  | { type: 'CELL_NOTE'; note: string };
+  | { type: 'CELL_NOTE'; note: string }
+  | { type: 'EDIT_PITCH'; cellKey: string; entryIdx: number; newPitch: PitchType }
+  | { type: 'EDIT_HIT_ZONE'; cellKey: string; newZone: number }
+  | {
+      type: 'EDIT_HIT_DATA';
+      cellKey: string;
+      newHitData?: HitData;
+      newResult: string;
+      newBallType?: '땅' | '뜬' | '라';
+      newDeflection?: DeflectionInfo | null; // null = 제거, undefined = 유지
+    }
+  | { type: 'EDIT_RUNNER_REASON'; cellKey: string; entryIdx: number; newAdvCode: string }
+  | { type: 'EDIT_BAT_RESULT_CODE'; cellKey: string; newResult: string }
+  | {
+      type: 'EDIT_BAT_OUT_CODE';
+      cellKey: string;
+      newResult: string;
+      newBallType?: '땅' | '뜬' | '라';
+    };

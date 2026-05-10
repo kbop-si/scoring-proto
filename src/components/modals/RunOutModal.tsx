@@ -1,5 +1,6 @@
-import { useState } from 'react';
-import type { Base, Player } from '../../types';
+import { useState, useEffect } from 'react';
+import type { Base, DeflectionInfo, Player } from '../../types';
+import DeflectionPicker from './DeflectionPicker';
 
 interface Props {
   open: boolean;
@@ -8,7 +9,7 @@ interface Props {
   selected: string | null;
   defLU: Player[];
   onSelect: (v: string) => void;
-  onConfirm: (seq: number[]) => void;
+  onConfirm: (seq: number[], deflection?: DeflectionInfo) => void;
   onClose: () => void;
 }
 
@@ -19,7 +20,6 @@ interface DefRow {
   error: boolean;
   throwDir: string;
   recvDir: string;
-  defl: boolean;
   shift: boolean;
 }
 
@@ -69,6 +69,7 @@ export default function RunOutModal({
   const [pInsert, setPInsert] = useState(false);
   const [csRecord, setCsRecord] = useState(false);
   const [pickoffBase, setPickoffBase] = useState<PickoffBase>('1');
+  const [deflection, setDeflection] = useState<DeflectionInfo | null>(null);
 
   const reset = () => {
     setDefSeq([]);
@@ -76,13 +77,19 @@ export default function RunOutModal({
     setPInsert(false);
     setCsRecord(false);
     setPickoffBase('1');
+    setDeflection(null);
   };
+
+  // 모달이 열릴 때마다 초기화
+  useEffect(() => {
+    if (open) reset();
+  }, [open]);
   const handleClose = () => {
     reset();
     onClose();
   };
   const handleConfirm = () => {
-    onConfirm(seq);
+    onConfirm(seq, deflection ?? undefined);
     reset();
   };
 
@@ -98,7 +105,6 @@ export default function RunOutModal({
           error: false,
           throwDir: '중앙',
           recvDir: '중앙',
-          defl: false,
           shift: false,
         },
       ];
@@ -291,7 +297,6 @@ export default function RunOutModal({
                     '실책',
                     '송구방향',
                     '송구높이',
-                    '디플',
                     '시프트',
                     '',
                   ].map((h) => (
@@ -316,7 +321,7 @@ export default function RunOutModal({
                 {defSeq.length === 0 ? (
                   <tr>
                     <td
-                      colSpan={10}
+                      colSpan={9}
                       style={{
                         border: '1px solid var(--border2)',
                         padding: '8px 4px',
@@ -331,7 +336,7 @@ export default function RunOutModal({
                 ) : (
                   defSeq.map((row, i) => {
                     const player = defLU.find((p) => p.pos === row.pos);
-                    const toggle = (f: 'assist' | 'putout' | 'error' | 'defl' | 'shift') =>
+                    const toggle = (f: 'assist' | 'putout' | 'error' | 'shift') =>
                       setDefSeq((prev) => prev.map((r, j) => (j === i ? { ...r, [f]: !r[f] } : r)));
                     const upd = (patch: Partial<DefRow>) =>
                       setDefSeq((prev) => prev.map((r, j) => (j === i ? { ...r, ...patch } : r)));
@@ -406,13 +411,6 @@ export default function RunOutModal({
                         <td style={td}>
                           <input
                             type="checkbox"
-                            checked={row.defl}
-                            onChange={() => toggle('defl')}
-                          />
-                        </td>
-                        <td style={td}>
-                          <input
-                            type="checkbox"
                             checked={row.shift}
                             onChange={() => toggle('shift')}
                           />
@@ -462,16 +460,23 @@ export default function RunOutModal({
               borderTop: '1px solid var(--border2)',
             }}
           >
-            <span
-              style={{
-                fontFamily: 'monospace',
-                fontWeight: 700,
-                fontSize: 15,
-                color: seq.length ? 'var(--blue)' : 'var(--text3)',
-              }}
-            >
-              {seq.length ? seq.join('-') : '—'}
-            </span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <span
+                style={{
+                  fontFamily: 'monospace',
+                  fontWeight: 700,
+                  fontSize: 15,
+                  color: seq.length ? 'var(--blue)' : 'var(--text3)',
+                }}
+              >
+                {seq.length ? seq.join('-') : '—'}
+              </span>
+              <DeflectionPicker
+                value={deflection}
+                defLU={defLU}
+                onChange={(v) => setDeflection(v)}
+              />
+            </div>
             <div style={{ display: 'flex', gap: 8 }}>
               <button
                 className="btn-ok"

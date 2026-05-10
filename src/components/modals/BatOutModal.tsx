@@ -1,10 +1,17 @@
-import { useState } from 'react';
-import type { Player } from '../../types';
+import { useState, useEffect } from 'react';
+import type { DeflectionInfo, Player } from '../../types';
+import DeflectionPicker from './DeflectionPicker';
 
 interface Props {
   open: boolean;
   defLU: Player[];
-  onResult: (result: string, dp?: boolean, tp?: boolean) => void;
+  onResult: (
+    result: string,
+    dp?: boolean,
+    tp?: boolean,
+    ballType?: '땅' | '뜬' | '라',
+    deflection?: DeflectionInfo
+  ) => void;
   onClose: () => void;
 }
 
@@ -47,8 +54,8 @@ interface DefRow {
   error: boolean;
   throwDir: string;
   recvDir: string;
-  defl: boolean;
   shift: boolean;
+  defl: boolean; // 디플렉션으로 자동 추가된 행
 }
 
 const DIR_OPTS = ['중앙', '좌', '우', '내야', '외야', '—'];
@@ -213,7 +220,8 @@ function FieldPicker({
 
 export default function BatOutModal({ open, defLU, onResult, onClose }: Props) {
   const [defSeq, setDefSeq] = useState<DefRow[]>([]);
-  const seq = defSeq.map((r) => r.pos);
+  // 결과 코드 시퀀스는 디플 행 제외 (디플은 셀에 작은 prefix로 따로 표시됨)
+  const seq = defSeq.filter((r) => !r.defl).map((r) => r.pos);
   const [type, setType] = useState<HitType>('땅');
   const [gMode, setGMode] = useState<GMode>('송구');
   const [dp, setDp] = useState(false);
@@ -223,6 +231,7 @@ export default function BatOutModal({ open, defLU, onResult, onClose }: Props) {
   const [fSac, setFSac] = useState(false);
   const [fBunt, setFBunt] = useState(false);
   const [otherType, setOtherType] = useState<OtherType | null>(null);
+  const [deflection, setDeflection] = useState<DeflectionInfo | null>(null);
 
   const reset = () => {
     setDefSeq([]);
@@ -235,13 +244,49 @@ export default function BatOutModal({ open, defLU, onResult, onClose }: Props) {
     setFSac(false);
     setFBunt(false);
     setOtherType(null);
+    setDeflection(null);
   };
+
+  // 모달이 열릴 때마다 초기화
+  useEffect(() => {
+    if (open) reset();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
+
+  // 디플렉션 변경 → defSeq 맨 앞에 자동 행 추가/제거 (defl 마크)
+  useEffect(() => {
+    setDefSeq((prev) => {
+      const cleaned = prev.filter((r) => !r.defl);
+      if (deflection) {
+        return [
+          {
+            pos: deflection.pos,
+            assist: false,
+            putout: false,
+            error: false,
+            throwDir: '중앙',
+            recvDir: '중앙',
+            shift: false,
+            defl: true,
+          },
+          ...cleaned,
+        ];
+      }
+      return cleaned;
+    });
+  }, [deflection]);
   const handleClose = () => {
     reset();
     onClose();
   };
   const handleResult = (r: string, isDp: boolean, isTp: boolean) => {
-    onResult(r, isDp, isTp);
+    // type → ballType 매핑 (땅볼 계열만 — F/L은 result 코드에 이미 표기됨)
+    const bt: '땅' | '뜬' | '라' | undefined =
+      type === '땅' || type === 'BU' || type === 'SH' ? '땅' : undefined;
+    // 디플렉션은 플라이아웃(F/f/L/IF) 제외
+    const isFly = type === 'F' || type === 'f' || type === 'L' || type === 'IF';
+    const defl = !isFly ? (deflection ?? undefined) : undefined;
+    onResult(r, isDp, isTp, bt, defl);
     reset();
     onClose();
   };
@@ -277,7 +322,8 @@ export default function BatOutModal({ open, defLU, onResult, onClose }: Props) {
 
   const addPos = (pos: number) =>
     setDefSeq((prev) => {
-      const updated = prev.map((r) => ({ ...r, putout: false, assist: true }));
+      // 디플렉션 행은 보살/자살 자동 갱신 대상에서 제외
+      const updated = prev.map((r) => (r.defl ? r : { ...r, putout: false, assist: true }));
       return [
         ...updated,
         {
@@ -287,8 +333,8 @@ export default function BatOutModal({ open, defLU, onResult, onClose }: Props) {
           error: false,
           throwDir: '중앙',
           recvDir: '중앙',
-          defl: false,
           shift: false,
+          defl: false,
         },
       ];
     });
@@ -404,8 +450,8 @@ export default function BatOutModal({ open, defLU, onResult, onClose }: Props) {
                     '실책',
                     '송구방향',
                     '송구높이',
-                    '디플',
                     '시프트',
+                    '디플',
                     '',
                   ].map((h) => (
                     <th
@@ -444,7 +490,7 @@ export default function BatOutModal({ open, defLU, onResult, onClose }: Props) {
                 ) : (
                   defSeq.map((row, i) => {
                     const player = defLU.find((p) => p.pos === row.pos);
-                    const toggle = (f: 'assist' | 'putout' | 'error' | 'defl' | 'shift') =>
+                    const toggle = (f: 'assist' | 'putout' | 'error' | 'shift') =>
                       setDefSeq((prev) => prev.map((r, j) => (j === i ? { ...r, [f]: !r[f] } : r)));
                     const upd = (patch: Partial<DefRow>) =>
                       setDefSeq((prev) => prev.map((r, j) => (j === i ? { ...r, ...patch } : r)));
@@ -519,31 +565,47 @@ export default function BatOutModal({ open, defLU, onResult, onClose }: Props) {
                         <td style={td}>
                           <input
                             type="checkbox"
-                            checked={row.defl}
-                            onChange={() => toggle('defl')}
+                            checked={row.shift}
+                            onChange={() => toggle('shift')}
                           />
                         </td>
                         <td style={td}>
                           <input
                             type="checkbox"
-                            checked={row.shift}
-                            onChange={() => toggle('shift')}
+                            checked={row.defl}
+                            readOnly
+                            style={{ accentColor: 'var(--blue)' }}
                           />
                         </td>
                         <td style={{ ...td, padding: '2px 4px' }}>
                           <button
-                            onClick={() =>
+                            onClick={() => {
+                              if (row.defl) {
+                                // 디플렉션 행 삭제 시 deflection state도 함께 클리어
+                                setDeflection(null);
+                                return;
+                              }
                               setDefSeq((prev) => {
                                 const next = prev.filter((_, j) => j !== i);
-                                if (next.length > 0)
-                                  return next.map((r, j) => ({
-                                    ...r,
-                                    putout: j === next.length - 1,
-                                    assist: j < next.length - 1,
-                                  }));
+                                // 디플렉션 행은 보살/자살 자동 갱신 대상에서 제외
+                                const nonDefl = next.filter((r) => !r.defl);
+                                if (nonDefl.length > 0) {
+                                  const lastNonDeflIdx = next.findIndex(
+                                    (r) => r === nonDefl[nonDefl.length - 1]
+                                  );
+                                  return next.map((r, j) =>
+                                    r.defl
+                                      ? r
+                                      : {
+                                          ...r,
+                                          putout: j === lastNonDeflIdx,
+                                          assist: j !== lastNonDeflIdx,
+                                        }
+                                  );
+                                }
                                 return next;
-                              })
-                            }
+                              });
+                            }}
                             style={{
                               fontSize: 12,
                               lineHeight: 1,
@@ -574,16 +636,25 @@ export default function BatOutModal({ open, defLU, onResult, onClose }: Props) {
               borderTop: '1px solid var(--border2)',
             }}
           >
-            <span
-              style={{
-                fontFamily: 'monospace',
-                fontWeight: 700,
-                fontSize: 15,
-                color: activeCode ? 'var(--blue)' : 'var(--text3)',
-              }}
-            >
-              {activeCode ?? '—'}
-            </span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <span
+                style={{
+                  fontFamily: 'monospace',
+                  fontWeight: 700,
+                  fontSize: 15,
+                  color: activeCode ? 'var(--blue)' : 'var(--text3)',
+                }}
+              >
+                {activeCode ?? '—'}
+              </span>
+              {!isFlat && (
+                <DeflectionPicker
+                  value={deflection}
+                  defLU={defLU}
+                  onChange={(v) => setDeflection(v)}
+                />
+              )}
+            </div>
             <div style={{ display: 'flex', gap: 8 }}>
               <button
                 className="btn-ok"
