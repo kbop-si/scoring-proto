@@ -244,20 +244,20 @@ export default function BatAdvModal({
   // 방향은 방향 버튼으로만 선택 (필드 클릭 비활성)
 
   // ── 방향 버튼 클릭 ────────────────────────────────────────────────────────
+  // pendingResult 없이도 선택 가능 (좌·우 입력 순서 자유). 결과가 NEEDS_HIT일 때만 parent에 hit 동기화.
   const handleDir = (row: number, col: number) => {
-    if (!pendingResult || !NEEDS_HIT.has(pendingResult)) return;
     setSelDirRow(row);
     setSelDirCol(col);
-    const zone = defSeq[defSeq.length - 1]?.pos ?? null;
-    tryAutoHit(zone, row, col, selBall, pendingResult);
+    if (pendingResult && NEEDS_HIT.has(pendingResult)) {
+      const zone = defSeq[defSeq.length - 1]?.pos ?? null;
+      tryAutoHit(zone, row, col, selBall, pendingResult);
+    }
   };
 
   // ── 구질 선택 ─────────────────────────────────────────────────────────────
   const handleBall = (b: BallType) => {
-    if (!pendingResult) return;
-    if (!NEEDS_HIT.has(pendingResult) && !NEEDS_BALLTYPE.has(pendingResult)) return;
     setSelBall(b);
-    if (NEEDS_HIT.has(pendingResult)) {
+    if (pendingResult && NEEDS_HIT.has(pendingResult)) {
       const zone = defSeq[defSeq.length - 1]?.pos ?? null;
       tryAutoHit(zone, selDirRow, selDirCol, b, pendingResult);
     }
@@ -265,8 +265,6 @@ export default function BatAdvModal({
 
   // ── 필드 수비수 번호 클릭 ─────────────────────────────────────────────────
   const handlePosClick = (pos: number) => {
-    if (!pendingResult) return;
-
     setDefSeq((prev) => {
       const idx = prev.findIndex((r) => r.pos === pos);
       let next: DefRow[];
@@ -275,7 +273,7 @@ export default function BatAdvModal({
       } else {
         next = [...prev, { pos, assist: false, putout: false, error: false }];
       }
-      if (NEEDS_HIT.has(pendingResult)) {
+      if (pendingResult && NEEDS_HIT.has(pendingResult)) {
         const zone = next[next.length - 1]?.pos ?? null;
         tryAutoHit(zone, selDirRow, selDirCol, selBall, pendingResult);
       }
@@ -284,13 +282,14 @@ export default function BatAdvModal({
   };
 
   // ── 결과 버튼 선택 ────────────────────────────────────────────────────────
+  // 좌측에 미리 입력해둔 수비/방향/구질은 유지 (입력 순서 자유). deflection만 결과 종속이라 초기화.
   const pick = (v: string) => {
     setPendingResult(v);
-    setDefSeq([]);
-    setSelDirRow(null);
-    setSelDirCol(null);
-    setSelBall(null);
     setDeflection(null);
+    if (NEEDS_HIT.has(v)) {
+      const zone = defSeq[defSeq.length - 1]?.pos ?? null;
+      tryAutoHit(zone, selDirRow, selDirCol, selBall, v);
+    }
   };
 
   // ── 비-안타 확인 ──────────────────────────────────────────────────────────
@@ -330,8 +329,19 @@ export default function BatAdvModal({
   };
 
   const s = (v: string) => pendingResult === v;
-  const defSeqLabel = defSeq.map((r) => r.pos).join('-');
+  // 78/89 는 야수 사이 zone (단일 선수 매핑 X) — 수비 리스트/칩에는 빼고 보여줌. zone 용으로는 defSeq 에 남김.
+  const displayableDefSeq = defSeq.filter((r) => r.pos !== 78 && r.pos !== 89);
+  const defSeqLabel = displayableDefSeq.map((r) => r.pos).join('-');
   const zone = defSeq[defSeq.length - 1]?.pos ?? null;
+  // 수비 리스트 표시 모드 결정
+  const isHitResult = pendingResult ? NEEDS_HIT.has(pendingResult) : false;
+  const isFielderResult = pendingResult ? NEEDS_FIELDER.has(pendingResult) : false;
+  // B/IB/HP/SH진루/E기록/DP_E — defSeq 안 쓰는 결과
+  const isResultUnused = !!pendingResult && !isHitResult && !isFielderResult;
+  const defSectionVisible = !isHitResult && !isResultUnused;
+  const showFullTable = isFielderResult || displayableDefSeq.length >= 2;
+  // 단일 야수(1개) 클릭 시엔 필드 하이라이트만 보여주고 좌측 하단엔 아무 것도 표시 안 함
+  const showEmptyForSingle = !showFullTable && displayableDefSeq.length === 1;
   const hitReady =
     pendingResult &&
     NEEDS_HIT.has(pendingResult) &&
@@ -410,7 +420,7 @@ export default function BatAdvModal({
                     return (
                       <g
                         key={key}
-                        style={{ cursor: pendingResult ? 'pointer' : 'default' }}
+                        style={{ cursor: 'pointer' }}
                         onClick={(e) => {
                           e.stopPropagation();
                           handlePosClick(key);
@@ -486,7 +496,6 @@ export default function BatAdvModal({
                         <button
                           key={key}
                           onClick={() => handleDir(row, col)}
-                          disabled={!pendingResult || !NEEDS_HIT.has(pendingResult)}
                           style={{
                             width: 36,
                             height: 36,
@@ -500,7 +509,6 @@ export default function BatAdvModal({
                             display: 'flex',
                             alignItems: 'center',
                             justifyContent: 'center',
-                            opacity: !pendingResult || !NEEDS_HIT.has(pendingResult) ? 0.3 : 1,
                           }}
                         >
                           {DIR_LABEL[key]}
@@ -511,199 +519,193 @@ export default function BatAdvModal({
                 </div>
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                {(['땅볼', '뜬공', '라이너', '번트'] as BallType[]).map((b) => {
-                  // FC류는 ballType radio도 활성화 (방향 없이 ballType만)
-                  const ballEnabled =
-                    pendingResult &&
-                    (NEEDS_HIT.has(pendingResult) || NEEDS_BALLTYPE.has(pendingResult));
-                  return (
-                    <label
-                      key={b}
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 6,
-                        cursor: 'pointer',
-                        fontSize: 12,
-                        opacity: ballEnabled ? 1 : 0.3,
-                      }}
-                    >
-                      <input
-                        type="radio"
-                        name="batadv_ball"
-                        checked={selBall === b}
-                        disabled={!ballEnabled}
-                        onChange={() => handleBall(b)}
-                        style={{ accentColor: 'var(--blue)' }}
-                      />
-                      {b}
-                    </label>
-                  );
-                })}
+                {(['땅볼', '뜬공', '라이너', '번트'] as BallType[]).map((b) => (
+                  <label
+                    key={b}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 6,
+                      cursor: 'pointer',
+                      fontSize: 12,
+                    }}
+                  >
+                    <input
+                      type="radio"
+                      name="batadv_ball"
+                      checked={selBall === b}
+                      onChange={() => handleBall(b)}
+                      style={{ accentColor: 'var(--blue)' }}
+                    />
+                    {b}
+                  </label>
+                ))}
               </div>
             </div>
           </div>
 
-          {/* 수비 리스트 테이블 — 루타/홈런일 때는 숨김 */}
-          {(!pendingResult || !NEEDS_HIT.has(pendingResult)) && (
+          {/* 수비 영역 — HIT/잉여 결과(B,IB,HP,SH,E기록,DP_E)일 땐 숨김. 그 외엔 상태에 따라 placeholder/칩/전체 테이블 */}
+          {defSectionVisible && (
             <div style={{ padding: 10, flex: 1, overflow: 'auto' }}>
-              <div
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  marginBottom: 8,
-                  fontWeight: 700,
-                  fontSize: 13,
-                }}
-              >
-                <span>
-                  수비 리스트
-                  {defSeqLabel ? (
-                    <span style={{ color: 'var(--blue)', marginLeft: 6 }}>{defSeqLabel}</span>
-                  ) : (
-                    ''
-                  )}
-                </span>
-                {defSeq.length > 0 && (
-                  <button
-                    onClick={() => setDefSeq([])}
+              {showFullTable ? (
+                <>
+                  <div
                     style={{
-                      fontSize: 10,
-                      padding: '2px 6px',
-                      border: '1px solid var(--border)',
-                      background: '#fff',
-                      cursor: 'pointer',
-                      borderRadius: 2,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      marginBottom: 8,
+                      fontWeight: 700,
+                      fontSize: 13,
                     }}
                   >
-                    초기화
-                  </button>
-                )}
-              </div>
-              {defSeq.length > 0 ? (
-                <table style={{ width: '100%', borderCollapse: 'collapse', background: '#fff' }}>
-                  <thead>
-                    <tr>
-                      {['수비', '선수명', '보살', '자살', '실책', ''].map((h) => (
-                        <th
-                          key={h}
-                          style={{
-                            background: '#dce7f4',
-                            border: '1px solid var(--border2)',
-                            padding: '5px 4px',
-                            fontWeight: 700,
-                            fontSize: 11,
-                            textAlign: 'center',
-                          }}
-                        >
-                          {h}
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {defSeq.map((row, i) => {
-                      const player = defLU.find((p) => p.pos === row.pos);
-                      const toggle = (f: 'assist' | 'putout' | 'error') =>
-                        setDefSeq((prev) =>
-                          prev.map((r, j) => (j === i ? { ...r, [f]: !r[f] } : r))
-                        );
-                      return (
-                        <tr key={i}>
-                          <td
+                    <span>
+                      수비 리스트
+                      {defSeqLabel ? (
+                        <span style={{ color: 'var(--blue)', marginLeft: 6 }}>{defSeqLabel}</span>
+                      ) : (
+                        ''
+                      )}
+                    </span>
+                    <button
+                      onClick={() => setDefSeq([])}
+                      style={{
+                        fontSize: 10,
+                        padding: '2px 6px',
+                        border: '1px solid var(--border)',
+                        background: '#fff',
+                        cursor: 'pointer',
+                        borderRadius: 2,
+                      }}
+                    >
+                      초기화
+                    </button>
+                  </div>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', background: '#fff' }}>
+                    <thead>
+                      <tr>
+                        {['수비', '선수명', '보살', '자살', '실책', ''].map((h) => (
+                          <th
+                            key={h}
                             style={{
+                              background: '#dce7f4',
                               border: '1px solid var(--border2)',
                               padding: '5px 4px',
-                              textAlign: 'center',
-                              fontSize: 12,
-                            }}
-                          >
-                            {POS_NAME[row.pos]}
-                          </td>
-                          <td
-                            style={{
-                              border: '1px solid var(--border2)',
-                              padding: '5px 6px',
-                              fontSize: 12,
-                            }}
-                          >
-                            {player?.name || `#${row.pos}`}
-                          </td>
-                          <td
-                            style={{
-                              border: '1px solid var(--border2)',
-                              padding: '5px 4px',
+                              fontWeight: 700,
+                              fontSize: 11,
                               textAlign: 'center',
                             }}
                           >
-                            <input
-                              type="checkbox"
-                              checked={row.assist}
-                              onChange={() => toggle('assist')}
-                            />
-                          </td>
-                          <td
-                            style={{
-                              border: '1px solid var(--border2)',
-                              padding: '5px 4px',
-                              textAlign: 'center',
-                            }}
-                          >
-                            <input
-                              type="checkbox"
-                              checked={row.putout}
-                              onChange={() => toggle('putout')}
-                            />
-                          </td>
-                          <td
-                            style={{
-                              border: '1px solid var(--border2)',
-                              padding: '5px 4px',
-                              textAlign: 'center',
-                            }}
-                          >
-                            <input
-                              type="checkbox"
-                              checked={row.error}
-                              onChange={() => toggle('error')}
-                            />
-                          </td>
-                          <td
-                            style={{
-                              border: '1px solid var(--border2)',
-                              padding: '2px 4px',
-                              textAlign: 'center',
-                            }}
-                          >
-                            <button
-                              onClick={() => setDefSeq((prev) => prev.filter((_, j) => j !== i))}
+                            {h}
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {defSeq.map((row, i) => {
+                        // 78/89 zone 은 단일 선수 매핑 X — 테이블 행에서는 제외 (defSeq 에는 zone 용으로 남김)
+                        if (row.pos === 78 || row.pos === 89) return null;
+                        const player = defLU.find((p) => p.pos === row.pos);
+                        const toggle = (f: 'assist' | 'putout' | 'error') =>
+                          setDefSeq((prev) =>
+                            prev.map((r, j) => (j === i ? { ...r, [f]: !r[f] } : r))
+                          );
+                        return (
+                          <tr key={i}>
+                            <td
                               style={{
+                                border: '1px solid var(--border2)',
+                                padding: '5px 4px',
+                                textAlign: 'center',
                                 fontSize: 12,
-                                lineHeight: 1,
-                                padding: '1px 5px',
-                                border: '1px solid #f87171',
-                                background: '#fff',
-                                color: '#ef4444',
-                                cursor: 'pointer',
-                                borderRadius: 2,
                               }}
                             >
-                              ×
-                            </button>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              ) : (
+                              {POS_NAME[row.pos]}
+                            </td>
+                            <td
+                              style={{
+                                border: '1px solid var(--border2)',
+                                padding: '5px 6px',
+                                fontSize: 12,
+                              }}
+                            >
+                              {player?.name || `#${row.pos}`}
+                            </td>
+                            <td
+                              style={{
+                                border: '1px solid var(--border2)',
+                                padding: '5px 4px',
+                                textAlign: 'center',
+                              }}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={row.assist}
+                                onChange={() => toggle('assist')}
+                              />
+                            </td>
+                            <td
+                              style={{
+                                border: '1px solid var(--border2)',
+                                padding: '5px 4px',
+                                textAlign: 'center',
+                              }}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={row.putout}
+                                onChange={() => toggle('putout')}
+                              />
+                            </td>
+                            <td
+                              style={{
+                                border: '1px solid var(--border2)',
+                                padding: '5px 4px',
+                                textAlign: 'center',
+                              }}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={row.error}
+                                onChange={() => toggle('error')}
+                              />
+                            </td>
+                            <td
+                              style={{
+                                border: '1px solid var(--border2)',
+                                padding: '2px 4px',
+                                textAlign: 'center',
+                              }}
+                            >
+                              <button
+                                onClick={() => setDefSeq((prev) => prev.filter((_, j) => j !== i))}
+                                style={{
+                                  fontSize: 12,
+                                  lineHeight: 1,
+                                  padding: '1px 5px',
+                                  border: '1px solid #f87171',
+                                  background: '#fff',
+                                  color: '#ef4444',
+                                  cursor: 'pointer',
+                                  borderRadius: 2,
+                                }}
+                              >
+                                ×
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </>
+              ) : showEmptyForSingle ? null : (
                 <div style={{ color: 'var(--text3)', fontSize: 11, padding: '8px 0' }}>
                   {pendingResult
                     ? NEEDS_FIELDER.has(pendingResult)
                       ? '실책 수비수를 클릭하면 바로 기록됩니다'
                       : '수비 번호를 클릭해 관련 수비수를 추가하세요'
-                    : '결과를 먼저 선택하세요'}
+                    : '수비 번호를 클릭하거나 우측에서 진루 사유를 먼저 선택할 수 있습니다'}
                 </div>
               )}
             </div>

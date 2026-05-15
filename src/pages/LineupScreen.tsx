@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import type { Player, GameSetup } from '../types';
-import { POS_NAME, POS_ABBR, SAMPLE } from '../data/constants';
+import { POS_NAME, SAMPLE, posGroupAbbr, getDuplicateNames, displayName } from '../data/constants';
 
 interface LineupState {
   awayLineup: Player[];
@@ -34,6 +34,8 @@ export default function LineupScreen({ setup, onUpdateLineups, onStart }: Props)
 
   const lu = luTeam === 'away' ? ls.awayLineup : ls.homeLineup;
   const bench = luTeam === 'away' ? ls.awayBench : ls.homeBench;
+  // 동명이인 검출 — 같은 팀의 라인업+벤치 통합 기준
+  const dupeNames = getDuplicateNames([...lu, ...bench]);
   const luKey = luTeam === 'away' ? 'awayLineup' : 'homeLineup';
   const benchKey = luTeam === 'away' ? 'awayBench' : 'homeBench';
 
@@ -300,7 +302,6 @@ export default function LineupScreen({ setup, onUpdateLineups, onStart }: Props)
                   <th style={thStyle}>타순</th>
                   <th style={thStyle}>수비</th>
                   <th style={thStyle}>선수명</th>
-                  <th style={thStyle}>등번호</th>
                 </tr>
               </thead>
               <tbody>
@@ -338,8 +339,7 @@ export default function LineupScreen({ setup, onUpdateLineups, onStart }: Props)
                           ))}
                         </select>
                       </td>
-                      <td style={tdStyle}>{p.name}</td>
-                      <td style={tdStyle}>{p.num}</td>
+                      <td style={tdStyle}>{displayName(p.name, p.num, dupeNames)}</td>
                     </tr>
                   );
                 })}
@@ -397,7 +397,6 @@ export default function LineupScreen({ setup, onUpdateLineups, onStart }: Props)
               <thead>
                 <tr>
                   <th style={thStyle}>선수명</th>
-                  <th style={thStyle}>등번호</th>
                   <th style={thStyle}>포지션</th>
                   <th style={thStyle}>미출장</th>
                 </tr>
@@ -417,9 +416,8 @@ export default function LineupScreen({ setup, onUpdateLineups, onStart }: Props)
                         cursor: 'pointer',
                       }}
                     >
-                      <td style={tdStyle}>{p.name}</td>
-                      <td style={tdStyle}>{p.num}</td>
-                      <td style={tdStyle}>{POS_ABBR[p.pos] || ''}</td>
+                      <td style={tdStyle}>{displayName(p.name, p.num, dupeNames)}</td>
+                      <td style={tdStyle}>{posGroupAbbr(p.pos)}</td>
                       <td style={tdStyle}>
                         <input type="checkbox" readOnly />
                       </td>

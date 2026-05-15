@@ -91,6 +91,7 @@ export interface CellData {
   cycleStart?: boolean; // 타자일순 시작 셀 (overflow appearance>0의 첫 셀)
   bbChargedTo?: string; // BB 책임 투수 (PA 도중 교체 시 전임 투수)
   pinchRunnerMark?: { base: Base; pinchName: string; mid?: { balls: number; strikes: number } };
+  batterSide?: 'L' | 'R'; // 스위치 타자 좌/우 선택 (hitType=3 인 경우만 의미. 미지정이면 hitType 기본값)
 }
 
 // 투구와 이벤트(마운드방문 등)의 순서를 보존하는 엔트리
@@ -327,6 +328,7 @@ export interface GameSetup {
 
 export type GameAction =
   | { type: 'PITCH'; pitchType: PitchType }
+  | { type: 'TOGGLE_BATTER_SIDE' } // 스위치 타자 좌/우 토글 (현재 selCellKey 셀에 batterSide set)
   | {
       type: 'BAT_ADV';
       result: string;
@@ -450,4 +452,10 @@ export type GameAction =
       cellKey: string;
       newResult: string;
       newBallType?: '땅' | '뜬' | '라';
+    }
+  | {
+      type: 'EDIT_SCORED_RUN';
+      cellKey: string;
+      newEarned: boolean | 'half';
+      newScorePitcher?: string;
     };

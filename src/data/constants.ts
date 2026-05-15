@@ -41,6 +41,36 @@ export const POS_ABBR: Record<number, string> = {
   9: '9',
 };
 
+// 라인업 표시용 그룹 약어 — 1=투, 2=포, 3-6=내, 7-9=외
+export function posGroupAbbr(pos: number): string {
+  if (pos === 1) return '투';
+  if (pos === 2) return '포';
+  if (pos >= 3 && pos <= 6) return '내';
+  if (pos >= 7 && pos <= 9) return '외';
+  if (pos === 0) return 'D';
+  return '';
+}
+
+// 같은 팀(roster) 내 동명이인 이름 추출
+export function getDuplicateNames(roster: { name?: string }[]): Set<string> {
+  const counts = new Map<string, number>();
+  roster.forEach((p) => {
+    if (!p?.name) return;
+    counts.set(p.name, (counts.get(p.name) || 0) + 1);
+  });
+  return new Set([...counts.entries()].filter(([, c]) => c > 1).map(([n]) => n));
+}
+
+// 동명이인일 때만 "이름 등번호" 형식으로 표시, 아니면 이름 그대로
+export function displayName(
+  name: string | undefined,
+  num: string | undefined,
+  dupes: Set<string>
+): string {
+  if (!name) return '';
+  return dupes.has(name) && num ? `${name} ${num}` : name;
+}
+
 export const KAN = ['一', '二', '三', '四', '五', '六', '七', '八', '九'];
 export const WEEK = ['일', '월', '화', '수', '목', '금', '토'];
 
@@ -269,9 +299,27 @@ export const SAMPLE: { away: Player[]; home: Player[] } = {
     { name: '박진형', num: 'DH', pos: 0, order: 9, hitType: 3 },
     // 투수 슬롯 (타순 없음)
     { name: '박시영', num: '8', pos: 1, order: 0, hitType: 1 },
-    // 벤치
+    // 벤치 (29명 채움)
     { name: '이호준', num: '11', pos: 3, order: 0, hitType: 2 },
     { name: '최재훈', num: '12', pos: 6, order: 0, hitType: 3 },
+    // 동명이인 — 라인업의 5번 김동현과 같은 이름 / 다른 등번호 (대비 테스트용)
+    { name: '김동현', num: '13', pos: 1, order: 0, hitType: 1 },
+    { name: '이의리', num: '14', pos: 1, order: 0, hitType: 1 },
+    { name: '곽도규', num: '15', pos: 1, order: 0, hitType: 1 },
+    { name: '윤영철', num: '16', pos: 1, order: 0, hitType: 2 },
+    { name: '최지민', num: '17', pos: 1, order: 0, hitType: 2 },
+    { name: '정해영', num: '18', pos: 1, order: 0, hitType: 1 },
+    { name: '한승혁', num: '19', pos: 1, order: 0, hitType: 1 },
+    { name: '김건국', num: '20', pos: 1, order: 0, hitType: 1 },
+    { name: '한준수', num: '21', pos: 2, order: 0, hitType: 1 },
+    { name: '오선우', num: '22', pos: 9, order: 0, hitType: 2 },
+    { name: '최정용', num: '23', pos: 4, order: 0, hitType: 1 },
+    { name: '김호령', num: '24', pos: 8, order: 0, hitType: 1 },
+    { name: '나성범', num: '25', pos: 9, order: 0, hitType: 2 },
+    { name: '소크라테스', num: '26', pos: 8, order: 0, hitType: 3 },
+    { name: '서건창', num: '27', pos: 4, order: 0, hitType: 2 },
+    { name: '윤도현', num: '28', pos: 6, order: 0, hitType: 1 },
+    { name: '변우혁', num: '29', pos: 3, order: 0, hitType: 1 },
   ],
   home: [
     // 타순 1-9 (투수 제외)
@@ -286,8 +334,25 @@ export const SAMPLE: { away: Player[]; home: Player[] } = {
     { name: '전민재', num: '4', pos: 0, order: 9, hitType: 3 },
     // 투수 슬롯 (타순 없음)
     { name: '유현빈', num: '61', pos: 1, order: 0, hitType: 1 },
-    // 벤치
+    // 벤치 (29명 채움)
     { name: '이지영', num: '30', pos: 2, order: 0, hitType: 2 },
     { name: '안권수', num: '22', pos: 5, order: 0, hitType: 3 },
+    { name: '한승주', num: '1', pos: 1, order: 0, hitType: 1 },
+    { name: '김기중', num: '3', pos: 1, order: 0, hitType: 1 },
+    { name: '김민우', num: '6', pos: 1, order: 0, hitType: 1 },
+    { name: '문동주', num: '8', pos: 1, order: 0, hitType: 1 },
+    { name: '주현상', num: '9', pos: 1, order: 0, hitType: 1 },
+    { name: '안시환', num: '12', pos: 1, order: 0, hitType: 1 },
+    { name: '김범수', num: '13', pos: 1, order: 0, hitType: 2 },
+    { name: '엄상백', num: '15', pos: 1, order: 0, hitType: 1 },
+    { name: '와이스', num: '16', pos: 1, order: 0, hitType: 1 },
+    { name: '폰세', num: '18', pos: 1, order: 0, hitType: 2 },
+    { name: '심창민', num: '19', pos: 1, order: 0, hitType: 1 },
+    { name: '주승우', num: '20', pos: 1, order: 0, hitType: 1 },
+    { name: '최재훈', num: '24', pos: 2, order: 0, hitType: 1 },
+    { name: '심우준', num: '25', pos: 6, order: 0, hitType: 1 },
+    { name: '안치홍', num: '26', pos: 4, order: 0, hitType: 1 },
+    { name: '이도윤', num: '27', pos: 6, order: 0, hitType: 1 },
+    { name: '플로리얼', num: '28', pos: 9, order: 0, hitType: 3 },
   ],
 };

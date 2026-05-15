@@ -452,70 +452,80 @@ export default function GameInfoScreen({
             </div>
             {/* 2열 */}
             <div>
-              <div style={sectionTitleStyle}>심판</div>
-              <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: 14 }}>
-                <tbody>
-                  <SearchableInput
-                    label="주심"
-                    value={uHome}
-                    setter={setUHome}
-                    options={officialList}
-                  />
-                  <SearchableInput
-                    label="1루심"
-                    value={u1B}
-                    setter={setU1B}
-                    options={officialList}
-                  />
-                  <SearchableInput
-                    label="2루심"
-                    value={u2B}
-                    setter={setU2B}
-                    options={officialList}
-                  />
-                  <SearchableInput
-                    label="3루심"
-                    value={u3B}
-                    setter={setU3B}
-                    options={officialList}
-                  />
-                  <SearchableInput
-                    label="좌선심"
-                    value={uLeft}
-                    setter={setULeft}
-                    options={officialList}
-                  />
-                  <SearchableInput
-                    label="우선심"
-                    value={uRight}
-                    setter={setURight}
-                    options={officialList}
-                  />
-                  <SearchableInput
-                    label="대기심"
-                    value={uWait}
-                    setter={setUWait}
-                    options={officialList}
-                  />
-                </tbody>
-              </table>
-              <div style={sectionTitleStyle}>기록원</div>
-              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                <tbody>
-                  <SearchableInput
-                    label="기록원1"
-                    value={rec1}
-                    setter={setRec1}
-                    options={officialList}
-                  />
-                  <SearchableInput
-                    label="기록원2"
-                    value={rec2}
-                    setter={setRec2}
-                    options={officialList}
-                  />
-                </tbody>
-              </table>
+              {(() => {
+                // 심판·기록원 — 중복 배정 방지. 각 필드의 옵션은 (전체 - 이미 다른 필드에 들어간 사람들)
+                const allAssigned = [uHome, u1B, u2B, u3B, uLeft, uRight, uWait, rec1, rec2];
+                const optsExcluding = (self: string) =>
+                  officialList.filter((n) => !allAssigned.some((v) => v && v !== self && v === n));
+                return (
+                  <>
+                    <div style={sectionTitleStyle}>심판</div>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: 14 }}>
+                      <tbody>
+                        <SearchableInput
+                          label="주심"
+                          value={uHome}
+                          setter={setUHome}
+                          options={optsExcluding(uHome)}
+                        />
+                        <SearchableInput
+                          label="1루심"
+                          value={u1B}
+                          setter={setU1B}
+                          options={optsExcluding(u1B)}
+                        />
+                        <SearchableInput
+                          label="2루심"
+                          value={u2B}
+                          setter={setU2B}
+                          options={optsExcluding(u2B)}
+                        />
+                        <SearchableInput
+                          label="3루심"
+                          value={u3B}
+                          setter={setU3B}
+                          options={optsExcluding(u3B)}
+                        />
+                        <SearchableInput
+                          label="좌선심"
+                          value={uLeft}
+                          setter={setULeft}
+                          options={optsExcluding(uLeft)}
+                        />
+                        <SearchableInput
+                          label="우선심"
+                          value={uRight}
+                          setter={setURight}
+                          options={optsExcluding(uRight)}
+                        />
+                        <SearchableInput
+                          label="대기심"
+                          value={uWait}
+                          setter={setUWait}
+                          options={optsExcluding(uWait)}
+                        />
+                      </tbody>
+                    </table>
+                    <div style={sectionTitleStyle}>기록원</div>
+                    <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                      <tbody>
+                        <SearchableInput
+                          label="기록원1"
+                          value={rec1}
+                          setter={setRec1}
+                          options={optsExcluding(rec1)}
+                        />
+                        <SearchableInput
+                          label="기록원2"
+                          value={rec2}
+                          setter={setRec2}
+                          options={optsExcluding(rec2)}
+                        />
+                      </tbody>
+                    </table>
+                  </>
+                );
+              })()}
             </div>
             {/* 3열 */}
             <div>

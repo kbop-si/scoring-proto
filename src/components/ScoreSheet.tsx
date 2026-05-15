@@ -1,6 +1,13 @@
 import { useState, useEffect } from 'react';
 import type { GameState, CellData, HitData, Half, DeflectionInfo } from '../types';
-import { KAN, RESULT_COL, RESULT_SYMBOL, BASE_LINES } from '../data/constants';
+import {
+  KAN,
+  RESULT_COL,
+  RESULT_SYMBOL,
+  BASE_LINES,
+  getDuplicateNames,
+  displayName,
+} from '../data/constants';
 import { cellKey, isOut, isOnBase } from '../store/gameReducer';
 import { PitchMark } from './modals/PitchMark';
 
@@ -275,14 +282,6 @@ function ScoreCell({
     }
   });
 
-  // DEBUG: 셀에 notes 개수 표시
-  if (notes.length > 0) {
-    console.log(
-      `[CELL ${cell?.order}] notes:`,
-      notes.length,
-      notes.map((n) => `${n.base}:cb=${n.causedBy}`).join(', ')
-    );
-  }
   const runOutBase = cell?.runOutBase || null;
   const runOutNum = cell?.runOutNum;
   const outLbl = outNum ? ['Ⅰ', 'Ⅱ', 'Ⅲ'][outNum - 1] : '';
@@ -293,6 +292,11 @@ function ScoreCell({
   // HOME 도착 멀티스킵: 한자(causedBy)를 첫 중간 베이스로 이동, 큰 화살표는 HOME 변에 그림
   let homeSkipKanjiTarget: string | null = null;
   let homeSkipCausedBy: number | null = null;
+  // 비-HOME 멀티스킵: 한자를 첫 중간(건너뛴) 베이스로 이동, 화살표는 그 다음 변에 그림
+  // (예: 1B→3B → 한자 2B, 화살표 2B→3B / 규칙: 한자 먼저, 그 다음 화살표)
+  let nonHomeSkipKanjiTarget: string | null = null;
+  let nonHomeSkipKanjiFromBase: string | null = null;
+  let nonHomeSkipCausedBy: number | null = null;
   if (onBase || scored) {
     const startIdx = getStartBaseIdx(result);
     let curIdx = startIdx;
@@ -300,6 +304,7 @@ function ScoreCell({
       const destIdx = BIDX[n.base] || 0;
       if (destIdx > curIdx && destIdx - curIdx >= 2) {
         const isHomeMulti = n.base === 'HOME' && !!n.causedBy && !n.advCode;
+        const isNonHomeMulti = n.base !== 'HOME' && !!n.causedBy && !n.advCode;
         const firstIntermediate = ['', '1B', '2B', '3B', 'HOME'][curIdx + 1];
         if (isHomeMulti && firstIntermediate && firstIntermediate !== '1B') {
           // 첫 중간 베이스에 한자 표시 (HOME 한자 대신), 화살표는 HOME 변에
@@ -309,6 +314,14 @@ function ScoreCell({
           for (let i = curIdx + 2; i <= destIdx; i++) {
             const sb = ['', '1B', '2B', '3B', 'HOME'][i];
             if (sb) multiBaseSkips.push(sb);
+          }
+        } else if (isNonHomeMulti && firstIntermediate) {
+          nonHomeSkipKanjiTarget = firstIntermediate;
+          nonHomeSkipKanjiFromBase = n.base;
+          nonHomeSkipCausedBy = n.causedBy!;
+          for (let i = curIdx + 1; i < destIdx; i++) {
+            const skipBase = ['', '1B', '2B', '3B', 'HOME'][i];
+            if (skipBase) multiBaseSkips.push(skipBase);
           }
         } else {
           for (let i = curIdx + 1; i < destIdx; i++) {
@@ -360,6 +373,15 @@ function ScoreCell({
           </text>
         </svg>
       );
+    }
+  }
+
+  // 비-HOME 멀티스킵: 한자를 도착 베이스에서 첫 중간 베이스로 이동
+  if (nonHomeSkipKanjiTarget && nonHomeSkipCausedBy && nonHomeSkipKanjiFromBase) {
+    const lbl = `(${KAN[nonHomeSkipCausedBy - 1] || String(nonHomeSkipCausedBy)})`;
+    delete noteAtBase[nonHomeSkipKanjiFromBase];
+    if (!noteAtBase[nonHomeSkipKanjiTarget]) {
+      noteAtBase[nonHomeSkipKanjiTarget] = lbl;
     }
   }
 
@@ -1684,7 +1706,7 @@ function ScoreCell({
               );
             })()
           ) : (
-            (RESULT_SYMBOL[result] ?? result)
+            (RESULT_SYMBOL[result] ?? result.replace(/^(\d([-→]\d)*)U$/, '$1A'))
           )}
         </div>
       )}
@@ -1885,8 +1907,29 @@ export default function ScoreSheet({ G, onSelCell }: Props) {
 
   const lu = (viewHalf === 'top' ? G.awayLineup : G.homeLineup).filter((p) => p.order > 0);
   const half = viewHalf;
-  const maxInn = Math.min(Math.max(G.inning + 1, 9), 15);
+  // 동명이인 검출 — 현재 viewHalf 팀의 라인업+벤치 통합
+  const sheetDupes = getDuplicateNames([
+    ...(viewHalf === 'top' ? G.awayLineup : G.homeLineup),
+    ...(viewHalf === 'top' ? G.awayBench : G.homeBench),
+  ]);
+  // 기록지.pdf 표준 — 항상 15회까지 빈 셀로 보여줌 (인쇄 시 우측 공백 방지)
+  const maxInn = 15;
   const inns = Array.from({ length: maxInn }, (_, i) => i + 1);
+
+  // 타자일순(같은 이닝에 같은 타자가 2번째 이상 들어옴) — 이닝 별 최대 appearance 추적해서 컬럼 추가
+  // 데이터 레이어(reducer)는 이미 appearance 1+ 셀을 G.cells 에 저장하므로 표시만 추가하면 됨
+  const maxAppByInn: Record<number, number> = {};
+  Object.values(G.cells).forEach((c) => {
+    if (c.half !== half) return;
+    const cur = maxAppByInn[c.inning] ?? 0;
+    if (c.appearance > cur) maxAppByInn[c.inning] = c.appearance;
+  });
+  // 평면화된 컬럼 리스트 — 각 항목 = {inn, app}. 한 이닝이 일순 돌았으면 같은 inn 이 여러 번 등장
+  const innCols: { inn: number; app: number }[] = [];
+  inns.forEach((inn) => {
+    const maxApp = maxAppByInn[inn] ?? 0;
+    for (let a = 0; a <= maxApp; a++) innCols.push({ inn, app: a });
+  });
 
   const outMap: Record<string, number> = {};
   const outByInn: Record<number, number> = {};
@@ -2057,9 +2100,7 @@ export default function ScoreSheet({ G, onSelCell }: Props) {
 
         <span style={{ marginLeft: 4, borderLeft: '1px solid var(--border2)', paddingLeft: 8 }}>
           투수 <b>{activePitcherName}</b>
-          {activePitcherNum && (
-            <span style={{ color: '#111', fontSize: 9 }}> #{activePitcherNum}</span>
-          )}
+          {activePitcherNum && <span style={{ color: '#111', fontSize: 9 }}></span>}
           {isLive && (
             <span style={{ color: '#111', fontSize: 9 }}> &nbsp;{activePitchCount}구</span>
           )}
@@ -2135,8 +2176,210 @@ export default function ScoreSheet({ G, onSelCell }: Props) {
           >
             +
           </button>
+          <button
+            type="button"
+            onClick={() => window.print()}
+            style={{
+              padding: '2px 10px',
+              fontSize: 10,
+              fontWeight: 700,
+              borderRadius: 2,
+              cursor: 'pointer',
+              background: '#fff',
+              color: 'var(--text)',
+              border: '1px solid var(--border)',
+              marginLeft: 4,
+            }}
+            title="인쇄 (A4)"
+          >
+            인쇄
+          </button>
         </span>
       </div>
+
+      {/* 기록지 상단 — 기록지.pdf 와 동일한 형식 (날짜 / 팀 / 이닝점수 15회) */}
+      {(() => {
+        const INN_MAX = 15;
+        const innCols = Array.from({ length: INN_MAX }, (_, i) => i + 1);
+        const awayInnRuns = Array(INN_MAX).fill(null) as (number | null)[];
+        const homeInnRuns = Array(INN_MAX).fill(null) as (number | null)[];
+        Object.values(G.cells).forEach((c) => {
+          if (c.inning > INN_MAX) return;
+          if (c.scored) {
+            if (c.half === 'top') awayInnRuns[c.inning - 1] = (awayInnRuns[c.inning - 1] || 0) + 1;
+            else homeInnRuns[c.inning - 1] = (homeInnRuns[c.inning - 1] || 0) + 1;
+          }
+          if (c.result === 'HR' || c.result === 'GHR') {
+            if (c.half === 'top') awayInnRuns[c.inning - 1] = (awayInnRuns[c.inning - 1] || 0) + 1;
+            else homeInnRuns[c.inning - 1] = (homeInnRuns[c.inning - 1] || 0) + 1;
+          }
+        });
+        const dateParts = (() => {
+          if (!G.date) return { y: '', m: '', d: '', dow: '' };
+          // CreateScreen 에서 "YYYY년 MM월 DD일 (요일)" 형식으로 저장됨
+          const m = G.date.match(/(\d+)\s*년\s*(\d+)\s*월\s*(\d+)\s*일\s*\(([일월화수목금토])\)?/);
+          if (m) {
+            return { y: m[1], m: String(Number(m[2])), d: String(Number(m[3])), dow: m[4] };
+          }
+          // 폴백 — ISO 형식이나 다른 형식이면 Date 객체로 파싱 시도
+          const dt = new Date(G.date);
+          if (isNaN(dt.getTime())) return { y: '', m: '', d: '', dow: '' };
+          const dow = ['일', '월', '화', '수', '목', '금', '토'][dt.getDay()];
+          return {
+            y: String(dt.getFullYear()),
+            m: String(dt.getMonth() + 1),
+            d: String(dt.getDate()),
+            dow,
+          };
+        })();
+
+        const gridCellBorder = '1px solid #333';
+        const gridCellPad = '3px 8px';
+        const tdNarrow: React.CSSProperties = {
+          border: gridCellBorder,
+          padding: '3px 0',
+          minWidth: 28,
+          textAlign: 'center',
+          background: '#fff',
+        };
+        const tdTotal: React.CSSProperties = {
+          ...tdNarrow,
+          minWidth: 38,
+          fontWeight: 700,
+          background: '#fef9c3',
+        };
+
+        return (
+          <div
+            className="ss-header"
+            id="ss-header"
+            style={{
+              borderBottom: '2px solid #333',
+              background: '#fff',
+              display: 'flex',
+              alignItems: 'stretch',
+              fontSize: 13,
+            }}
+          >
+            {/* 좌측: 날짜 + 요일 + 팀명 (한 줄) */}
+            <div
+              style={{
+                flex: '0 0 auto',
+                padding: '8px 14px',
+                borderRight: '2px solid #333',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 10,
+                whiteSpace: 'nowrap',
+              }}
+            >
+              <span style={{ fontWeight: 700 }}>{dateParts.y || '----'}</span>
+              <span>년</span>
+              <span style={{ fontWeight: 700 }}>{dateParts.m || '--'}</span>
+              <span>월</span>
+              <span style={{ fontWeight: 700 }}>{dateParts.d || '--'}</span>
+              <span>일</span>
+              <span>
+                ( <b>{dateParts.dow || '-'}</b> 요일 )
+              </span>
+              <span style={{ borderLeft: '1px solid #999', paddingLeft: 10, marginLeft: 4 }}>
+                <span style={{ fontSize: 10, color: '#666', marginRight: 4 }}>(Y)</span>
+                <b style={{ fontSize: 14 }}>{awayTeamLabel}</b>
+                <span style={{ margin: '0 8px' }}>대</span>
+                <span style={{ fontSize: 10, color: '#666', marginRight: 4 }}>(H)</span>
+                <b style={{ fontSize: 14 }}>{homeTeamLabel}</b>
+              </span>
+            </div>
+
+            {/* 우측: 이닝별 점수 테이블 */}
+            <div style={{ flex: 1, display: 'flex', alignItems: 'center', padding: '4px 8px' }}>
+              <table
+                style={{
+                  borderCollapse: 'collapse',
+                  fontSize: 12,
+                  width: '100%',
+                }}
+              >
+                <thead>
+                  <tr>
+                    <th
+                      style={{
+                        border: gridCellBorder,
+                        padding: gridCellPad,
+                        background: '#f3f4f6',
+                        minWidth: 50,
+                      }}
+                    >
+                      팀
+                    </th>
+                    {innCols.map((i) => (
+                      <th
+                        key={i}
+                        style={{
+                          ...tdNarrow,
+                          background: '#f3f4f6',
+                          fontWeight: 700,
+                        }}
+                      >
+                        {i}
+                      </th>
+                    ))}
+                    <th style={{ ...tdTotal, background: '#fde047' }}>합계</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td
+                      style={{
+                        border: gridCellBorder,
+                        padding: gridCellPad,
+                        fontWeight: 700,
+                        background: '#fff',
+                        textAlign: 'center',
+                      }}
+                    >
+                      {awayTeamLabel}
+                    </td>
+                    {innCols.map((i) => {
+                      const v = awayInnRuns[i - 1];
+                      const started = i <= G.inning;
+                      return (
+                        <td key={i} style={tdNarrow}>
+                          {started ? (v ?? 0) : ''}
+                        </td>
+                      );
+                    })}
+                    <td style={tdTotal}>{G.awayR}</td>
+                  </tr>
+                  <tr>
+                    <td
+                      style={{
+                        border: gridCellBorder,
+                        padding: gridCellPad,
+                        fontWeight: 700,
+                        background: '#fff',
+                        textAlign: 'center',
+                      }}
+                    >
+                      {homeTeamLabel}
+                    </td>
+                    {innCols.map((i) => {
+                      const v = homeInnRuns[i - 1];
+                      const started = i < G.inning || (i === G.inning && G.half === 'bottom');
+                      return (
+                        <td key={i} style={tdNarrow}>
+                          {started ? (v ?? 0) : ''}
+                        </td>
+                      );
+                    })}
+                    <td style={tdTotal}>{G.homeR}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        );
+      })()}
 
       <div
         style={{
@@ -2154,34 +2397,85 @@ export default function ScoreSheet({ G, onSelCell }: Props) {
             <table className="ss-tbl">
               <thead>
                 <tr>
-                  <th style={{ width: 14 }}>풋</th>
-                  <th style={{ width: 14 }}>보</th>
-                  <th style={{ width: 14 }}>실</th>
-                  <th style={{ width: 22 }}>수비</th>
-                  <th style={{ minWidth: 80 }}>선수명</th>
-                  <th style={{ minWidth: 26 }}>타순</th>
-                  {inns.map((i) => (
+                  <th rowSpan={2} style={{ width: 14 }}>
+                    풋
+                  </th>
+                  <th rowSpan={2} style={{ width: 14 }}>
+                    보
+                  </th>
+                  <th rowSpan={2} style={{ width: 14 }}>
+                    실
+                  </th>
+                  <th rowSpan={2} style={{ width: 22 }}>
+                    수비
+                  </th>
+                  <th rowSpan={2} style={{ minWidth: 80 }}>
+                    선수명
+                  </th>
+                  <th rowSpan={2} style={{ minWidth: 26 }}>
+                    타순
+                  </th>
+                  {innCols.map(({ inn, app }) => (
                     <th
-                      key={i}
-                      className={i === G.inning && half === G.half ? 'cur-inn-h' : ''}
+                      key={`${inn}-${app}`}
+                      rowSpan={2}
+                      className={inn === G.inning && half === G.half ? 'cur-inn-h' : ''}
                       style={{ minWidth: 80, width: 80, position: 'relative' }}
                     >
-                      {i}
+                      {inn}
                     </th>
                   ))}
-                  <th className="ss-stat">타수</th>
-                  <th className="ss-stat">득점</th>
-                  <th className="ss-stat">안타</th>
-                  <th className="ss-stat">타점</th>
-                  <th className="ss-stat">희타</th>
-                  <th className="ss-stat">희비</th>
-                  <th className="ss-stat">도루</th>
-                  <th className="ss-stat">도실</th>
-                  <th className="ss-stat">4구</th>
-                  <th className="ss-stat">고사</th>
-                  <th className="ss-stat">삼진</th>
-                  <th className="ss-stat">병살</th>
-                  <th className="ss-stat">잔루</th>
+                  <th className="ss-stat" rowSpan={2}>
+                    타수
+                  </th>
+                  <th className="ss-stat" rowSpan={2}>
+                    득점
+                  </th>
+                  <th className="ss-stat" colSpan={4}>
+                    안타
+                  </th>
+                  <th className="ss-stat" rowSpan={2}>
+                    루타수
+                  </th>
+                  <th className="ss-stat" rowSpan={2}>
+                    타점
+                  </th>
+                  <th className="ss-stat" rowSpan={2}>
+                    희타
+                  </th>
+                  <th className="ss-stat" rowSpan={2}>
+                    희비
+                  </th>
+                  <th className="ss-stat" rowSpan={2}>
+                    도루
+                  </th>
+                  <th className="ss-stat" rowSpan={2}>
+                    도실
+                  </th>
+                  <th className="ss-stat" rowSpan={2}>
+                    4구
+                  </th>
+                  <th className="ss-stat" rowSpan={2}>
+                    고사
+                  </th>
+                  <th className="ss-stat" rowSpan={2}>
+                    사구
+                  </th>
+                  <th className="ss-stat" rowSpan={2}>
+                    삼진
+                  </th>
+                  <th className="ss-stat" rowSpan={2}>
+                    병살
+                  </th>
+                  <th className="ss-stat" rowSpan={2}>
+                    잔루
+                  </th>
+                </tr>
+                <tr>
+                  <th className="ss-stat">계</th>
+                  <th className="ss-stat">2루타</th>
+                  <th className="ss-stat">3루타</th>
+                  <th className="ss-stat">홈런</th>
                 </tr>
               </thead>
 
@@ -2195,27 +2489,40 @@ export default function ScoreSheet({ G, onSelCell }: Props) {
                     .filter((s) => s.side === tableSide && s.order === ord)
                     .sort((a, b) => {
                       if (a.inning !== b.inning) return a.inning - b.inning;
-                      return a.half === 'top' ? -1 : 1;
+                      if (a.half !== b.half) return a.half === 'top' ? -1 : 1;
+                      return 0; // 같은 inning+half 면 삽입 순서 유지 (R 입장 → autoD 순)
                     });
                   type Layer = {
                     left: string;
                     name: string;
+                    num: string;
                     inning?: number;
                     atOrder?: number;
                   };
                   const layers: Layer[] = [];
                   const starterName = orderSubs[0]?.oldName || p.name;
+                  const starterNum = orderSubs[0]?.oldNum || p.num;
                   const starterPos = p.pos === 0 ? 'D' : String(orderSubs[0] ? '' : p.pos || '');
-                  layers.push({ left: starterPos || '', name: starterName });
+                  layers.push({ left: starterPos || '', name: starterName, num: starterNum });
                   for (const s of orderSubs) {
                     const left = s.kind === 'R' ? 'R' : s.kind === 'H' ? 'H' : String(s.pos);
+                    const lastIdx = layers.length - 1;
+                    const last = layers[lastIdx];
+                    // 직전 layer 가 같은 선수의 R/H 입장이고 이번이 D 면 → 새 행 추가하지 않고
+                    // 그 layer 의 left 를 새 수비 포지션 숫자로 갱신 (이닝/타순 표시는 입장 시점 유지)
                     if (
-                      layers[layers.length - 1].left !== left ||
-                      layers[layers.length - 1].name !== s.newName
+                      s.kind === 'D' &&
+                      last.name === s.newName &&
+                      (last.left === 'R' || last.left === 'H')
                     ) {
+                      layers[lastIdx] = { ...last, left: String(s.pos) };
+                      continue;
+                    }
+                    if (last.left !== left || last.name !== s.newName) {
                       layers.push({
                         left,
                         name: s.newName,
+                        num: s.newNum,
                         inning: s.inning,
                         atOrder: s.atOrder,
                       });
@@ -2227,7 +2534,6 @@ export default function ScoreSheet({ G, onSelCell }: Props) {
                     return `(${l.inning})`;
                   };
                   const orderNums = [ord, ord + 10, ord + 20];
-                  const isCurBat = half === G.half && ord === G.curBatterOrder;
 
                   return Array.from({ length: SUB_ROWS }, (_, sub) => {
                     const layer = layers[sub];
@@ -2236,20 +2542,10 @@ export default function ScoreSheet({ G, onSelCell }: Props) {
                     const dashedBottom = !isLastSub
                       ? { borderBottom: '1px dashed #9ca3af' }
                       : undefined;
-                    const app = 0; // 라인업 layer 표시 — appearance=0 셀만
-                    // H/R로 들어와 포지션 재배치가 필요한 선수의 활성 layer 행 강조
-                    const needsReviewRow =
-                      !!p.needsPosReview && sub === Math.max(0, layers.length - 1);
-                    const reviewBg = needsReviewRow ? { background: '#fee2e2' } : undefined;
                     return (
                       <tr
                         key={`${ord}-sub${sub}`}
-                        className={[
-                          isFirst && isCurBat ? 'ss-row-cur' : '',
-                          sub > 0 ? 'ss-row-sublayer' : '',
-                        ]
-                          .filter(Boolean)
-                          .join(' ')}
+                        className={[sub > 0 ? 'ss-row-sublayer' : ''].filter(Boolean).join(' ')}
                       >
                         {isFirst && (
                           <>
@@ -2260,16 +2556,13 @@ export default function ScoreSheet({ G, onSelCell }: Props) {
                         )}
                         {/* 수비위치 — 각 sub-row */}
                         <td
-                          title={needsReviewRow ? '수비 포지션 확인 필요' : undefined}
                           style={{
                             width: 22,
                             textAlign: 'center',
                             fontSize: 10,
                             fontWeight: 700,
                             fontFamily: 'monospace',
-                            color: needsReviewRow ? '#dc2626' : undefined,
                             ...dashedBottom,
-                            ...reviewBg,
                           }}
                         >
                           {layer?.left ?? ''}
@@ -2280,12 +2573,11 @@ export default function ScoreSheet({ G, onSelCell }: Props) {
                             minWidth: 80,
                             padding: '1px 4px',
                             ...dashedBottom,
-                            ...reviewBg,
                           }}
                         >
                           {layer ? (
                             <span style={{ fontSize: 13, fontWeight: 600 }}>
-                              {layer.name}
+                              {displayName(layer.name, layer.num, sheetDupes)}
                               {sub > 0 && (
                                 <span
                                   style={{
@@ -2317,7 +2609,7 @@ export default function ScoreSheet({ G, onSelCell }: Props) {
                         </td>
 
                         {isFirst &&
-                          inns.map((inn) => {
+                          innCols.map(({ inn, app }) => {
                             const ck = cellKey(inn, ord, app, half);
                             const c = G.cells[ck] || null;
                             const iS = G.selCellKey === ck;
@@ -2325,13 +2617,13 @@ export default function ScoreSheet({ G, onSelCell }: Props) {
                               half === G.half &&
                               ord === G.curBatterOrder &&
                               inn === G.inning &&
-                              app === 0 &&
+                              ck === G.selCellKey &&
                               !c?.result;
                             const oNum = outMap[ck];
 
                             return (
                               <td
-                                key={inn}
+                                key={`${inn}-${app}`}
                                 rowSpan={SUB_ROWS}
                                 className={inn === G.inning && half === G.half ? 'cur-inn-col' : ''}
                                 onClick={() => onSelCell(ck)}
@@ -2655,45 +2947,70 @@ export default function ScoreSheet({ G, onSelCell }: Props) {
                             const st = calcStats(G, half, ord);
                             return (
                               <>
-                                <td className="ss-stat" rowSpan={SUB_ROWS}>
-                                  {st.ab || ''}
-                                </td>
-                                <td className="ss-stat" rowSpan={SUB_ROWS}>
-                                  {st.run || ''}
-                                </td>
-                                <td className="ss-stat" rowSpan={SUB_ROWS}>
-                                  {st.h || ''}
-                                </td>
-                                <td className="ss-stat" rowSpan={SUB_ROWS}>
-                                  {st.rbi || ''}
-                                </td>
-                                <td className="ss-stat" rowSpan={SUB_ROWS}>
-                                  {st.sh || ''}
-                                </td>
-                                <td className="ss-stat" rowSpan={SUB_ROWS}>
-                                  {st.sf || ''}
-                                </td>
-                                <td className="ss-stat" rowSpan={SUB_ROWS}>
-                                  {st.sb || ''}
-                                </td>
-                                <td className="ss-stat" rowSpan={SUB_ROWS}>
-                                  {st.cs || ''}
-                                </td>
-                                <td className="ss-stat" rowSpan={SUB_ROWS}>
-                                  {st.bb || ''}
-                                </td>
-                                <td className="ss-stat" rowSpan={SUB_ROWS}>
-                                  {st.ibb || ''}
-                                </td>
-                                <td className="ss-stat" rowSpan={SUB_ROWS}>
-                                  {st.k || ''}
-                                </td>
-                                <td className="ss-stat" rowSpan={SUB_ROWS}>
-                                  {st.dp || ''}
-                                </td>
-                                <td className="ss-stat" rowSpan={SUB_ROWS}>
-                                  {st.lob || ''}
-                                </td>
+                                {(() => {
+                                  // 루타수 (Total Bases) = 1B*1 + 2B*2 + 3B*3 + HR*4
+                                  // 1B count = h - d - t - hr
+                                  const tb =
+                                    st.h - st.d - st.t - st.hr + 2 * st.d + 3 * st.t + 4 * st.hr;
+                                  return (
+                                    <>
+                                      <td className="ss-stat" rowSpan={SUB_ROWS}>
+                                        {st.ab || ''}
+                                      </td>
+                                      <td className="ss-stat" rowSpan={SUB_ROWS}>
+                                        {st.run || ''}
+                                      </td>
+                                      <td className="ss-stat" rowSpan={SUB_ROWS}>
+                                        {st.h || ''}
+                                      </td>
+                                      <td className="ss-stat" rowSpan={SUB_ROWS}>
+                                        {st.d || ''}
+                                      </td>
+                                      <td className="ss-stat" rowSpan={SUB_ROWS}>
+                                        {st.t || ''}
+                                      </td>
+                                      <td className="ss-stat" rowSpan={SUB_ROWS}>
+                                        {st.hr || ''}
+                                      </td>
+                                      <td className="ss-stat" rowSpan={SUB_ROWS}>
+                                        {tb || ''}
+                                      </td>
+                                      <td className="ss-stat" rowSpan={SUB_ROWS}>
+                                        {st.rbi || ''}
+                                      </td>
+                                      <td className="ss-stat" rowSpan={SUB_ROWS}>
+                                        {st.sh || ''}
+                                      </td>
+                                      <td className="ss-stat" rowSpan={SUB_ROWS}>
+                                        {st.sf || ''}
+                                      </td>
+                                      <td className="ss-stat" rowSpan={SUB_ROWS}>
+                                        {st.sb || ''}
+                                      </td>
+                                      <td className="ss-stat" rowSpan={SUB_ROWS}>
+                                        {st.cs || ''}
+                                      </td>
+                                      <td className="ss-stat" rowSpan={SUB_ROWS}>
+                                        {st.bb || ''}
+                                      </td>
+                                      <td className="ss-stat" rowSpan={SUB_ROWS}>
+                                        {st.ibb || ''}
+                                      </td>
+                                      <td className="ss-stat" rowSpan={SUB_ROWS}>
+                                        {st.hbp || ''}
+                                      </td>
+                                      <td className="ss-stat" rowSpan={SUB_ROWS}>
+                                        {st.k || ''}
+                                      </td>
+                                      <td className="ss-stat" rowSpan={SUB_ROWS}>
+                                        {st.dp || ''}
+                                      </td>
+                                      <td className="ss-stat" rowSpan={SUB_ROWS}>
+                                        {st.lob || ''}
+                                      </td>
+                                    </>
+                                  );
+                                })()}
                               </>
                             );
                           })()}
@@ -2766,7 +3083,88 @@ export default function ScoreSheet({ G, onSelCell }: Props) {
                         <div>{pCount}명</div>
                       </td>
                       <td colSpan={inns.length} style={{ borderTop: '2px solid var(--border)' }} />
-                      <td colSpan={13} style={{ borderTop: '2px solid var(--border)' }} />
+                      {(() => {
+                        // 우측 stat 컬럼 팀 합계 — 라인업의 모든 타순 합산
+                        const totals = {
+                          ab: 0,
+                          run: 0,
+                          h: 0,
+                          d: 0,
+                          t: 0,
+                          hr: 0,
+                          rbi: 0,
+                          sh: 0,
+                          sf: 0,
+                          sb: 0,
+                          cs: 0,
+                          bb: 0,
+                          ibb: 0,
+                          hbp: 0,
+                          k: 0,
+                          dp: 0,
+                          lob: 0,
+                        };
+                        lu.forEach((p) => {
+                          const s = calcStats(G, half, p.order);
+                          totals.ab += s.ab;
+                          totals.run += s.run;
+                          totals.h += s.h;
+                          totals.d += s.d;
+                          totals.t += s.t;
+                          totals.hr += s.hr;
+                          totals.rbi += s.rbi;
+                          totals.sh += s.sh;
+                          totals.sf += s.sf;
+                          totals.sb += s.sb;
+                          totals.cs += s.cs;
+                          totals.bb += s.bb;
+                          totals.ibb += s.ibb;
+                          totals.hbp += s.hbp;
+                          totals.k += s.k;
+                          totals.dp += s.dp;
+                          totals.lob += s.lob;
+                        });
+                        const tb =
+                          totals.h -
+                          totals.d -
+                          totals.t -
+                          totals.hr +
+                          2 * totals.d +
+                          3 * totals.t +
+                          4 * totals.hr;
+                        const tStyle: React.CSSProperties = {
+                          borderTop: '2px solid var(--border)',
+                          textAlign: 'center',
+                          fontSize: 10,
+                          fontWeight: 700,
+                          padding: '2px 2px',
+                        };
+                        const order: number[] = [
+                          totals.ab,
+                          totals.run,
+                          totals.h,
+                          totals.d,
+                          totals.t,
+                          totals.hr,
+                          tb,
+                          totals.rbi,
+                          totals.sh,
+                          totals.sf,
+                          totals.sb,
+                          totals.cs,
+                          totals.bb,
+                          totals.ibb,
+                          totals.hbp,
+                          totals.k,
+                          totals.dp,
+                          totals.lob,
+                        ];
+                        return order.map((v, i) => (
+                          <td key={`total-${i}`} style={tStyle}>
+                            {v || ''}
+                          </td>
+                        ));
+                      })()}
                     </tr>
                   );
                 })()}
@@ -2814,11 +3212,13 @@ export default function ScoreSheet({ G, onSelCell }: Props) {
                       )}
                       {inns.map((inn) => {
                         const sub = (subsByInn[inn] || [])[ri];
+                        const span = (maxAppByInn[inn] ?? 0) + 1;
                         return (
                           <td
                             key={inn}
+                            colSpan={span}
                             style={{
-                              width: 80,
+                              width: 80 * span,
                               minWidth: 80,
                               borderTop: ri === 0 ? '1px solid var(--border)' : undefined,
                               height: 18,
@@ -2837,7 +3237,7 @@ export default function ScoreSheet({ G, onSelCell }: Props) {
                       })}
                       {ri === 0 && (
                         <td
-                          colSpan={13}
+                          colSpan={18}
                           rowSpan={4}
                           style={{ borderTop: '1px solid var(--border)' }}
                         />
@@ -2907,11 +3307,17 @@ export default function ScoreSheet({ G, onSelCell }: Props) {
                   });
 
                   // 좌/우 분할 cell 렌더 helper
-                  const splitCellLR = (cur: number, cum: number, key: string | number) => (
+                  const splitCellLR = (
+                    cur: number,
+                    cum: number,
+                    key: string | number,
+                    colSpan = 1
+                  ) => (
                     <td
                       key={key}
+                      colSpan={colSpan}
                       style={{
-                        width: 80,
+                        width: 80 * colSpan,
                         padding: 0,
                         fontSize: 9,
                         textAlign: 'center',
@@ -2943,12 +3349,14 @@ export default function ScoreSheet({ G, onSelCell }: Props) {
                     cur: number,
                     cum: number,
                     runs: number | null | undefined,
-                    key: string | number
+                    key: string | number,
+                    colSpan = 1
                   ) => (
                     <td
                       key={key}
+                      colSpan={colSpan}
                       style={{
-                        width: 80,
+                        width: 80 * colSpan,
                         padding: 0,
                         fontSize: 9,
                         textAlign: 'center',
@@ -3015,9 +3423,15 @@ export default function ScoreSheet({ G, onSelCell }: Props) {
                           안타
                         </td>
                         {inns.map((i) =>
-                          splitCellAnta(innStat[i].h, cumStat[i].h, innRuns[i - 1], `h-${i}`)
+                          splitCellAnta(
+                            innStat[i].h,
+                            cumStat[i].h,
+                            innRuns[i - 1],
+                            `h-${i}`,
+                            (maxAppByInn[i] ?? 0) + 1
+                          )
                         )}
-                        <td colSpan={13} style={{ borderTop: '1px solid var(--border)' }} />
+                        <td colSpan={18} style={{ borderTop: '1px solid var(--border)' }} />
                       </tr>
                       {/* 어시스트: 좌 현재 / 우 누적 */}
                       <tr style={{ height: 18 }}>
@@ -3032,8 +3446,15 @@ export default function ScoreSheet({ G, onSelCell }: Props) {
                         >
                           어시스트
                         </td>
-                        {inns.map((i) => splitCellLR(innStat[i].a, cumStat[i].a, `a-${i}`))}
-                        <td colSpan={13} />
+                        {inns.map((i) =>
+                          splitCellLR(
+                            innStat[i].a,
+                            cumStat[i].a,
+                            `a-${i}`,
+                            (maxAppByInn[i] ?? 0) + 1
+                          )
+                        )}
+                        <td colSpan={18} />
                       </tr>
                       {/* 실책: 좌 현재 / 우 누적 */}
                       <tr style={{ height: 18 }}>
@@ -3048,8 +3469,15 @@ export default function ScoreSheet({ G, onSelCell }: Props) {
                         >
                           실책
                         </td>
-                        {inns.map((i) => splitCellLR(innStat[i].e, cumStat[i].e, `e-${i}`))}
-                        <td colSpan={13} />
+                        {inns.map((i) =>
+                          splitCellLR(
+                            innStat[i].e,
+                            cumStat[i].e,
+                            `e-${i}`,
+                            (maxAppByInn[i] ?? 0) + 1
+                          )
+                        )}
+                        <td colSpan={18} />
                       </tr>
                       {/* 투구수: 좌 현재 / 우 누적 */}
                       <tr style={{ height: 18 }}>
@@ -3064,8 +3492,15 @@ export default function ScoreSheet({ G, onSelCell }: Props) {
                         >
                           투구수
                         </td>
-                        {inns.map((i) => splitCellLR(innStat[i].p, cumStat[i].p, `p-${i}`))}
-                        <td colSpan={13} />
+                        {inns.map((i) =>
+                          splitCellLR(
+                            innStat[i].p,
+                            cumStat[i].p,
+                            `p-${i}`,
+                            (maxAppByInn[i] ?? 0) + 1
+                          )
+                        )}
+                        <td colSpan={18} />
                       </tr>
                     </>
                   );
@@ -3209,7 +3644,7 @@ export default function ScoreSheet({ G, onSelCell }: Props) {
                 </table>
               </div>
 
-              <div style={{ flex: '0 0 auto', minWidth: 280, overflowX: 'auto' }}>
+              <div style={{ flex: '0 0 720px', minWidth: 720 }}>
                 {(() => {
                   const headers = [
                     { label: '승패\nS.H', w: 30 },
@@ -3232,6 +3667,7 @@ export default function ScoreSheet({ G, onSelCell }: Props) {
                     { label: '실점', w: 30 },
                     { label: '자책점', w: 36 },
                   ];
+                  const tableWidth = headers.reduce((s, h) => s + h.w, 0);
 
                   const formatIP = (outs: number) => {
                     if (outs <= 0) return '0/3';
@@ -3335,13 +3771,6 @@ export default function ScoreSheet({ G, onSelCell }: Props) {
                     r === '>>>hit' ||
                     r === 'HR' ||
                     r === 'GHR';
-                  const isOut = (r: string) =>
-                    /^[\d-]+$/.test(r) ||
-                    r === '●' ||
-                    /^K/.test(r) ||
-                    /^ꓘ/.test(r) ||
-                    /^SF/.test(r) ||
-                    /^SH/.test(r);
                   Object.values(G.cells)
                     .filter((c) => c.half === half && (c.result || c.pitches.length > 0))
                     .sort((a, b) =>
@@ -3381,17 +3810,23 @@ export default function ScoreSheet({ G, onSelCell }: Props) {
                       if (/^K|^ꓘ/.test(r)) s.so += 1;
                       if (r === 'SH' || r === 'SH진루' || r.includes('SH')) s.sh += 1;
                       if (r === 'SF' || r === '/SF') s.sf += 1;
-                      if (isOut(r)) s.outs += 1;
-                      if (c.scored && c.scorePitcher) {
-                        const sp = rows.find((x) => x.name === c.scorePitcher);
-                        if (sp) {
-                          sp.r += 1;
-                          if (c.earned === true) sp.er += 1;
-                          else if (c.earned === 'half') sp.er += 0.5;
-                        } else {
-                          s.r += 1;
-                          if (c.earned === true) s.er += 1;
-                        }
+                      // 타자 아웃 (BAT_OUT/STRIKEOUT 결과) — reducer 가 set 한 cellOutNum 을 신뢰
+                      if (c.cellOutNum) s.outs += 1;
+                      // 주자 아웃 (RUN_OUT 또는 DP/TP propagation) — 별도 1아웃 추가
+                      if (c.runOutNum) s.outs += 1;
+                      if (c.scored) {
+                        // scorePitcher 가 있으면 그 투수에 귀속, 없거나 매칭 실패 시 활성 투수(s)에 폴백
+                        const sp = c.scorePitcher
+                          ? rows.find(
+                              (x) =>
+                                x.name === c.scorePitcher ||
+                                c.scorePitcher!.startsWith(`${x.name}(`)
+                            )
+                          : null;
+                        const target = sp || s;
+                        target.r += 1;
+                        if (c.earned === true) target.er += 1;
+                        else if (c.earned === 'half') target.er += 0.5;
                       }
                       // 폭투/보크 from eventLog
                       (c.eventLog || []).forEach((e) => {
@@ -3414,12 +3849,18 @@ export default function ScoreSheet({ G, onSelCell }: Props) {
                   return (
                     <table
                       style={{
-                        width: '100%',
+                        width: tableWidth,
+                        tableLayout: 'fixed',
                         borderCollapse: 'collapse',
                         fontSize: 9,
                         textAlign: 'center',
                       }}
                     >
+                      <colgroup>
+                        {headers.map((h, i) => (
+                          <col key={i} style={{ width: h.w }} />
+                        ))}
+                      </colgroup>
                       <thead>
                         <tr style={{ background: 'var(--panel3)' }}>
                           {headers.map((h, i) => (
@@ -3430,7 +3871,7 @@ export default function ScoreSheet({ G, onSelCell }: Props) {
                                 borderBottom: '1px solid var(--border2)',
                                 borderRight:
                                   i < headers.length - 1 ? '1px solid var(--border2)' : undefined,
-                                minWidth: h.w,
+                                width: h.w,
                                 whiteSpace: 'pre-line',
                                 lineHeight: 1.1,
                                 fontSize: 9,
@@ -4019,8 +4460,8 @@ export default function ScoreSheet({ G, onSelCell }: Props) {
                 </div>
               </div>
 
-              {/* 4. 투수 기록표 (550px+) - 4th column */}
-              <div style={{ flex: '0 0 auto', minWidth: 550, overflowX: 'auto' }}>
+              {/* 4. 투수 기록표 (720px) - 4th column */}
+              <div style={{ flex: '0 0 720px', minWidth: 720 }}>
                 {(() => {
                   const headers = [
                     { label: '승패\nS.H', w: 30 },
@@ -4043,6 +4484,7 @@ export default function ScoreSheet({ G, onSelCell }: Props) {
                     { label: '실점', w: 30 },
                     { label: '자책점', w: 36 },
                   ];
+                  const tableWidth = headers.reduce((s, h) => s + h.w, 0);
                   const formatIP = (outs: number) => {
                     if (outs <= 0) return '0/3';
                     const full = Math.floor(outs / 3);
@@ -4141,13 +4583,6 @@ export default function ScoreSheet({ G, onSelCell }: Props) {
                     r === '>>>hit' ||
                     r === 'HR' ||
                     r === 'GHR';
-                  const isOut = (r: string) =>
-                    /^[\d-]+$/.test(r) ||
-                    r === '●' ||
-                    /^K/.test(r) ||
-                    /^ꓘ/.test(r) ||
-                    /^SF/.test(r) ||
-                    /^SH/.test(r);
                   Object.values(G.cells)
                     .filter((c) => c.half === half && (c.result || c.pitches.length > 0))
                     .sort((a, b) =>
@@ -4186,17 +4621,23 @@ export default function ScoreSheet({ G, onSelCell }: Props) {
                       if (/^K|^ꓘ/.test(r)) s.so += 1;
                       if (r === 'SH' || r === 'SH진루' || r.includes('SH')) s.sh += 1;
                       if (r === 'SF' || r === '/SF') s.sf += 1;
-                      if (isOut(r)) s.outs += 1;
-                      if (c.scored && c.scorePitcher) {
-                        const sp = rows.find((x) => x.name === c.scorePitcher);
-                        if (sp) {
-                          sp.r += 1;
-                          if (c.earned === true) sp.er += 1;
-                          else if (c.earned === 'half') sp.er += 0.5;
-                        } else {
-                          s.r += 1;
-                          if (c.earned === true) s.er += 1;
-                        }
+                      // 타자 아웃 — reducer 가 set 한 cellOutNum 을 신뢰
+                      if (c.cellOutNum) s.outs += 1;
+                      // 주자 아웃 (RUN_OUT 또는 DP/TP propagation) — 별도 1아웃 추가
+                      if (c.runOutNum) s.outs += 1;
+                      if (c.scored) {
+                        // scorePitcher 가 있으면 그 투수에 귀속, 없거나 매칭 실패 시 활성 투수(s)에 폴백
+                        const sp = c.scorePitcher
+                          ? rows.find(
+                              (x) =>
+                                x.name === c.scorePitcher ||
+                                c.scorePitcher!.startsWith(`${x.name}(`)
+                            )
+                          : null;
+                        const target = sp || s;
+                        target.r += 1;
+                        if (c.earned === true) target.er += 1;
+                        else if (c.earned === 'half') target.er += 0.5;
                       }
                       (c.eventLog || []).forEach((e) => {
                         if (e.kind === 'runner_steal') {
@@ -4216,12 +4657,18 @@ export default function ScoreSheet({ G, onSelCell }: Props) {
                   return (
                     <table
                       style={{
-                        width: '100%',
+                        width: tableWidth,
+                        tableLayout: 'fixed',
                         borderCollapse: 'collapse',
                         fontSize: 9,
                         textAlign: 'center',
                       }}
                     >
+                      <colgroup>
+                        {headers.map((h, i) => (
+                          <col key={i} style={{ width: h.w }} />
+                        ))}
+                      </colgroup>
                       <thead>
                         <tr style={{ background: 'var(--panel3)' }}>
                           {headers.map((h, i) => (
@@ -4232,7 +4679,7 @@ export default function ScoreSheet({ G, onSelCell }: Props) {
                                 borderBottom: '1px solid var(--border2)',
                                 borderRight:
                                   i < headers.length - 1 ? '1px solid var(--border2)' : undefined,
-                                minWidth: h.w,
+                                width: h.w,
                                 whiteSpace: 'pre-line',
                                 lineHeight: 1.1,
                                 fontSize: 9,
@@ -4367,108 +4814,6 @@ export default function ScoreSheet({ G, onSelCell }: Props) {
               </div>
             </div>
           )}
-
-          {(() => {
-            const cells = Object.values(G.cells).filter((c) => c.half === half && c.result);
-            const bf = cells.length;
-            const ha = cells.filter((c) => {
-              const r = c.result!;
-              return (
-                /^\/[789]$/.test(r) ||
-                r === '/hit' ||
-                r === 'H1' ||
-                /^>[789](-[789])?$/.test(r) ||
-                r === '>hit' ||
-                r === 'H2' ||
-                /^>>>[789]$/.test(r) ||
-                r === 'H3' ||
-                r === '>>>hit' ||
-                r === 'HR' ||
-                r === 'GHR' ||
-                r === 'INT' ||
-                r === 'BUNT' ||
-                r === 'OBUNT'
-              );
-            }).length;
-            const bb = cells.filter((c) => ['B', 'IB', 'IB2'].includes(c.result!)).length;
-            const hbp = cells.filter((c) => c.result === 'HP').length;
-            const ks = cells.filter((c) => c.result === 'K').length;
-            const er = half === 'top' ? G.awayER : G.homeER;
-            const r = half === 'top' ? G.awayR : G.homeR;
-
-            return (
-              <div
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 6,
-                  padding: '4px 8px',
-                  borderTop: '2px solid var(--border)',
-                  background: 'var(--panel2)',
-                  fontSize: 10,
-                  flexWrap: 'wrap',
-                }}
-              >
-                <span style={{ fontWeight: 700, color: '#111', marginRight: 4 }}>투수</span>
-                <span style={{ fontWeight: 700 }}>{activePitcherName}</span>
-                {activePitcherNum && <span style={{ color: '#111' }}>#{activePitcherNum}</span>}
-                <span
-                  style={{
-                    borderLeft: '1px solid var(--border2)',
-                    paddingLeft: 6,
-                    color: '#111',
-                  }}
-                >
-                  투구수 <b style={{ color: '#111' }}>{isLive ? activePitchCount : '—'}</b>
-                </span>
-                {isLive && (
-                  <>
-                    <span style={{ color: '#111' }}>
-                      볼 <b>{activeBallCount}</b>
-                    </span>
-                    <span style={{ color: '#111' }}>
-                      스트 <b>{activeStrikeCount}</b>
-                    </span>
-                  </>
-                )}
-                <span
-                  style={{
-                    borderLeft: '1px solid var(--border2)',
-                    paddingLeft: 6,
-                    color: '#111',
-                  }}
-                >
-                  상대타자 <b>{bf}</b>
-                </span>
-                <span style={{ color: '#111' }}>
-                  피안타 <b>{ha}</b>
-                </span>
-                <span style={{ color: '#111' }}>
-                  볼넷 <b>{bb}</b>
-                </span>
-                {hbp > 0 && (
-                  <span style={{ color: '#111' }}>
-                    사구 <b>{hbp}</b>
-                  </span>
-                )}
-                <span style={{ color: '#111' }}>
-                  삼진 <b>{ks}</b>
-                </span>
-                <span
-                  style={{
-                    borderLeft: '1px solid var(--border2)',
-                    paddingLeft: 6,
-                    color: '#111',
-                  }}
-                >
-                  실점 <b style={{ color: '#111' }}>{r}</b>
-                </span>
-                <span style={{ color: '#111' }}>
-                  자책 <b style={{ color: '#111' }}>{er}</b>
-                </span>
-              </div>
-            );
-          })()}
         </div>
       </div>
     </div>

@@ -3,16 +3,16 @@ import type { PitchType } from '../../types';
 import type { EditRowInfo } from '../PitcherLogPanel';
 
 const PITCH_OPTIONS: { code: PitchType; label: string; color: string }[] = [
-  { code: 'S', label: '스트라이크', color: '#1e40af' },
-  { code: 'SW', label: '헛스윙', color: '#1e40af' },
-  { code: 'B', label: '볼', color: '#15803d' },
-  { code: 'F', label: '파울', color: '#92400e' },
-  { code: 'FE', label: '파울실책', color: '#92400e' },
-  { code: 'BS', label: '번트헛스윙', color: '#1e40af' },
-  { code: 'BF', label: '번트파울', color: '#92400e' },
-  { code: 'PC1', label: '투수위반 볼', color: '#15803d' },
-  { code: 'PC2', label: '포수위반 볼', color: '#15803d' },
-  { code: 'PC3', label: '타자위반 스트라이크', color: '#1e40af' },
+  { code: 'S', label: '스트라이크', color: '#111' },
+  { code: 'SW', label: '헛스윙', color: '#111' },
+  { code: 'B', label: '볼', color: '#111' },
+  { code: 'F', label: '파울', color: '#111' },
+  { code: 'FE', label: '파울실책', color: '#111' },
+  { code: 'BS', label: '번트헛스윙', color: '#111' },
+  { code: 'BF', label: '번트파울', color: '#111' },
+  { code: 'PC1', label: '투수위반 볼', color: '#111' },
+  { code: 'PC2', label: '포수위반 볼', color: '#111' },
+  { code: 'PC3', label: '타자위반 스트라이크', color: '#111' },
 ];
 
 const ZONE_OPTIONS: { code: number; label: string }[] = [

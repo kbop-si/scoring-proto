@@ -55,6 +55,7 @@ interface Props {
   pitcher: string;
   pitcherList: Player[];
   defLU: Player[];
+  inDpPlay?: boolean; // 직전 타자가 병살(또는 삼중살)을 친 상황 — RBI 자동 제외
   onSelectReason: (v: string) => void;
   onSelectDest: (d: Base | 'HOME') => void;
   onSetEarned: (v: boolean | 'half') => void;
@@ -109,6 +110,7 @@ export default function RunAdvModal({
   pitcher,
   pitcherList,
   defLU,
+  inDpPlay = false,
   onSelectReason,
   onSelectDest,
   onSetEarned,
@@ -178,6 +180,34 @@ export default function RunAdvModal({
   // 디플렉션 적용 가능: '일반 진루'에서 '다른주자수비' 제외
   const DEFL_REASONS = new Set(['타자의 도움', 'ob 주루방해', 'E 실책', '(E) 기록실책']);
   const canDefl = !!selectedReason && DEFL_REASONS.has(selectedReason);
+
+  // 타점에서 제외되는 진루 사유 — 도루/폭투/포일/보크/실책 (병살은 BAT_OUT 흐름에서 처리)
+  const NO_RBI_REASONS = new Set([
+    'S 도루',
+    '(S) 무관심도루',
+    '이중도루',
+    '(S) 무관심이중도루',
+    '삼중도루',
+    '(S) 이중실패',
+    '(S) 삼중실패',
+    'W 폭투',
+    '(W) 기록된폭투',
+    'P 포일',
+    '(P) 기록된포일',
+    'BK 보크',
+    '(BK) 기록된보크',
+    '✓BK 피치클락보크',
+    '✓(BK) 기록된피치클락보크',
+    'E 실책',
+    '(E) 기록실책',
+  ]);
+  const rbiBlocked = inDpPlay || (!!selectedReason && NO_RBI_REASONS.has(selectedReason));
+
+  // 사유가 타점 제외에 해당하면 자동으로 rbi=false 강제
+  useEffect(() => {
+    if (rbiBlocked && rbi) onSetRbi(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rbiBlocked]);
 
   return (
     <div className={`ov${open ? ' open' : ''}`} id="ov-run-adv">
@@ -651,19 +681,28 @@ export default function RunAdvModal({
                       타점인정
                     </span>
                     <button
-                      onClick={() => onSetRbi(!rbi)}
+                      onClick={() => !rbiBlocked && onSetRbi(!rbi)}
+                      disabled={rbiBlocked}
+                      title={
+                        rbiBlocked
+                          ? inDpPlay
+                            ? '병살타 상황 — 타점 제외'
+                            : '도루/폭투/포일/보크/실책 진루는 타점 제외'
+                          : undefined
+                      }
                       style={{
                         padding: '4px 16px',
                         fontSize: 11,
                         fontWeight: 700,
                         borderRadius: 3,
-                        cursor: 'pointer',
+                        cursor: rbiBlocked ? 'not-allowed' : 'pointer',
                         border: `2px solid ${rbi ? 'var(--blue)' : 'var(--border)'}`,
                         background: rbi ? 'var(--blue)' : '#fff',
                         color: rbi ? '#fff' : 'var(--text)',
+                        opacity: rbiBlocked ? 0.5 : 1,
                       }}
                     >
-                      {rbi ? '✓ 타점인정' : '타점 없음'}
+                      {rbi ? '✓ 타점인정' : rbiBlocked ? '타점 제외' : '타점 없음'}
                     </button>
                   </div>
 

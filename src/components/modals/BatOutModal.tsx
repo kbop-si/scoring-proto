@@ -94,7 +94,7 @@ function buildResult(
       ? gMode === '태그'
         ? 'T'
         : gMode === '루터치'
-          ? 'U'
+          ? 'A'
           : ''
       : dp || tp
         ? dpMode === '리버스'

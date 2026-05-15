@@ -6,11 +6,12 @@ interface Props {
   showSheet?: boolean;
   onToggleSheet?: () => void;
   onOpenSheetWindow?: () => void;
+  onOpenScoreReview?: () => void;
 }
 
 const MAX_INN = 15;
 
-export default function Scoreboard({ G, onOpenSheetWindow }: Props) {
+export default function Scoreboard({ G, onOpenSheetWindow, onOpenScoreReview }: Props) {
   const inns = Array.from({ length: MAX_INN }, (_, i) => i + 1);
 
   // Compute per-inning runs from cells
@@ -147,6 +148,16 @@ export default function Scoreboard({ G, onOpenSheetWindow }: Props) {
       {onOpenSheetWindow && (
         <button className="sb-sheet-btn" onClick={onOpenSheetWindow} title="새 창으로 열기">
           <span>기록지 보기</span>
+        </button>
+      )}
+      {onOpenScoreReview && (
+        <button
+          className="sb-sheet-btn"
+          onClick={onOpenScoreReview}
+          title="자책점 검토"
+          style={{ marginLeft: 4 }}
+        >
+          <span>자책점 검토</span>
         </button>
       )}
     </div>

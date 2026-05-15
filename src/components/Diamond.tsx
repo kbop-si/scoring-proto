@@ -15,6 +15,7 @@ interface Props {
   onFielderClick: (e: React.MouseEvent, pos: number) => void;
   onRunnerContextMenu?: (base: Base) => void;
   onBatterContextMenu?: () => void;
+  onBatterRightClick?: () => void; // 스위치 타자 좌/우 토글 (hitType=3 만 의미)
   onChainPendingClick?: () => void;
   onChainEnd?: () => void;
 }
@@ -40,6 +41,7 @@ export default function Diamond({
   onFielderClick,
   onRunnerContextMenu,
   onBatterContextMenu,
+  onBatterRightClick,
   onChainPendingClick,
   onChainEnd,
 }: Props) {
@@ -49,6 +51,25 @@ export default function Diamond({
 
   // Position percentages in the 200×200 field
   const pct = (v: number) => `${(v / 200) * 100}%`;
+
+  // 현재 이닝/half 에서 교체로 처음 들어온 선수만 강조 (대타 H, 대주자 R, 수비교체 D)
+  // 후속 D 로그(이미 들어와 있는 선수의 포지션 변경 등) 는 무시 — 최초 등장 시점에만 강조
+  const offendingSide: 'away' | 'home' = G.half === 'top' ? 'away' : 'home';
+  const defendingSide: 'away' | 'home' = G.half === 'top' ? 'home' : 'away';
+  const firstSubByPlayer = new Map<string, (typeof G.substitutions)[number]>();
+  G.substitutions.forEach((s) => {
+    if (s.kind !== 'H' && s.kind !== 'R' && s.kind !== 'D') return;
+    const key = `${s.newNum}:${s.newName}`;
+    if (!firstSubByPlayer.has(key)) firstSubByPlayer.set(key, s);
+  });
+  const recentOffSubKeys = new Set<string>();
+  const recentDefSubKeys = new Set<string>();
+  firstSubByPlayer.forEach((s, key) => {
+    if (s.inning !== G.inning || s.half !== G.half) return;
+    if (s.side === offendingSide) recentOffSubKeys.add(key);
+    else if (s.side === defendingSide) recentDefSubKeys.add(key);
+  });
+  const SUB_COLOR = '#fbbf24'; // 대타·대주자·수비교체 강조 — 노랑
 
   const availBases = baseTargets.active ? getNextBases(baseTargets.fromBase) : [];
   const runnerDestBases: string[] =
@@ -144,11 +165,13 @@ export default function Diamond({
               />
             );
           })}
-          {/* Fielder number + name labels */}
+          {/* Fielder number + name labels — 현재 이닝/half 에서 교체된 수비수는 빨강으로 강조 */}
           {defLU.map((p) => {
             if (p.pos < 1 || p.pos > 9) return null;
             const fp = FPOS_XY[p.pos];
             if (!fp) return null;
+            const subbed = recentDefSubKeys.has(`${p.num}:${p.name}`);
+            const color = subbed ? SUB_COLOR : '#111';
             return (
               <g key={p.pos} pointerEvents="none">
                 <text
@@ -156,7 +179,7 @@ export default function Diamond({
                   y={fp.y > 180 ? fp.y - 10 : fp.y}
                   textAnchor="middle"
                   fontSize="9"
-                  fill="#111"
+                  fill={color}
                   fontWeight="700"
                   style={{ fontFamily: 'monospace' }}
                 >
@@ -167,7 +190,8 @@ export default function Diamond({
                   y={fp.y > 180 ? fp.y : fp.y + 10}
                   textAnchor="middle"
                   fontSize="7"
-                  fill="#111"
+                  fill={color}
+                  fontWeight={subbed ? 700 : 400}
                   style={{ fontFamily: 'sans-serif' }}
                 >
                   {p.name}
@@ -177,33 +201,48 @@ export default function Diamond({
           })}
         </svg>
 
-        {/* Batter dot — hitType 1(우타)=왼쪽, 2(좌타)=오른쪽, 3(스위치)=왼쪽 */}
-        {batter && (
-          <div
-            className="batter-dot"
-            title={`${batter.name} — 우클릭: 대타 교체`}
-            style={{
-              left: pct(BASE_XY.HOME.x + (batter.hitType === 2 ? 30 : -30)),
-              top: pct(BASE_XY.HOME.y + 16),
-              width: 'auto',
-              minWidth: 32,
-              padding: '0 4px',
-              borderRadius: 4,
-              fontSize: 10,
-              whiteSpace: 'nowrap',
-            }}
-            onClick={(e) => {
-              e.stopPropagation();
-              onBatterContextMenu?.();
-            }}
-            onContextMenu={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-            }}
-          >
-            {batter.num} {batter.name}
-          </div>
-        )}
+        {/* Batter dot — hitType 1(우타)=왼쪽, 2(좌타)=오른쪽, 3(스위치)=좌/우 토글 가능
+            현재 셀의 batterSide override 가 있으면 그 값으로, 없으면 hitType 기본값 */}
+        {batter &&
+          (() => {
+            const curCell = G.cells[G.selCellKey];
+            const overrideSide = curCell?.batterSide;
+            const effectiveSide: 'L' | 'R' = overrideSide ?? (batter.hitType === 2 ? 'R' : 'L');
+            const isSwitch = batter.hitType === 3;
+            const batterSubbed = recentOffSubKeys.has(`${batter.num}:${batter.name}`);
+            return (
+              <div
+                className="batter-dot"
+                title={
+                  isSwitch
+                    ? `${batter.name} (스위치) — 클릭: 대타 / 우클릭: 좌·우 토글`
+                    : `${batter.name} — 클릭: 대타 교체`
+                }
+                style={{
+                  left: pct(BASE_XY.HOME.x + (effectiveSide === 'R' ? 30 : -30)),
+                  top: pct(BASE_XY.HOME.y + 16),
+                  width: 'auto',
+                  minWidth: 32,
+                  padding: '0 4px',
+                  borderRadius: 4,
+                  fontSize: 10,
+                  whiteSpace: 'nowrap',
+                  ...(batterSubbed ? { color: SUB_COLOR, fontWeight: 700 } : {}),
+                }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onBatterContextMenu?.();
+                }}
+                onContextMenu={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  if (isSwitch) onBatterRightClick?.();
+                }}
+              >
+                {batter.num} {batter.name}
+              </div>
+            );
+          })()}
 
         {/* Runner badges */}
         {(['1B', '2B', '3B'] as Base[]).map((base) => {
@@ -213,6 +252,7 @@ export default function Diamond({
           const isChain = chainBases.has(base);
           const isCollisionTarget = chainPendingBase === base && !!chainTransitRunner;
           const isPending = (!!G.pendingBatter || isCollisionTarget) && !isChain;
+          const runnerSubbed = recentOffSubKeys.has(`${r.num}:${r.name}`);
           return (
             <div
               key={base}
@@ -227,6 +267,7 @@ export default function Diamond({
                 borderRadius: 4,
                 fontSize: 10,
                 whiteSpace: 'nowrap',
+                ...(runnerSubbed ? { color: SUB_COLOR, fontWeight: 700 } : {}),
               }}
               onClick={(e) => {
                 e.stopPropagation();

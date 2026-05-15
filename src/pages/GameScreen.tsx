@@ -1,4 +1,4 @@
-import { useReducer, useState, useCallback, useEffect, useRef } from 'react';
+import { useReducer, useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import type {
   GameSetup,
   UIState,
@@ -31,6 +31,7 @@ import PlayersModal from '../components/modals/PlayersModal';
 import DefenseListModal from '../components/modals/DefenseListModal';
 import MoundVisitModal from '../components/modals/MoundVisitModal';
 import LineupReviewModal from '../components/modals/LineupReviewModal';
+import ScoreReviewModal, { type ScoredRunRow } from '../components/modals/ScoreReviewModal';
 
 const initialUI: UIState = {
   batAdvOpen: false,
@@ -136,8 +137,25 @@ export default function GameScreen({ setup, onEnd }: Props) {
     }
   }, [G]);
 
+  // KBO 규칙: 한 번 교체로 빠진 선수는 같은 경기에서 어떤 형태로도 재출전 불가.
+  // 교체 기록(substitutions/pitcherChanges)의 oldName/oldNum 을 모아 교체 후보 벤치에서 제외.
+  const subbedOutKeys = useMemo(() => {
+    const s = new Set<string>();
+    G.substitutions.forEach((sub) => {
+      if (sub.oldName) s.add(`${sub.oldNum || ''}::${sub.oldName}`);
+    });
+    G.pitcherChanges.forEach((pc) => {
+      if (pc.oldName) s.add(`${pc.oldNum || ''}::${pc.oldName}`);
+    });
+    return s;
+  }, [G.substitutions, G.pitcherChanges]);
+  const availableBench = useCallback(
+    (bench: Player[]) => bench.filter((p) => !subbedOutKeys.has(`${p.num}::${p.name}`)),
+    [subbedOutKeys]
+  );
+
   // 이닝 전환(half/inning 변화) 자동 감지 → 직전 공격 팀(=이번 수비 팀)에 H/R 미확정 선수 있으면 LineupReviewModal 자동 오픈
-  // (3-out 시 reducer의 advanceInning이 outs=0 + half flip을 한 번에 처리해 outs===3 감지가 불가능하므로 half 전환을 추적)
+  // (자책점 모달은 더 이상 자동으로 띄우지 않음 — '다음이닝' 버튼을 누르면 NEXT_INNING 직전에 먼저 띄움)
   const prevHalfInningRef = useRef<{ half: typeof G.half; inning: number }>({
     half: G.half,
     inning: G.inning,
@@ -153,6 +171,30 @@ export default function GameScreen({ setup, onEnd }: Props) {
     const pending = defendingLU.some((p) => p.needsPosReview);
     if (pending) setLineupReviewTeam(defendingSide);
   }, [G.half, G.inning, G.awayLineup, G.homeLineup]);
+
+  // 4구/사구 밀어내기 득점 자동 감지 — 셀에 force=true HOME runnerNote 가 새로 추가되면
+  // ScoreReviewModal 을 즉시 띄워 자책여부/실점투수 선택하도록 함.
+  const seenForceHomeRef = useRef<Set<string>>(
+    new Set(
+      Object.entries(G.cells)
+        .filter(([, c]) => (c.runnerNotes || []).some((n) => n.base === 'HOME' && n.force))
+        .map(([k]) => k)
+    )
+  );
+  useEffect(() => {
+    let trigger: { inning: number; half: 'top' | 'bottom' } | null = null;
+    Object.entries(G.cells).forEach(([k, c]) => {
+      const hasForceHome = (c.runnerNotes || []).some((n) => n.base === 'HOME' && n.force);
+      if (hasForceHome && !seenForceHomeRef.current.has(k)) {
+        seenForceHomeRef.current.add(k);
+        trigger = { inning: c.inning, half: c.half };
+      } else if (!hasForceHome && seenForceHomeRef.current.has(k)) {
+        // UNDO 등으로 force-home 이 사라진 경우 ref 도 정리
+        seenForceHomeRef.current.delete(k);
+      }
+    });
+    if (trigger) setScoreReviewTarget(trigger);
+  }, [G.cells]);
   const [chainBases, setChainBases] = useState<Set<Base>>(new Set());
   const [chainPendingBase, setChainPendingBase] = useState<Base | null>(null);
   const [chainCausedBy, setChainCausedBy] = useState<number | null>(null);
@@ -182,8 +224,17 @@ export default function GameScreen({ setup, onEnd }: Props) {
   const [defListOpen, setDefListOpen] = useState(false);
   const [defListResult] = useState('');
   const [moundOpen, setMoundOpen] = useState(false);
+  // 3아웃 상태에서 일반 입력 시도하면 띄우는 알럿 모달
+  const [threeOutAlertOpen, setThreeOutAlertOpen] = useState(false);
+  // 다음이닝 클릭 시 자책점 검토 진행 중인지 (확정 시 NEXT_INNING dispatch)
+  const [pendingNextInning, setPendingNextInning] = useState(false);
   // 이닝 교대 시 H/R로 들어와 포지션 미확정인 선수가 있으면 자동으로 띄우는 라인업 검토 모달
   const [lineupReviewTeam, setLineupReviewTeam] = useState<'away' | 'home' | null>(null);
+  // 이닝 득점 검토 모달 — 자동(3아웃 후 inning 전환 감지) 또는 수동 트리거
+  const [scoreReviewTarget, setScoreReviewTarget] = useState<{
+    inning: number;
+    half: 'top' | 'bottom';
+  } | null>(null);
   const [editRowInfo, setEditRowInfo] = useState<EditRowInfo | null>(null);
   // BatAdvModal 편집 모드 — PitcherLog 안타 행에서 클릭하면 활성화
   const [batAdvEditMode, setBatAdvEditMode] = useState<{
@@ -255,9 +306,51 @@ export default function GameScreen({ setup, onEnd }: Props) {
       ? `[${UI.selRunnerBase}: ${G.runners[UI.selRunnerBase]!.name}]`
       : '';
 
+  // 실점투수 선택용 — 경기에 실제 등판한 투수만 반환 (해당 팀의 선발 + PITCHER_CHANGE 로 들어온 투수 전부)
+  const getActivePitchers = useCallback(
+    (side: 'away' | 'home'): Player[] => {
+      const lu = side === 'away' ? G.awayLineup : G.homeLineup;
+      const bench = side === 'away' ? G.awayBench : G.homeBench;
+      const allPool = [...lu, ...bench];
+      const battingHalfForSide = side === 'away' ? 'bottom' : 'top';
+      const seen = new Set<string>();
+      const out: Player[] = [];
+      const addByKey = (num: string, name: string) => {
+        if (!name) return;
+        const key = `${num}:${name}`;
+        if (seen.has(key)) return;
+        seen.add(key);
+        const p = allPool.find((x) => x.num === num && x.name === name);
+        if (p) out.push(p);
+        else out.push({ name, num, pos: 1, order: 0, hitType: 0 });
+      };
+      // 현재 lineup 의 pos=1 (현재 마운드에 있는 투수)
+      const cur = lu.find((p) => p.pos === 1);
+      if (cur) addByKey(cur.num, cur.name);
+      // PITCHER_CHANGE 이벤트들 — 해당 팀이 수비하는 half 의 변경 기록 (old/new 모두 등판자)
+      G.pitcherChanges.forEach((pc) => {
+        if (pc.half !== battingHalfForSide) return;
+        if (pc.oldName) addByKey(pc.oldNum || '', pc.oldName);
+        addByKey(pc.num || '', pc.name);
+      });
+      return out;
+    },
+    [G.awayLineup, G.homeLineup, G.awayBench, G.homeBench, G.pitcherChanges]
+  );
+
+  // 3아웃 상태에서 일반 입력 차단용 게이트 — 다음이닝/되돌리기/타석지우기/게임종료 외 핸들러는 진입부에서 호출
+  const guardThreeOut = useCallback((): boolean => {
+    if (G.outs >= 3) {
+      setThreeOutAlertOpen(true);
+      return false;
+    }
+    return true;
+  }, [G.outs]);
+
   // ── Pitch ─────────────────────────────────────────────────────────────────
   const handlePitch = useCallback(
     (pitchType: PitchType) => {
+      if (!guardThreeOut()) return;
       const cell = G.cells[G.selCellKey];
       if (cell?.result) {
         showToast('이미 결과가 기록된 타석입니다');
@@ -294,19 +387,16 @@ export default function GameScreen({ setup, onEnd }: Props) {
       }
 
       dispatch({ type: 'PITCH', pitchType });
-
-      if (willBB) {
-        const bat = curLU[G.curBatterOrder - 1];
-        showToast(`볼넷 B  ${bat?.name || ''} 1루`);
-      }
+      void willBB;
     },
-    [G, curLU, dispatch, showToast]
+    [G, curLU, dispatch, showToast, guardThreeOut]
   );
 
   // ── Bat Advance ────────────────────────────────────────────────────────────
   const openBatAdv = useCallback(() => {
+    if (!guardThreeOut()) return;
     setUI((p) => ({ ...p, batAdvOpen: true, batAdvResult: null, batAdvHitData: null }));
-  }, []);
+  }, [guardThreeOut]);
 
   const confirmBatAdv = useCallback(() => {
     if (!UI.batAdvResult && !UI.batAdvHitData) {
@@ -345,7 +435,6 @@ export default function GameScreen({ setup, onEnd }: Props) {
       });
       setUI((p) => ({ ...p, batAdvOpen: false, batAdvHitData: null }));
       setBatAdvEditMode(null);
-      showToast('수정됨');
       return;
     }
 
@@ -355,23 +444,12 @@ export default function GameScreen({ setup, onEnd }: Props) {
     if (UI.batAdvHitData) {
       if (hasRunners) setChainCausedBy(G.curBatterOrder);
       dispatch({ type: 'BAT_ADV', result: 'HIT', hitData: UI.batAdvHitData });
-      const names = ['', '1루타', '2루타', '3루타', '홈런'];
-      const bat = curLU[G.curBatterOrder - 1];
-      showToast(`${bat?.name || '타자'} ${names[UI.batAdvHitData.bases]}`);
       return;
     }
 
     const result = UI.batAdvResult!;
     if (hasRunners && result !== 'HR' && result !== 'GHR') setChainCausedBy(G.curBatterOrder);
     dispatch({ type: 'BAT_ADV', result, ballType: UI.batAdvBallType ?? undefined });
-
-    if (result === 'HR' || result === 'GHR') {
-      const bat = curLU[G.curBatterOrder - 1];
-      showToast(`${bat?.name || '타자'} 홈런!`);
-    } else if (!hasRunners) {
-      const bat = curLU[G.curBatterOrder - 1];
-      showToast(`${bat?.name || '타자'} → ${result}`);
-    }
   }, [
     UI.batAdvResult,
     UI.batAdvHitData,
@@ -418,7 +496,6 @@ export default function GameScreen({ setup, onEnd }: Props) {
         });
         setUI((p) => ({ ...p, batAdvOpen: false, batAdvResult: null, batAdvHitData: null }));
         setBatAdvEditMode(null);
-        showToast('수정됨');
         return;
       }
 
@@ -456,18 +533,8 @@ export default function GameScreen({ setup, onEnd }: Props) {
       }
       if (hitData) {
         dispatch({ type: 'BAT_ADV', result: 'HIT', hitData, deflection });
-        const names = ['', '1루타', '2루타', '3루타', '홈런'];
-        const bat = curLU[G.curBatterOrder - 1];
-        showToast(`${bat?.name || '타자'} ${names[hitData.bases]}`);
       } else {
         dispatch({ type: 'BAT_ADV', result, ballType, deflection });
-        if (result === 'HR' || result === 'GHR') {
-          const bat = curLU[G.curBatterOrder - 1];
-          showToast(`${bat?.name || '타자'} 홈런!`);
-        } else if (!Object.values(G.runners).some(Boolean)) {
-          const bat = curLU[G.curBatterOrder - 1];
-          showToast(`${bat?.name || '타자'} → ${result}`);
-        }
       }
     },
     [G, curLU, dispatch, showToast, batAdvEditMode]
@@ -475,8 +542,9 @@ export default function GameScreen({ setup, onEnd }: Props) {
 
   // ── Bat Out ───────────────────────────────────────────────────────────────
   const openBatOut = useCallback(() => {
+    if (!guardThreeOut()) return;
     setUI((p) => ({ ...p, batOutOpen: true, batOutType: null }));
-  }, []);
+  }, [guardThreeOut]);
 
   const confirmStrikeout = useCallback(
     (result: string) => {
@@ -484,23 +552,6 @@ export default function GameScreen({ setup, onEnd }: Props) {
       const pt = UI.stkPitchType;
       setUI((p) => ({ ...p, stkOpen: false, stkPitchType: null }));
       dispatch({ type: 'STRIKEOUT', result, pitchType: pt });
-      const isKOut = result === 'K' || result === 'K3B' || /^ꓘ[\d-]+T?$/.test(result);
-      if (isKOut) {
-        const newOuts = G.outs + 1;
-        showToast(`삼진! ${result}  ${newOuts}아웃`);
-        if (newOuts >= 3)
-          showToast(
-            `3아웃! ${G.inning}회 ${G.half === 'top' ? '초' : '말'} 종료 — [다음이닝] 버튼 클릭`
-          );
-      } else {
-        const bat = curLU[G.curBatterOrder - 1];
-        const msg: Record<string, string> = {
-          KW: '폭투 낫아웃',
-          KP: '포일 낫아웃',
-          KE: '실책 낫아웃',
-        };
-        showToast(`${bat?.name || '타자'} ${msg[result] || result} 1루`);
-      }
     },
     [UI.stkPitchType, G, curLU, dispatch, showToast]
   );
@@ -517,12 +568,6 @@ export default function GameScreen({ setup, onEnd }: Props) {
       const hasRunners = Object.values(G.runners).some(Boolean);
       if (hasRunners) setChainCausedBy(G.curBatterOrder);
       dispatch({ type: 'BAT_OUT', result, dp, tp, ballType, deflection });
-      const newOuts = G.outs + 1 + (dp ? 1 : tp ? 2 : 0);
-      showToast(`아웃 (${result})  ${Math.min(newOuts, 3)}아웃`);
-      if (newOuts >= 3)
-        showToast(
-          `3아웃! ${G.inning}회 ${G.half === 'top' ? '초' : '말'} 종료 — [다음이닝] 버튼 클릭`
-        );
       // 수비 리스트는 BatOutModal 내에서 처리
     },
     [G, dispatch, showToast]
@@ -530,6 +575,7 @@ export default function GameScreen({ setup, onEnd }: Props) {
 
   // ── Runner Advance ────────────────────────────────────────────────────────
   const openRunAdv = useCallback(() => {
+    if (!guardThreeOut()) return;
     if (!UI.selRunnerBase || !G.runners[UI.selRunnerBase]) {
       showToast('다이아몬드에서 주자를 먼저 클릭하세요');
       return;
@@ -547,7 +593,7 @@ export default function GameScreen({ setup, onEnd }: Props) {
       runAdvRbi: false,
       runAdvPitcher: '',
     }));
-  }, [UI.selRunnerBase, G.runners, showToast]);
+  }, [UI.selRunnerBase, G.runners, showToast, guardThreeOut]);
 
   // ── Chain-pending 타자 클릭 (blocked 상태에서 chain 타자 먼저 전진) ────────
   const handleChainPendingClick = useCallback(() => {
@@ -610,8 +656,6 @@ export default function GameScreen({ setup, onEnd }: Props) {
           chain: transitChain,
           deflection,
         });
-        if (toBase === 'HOME') showToast(`${runner.name} 득점!`);
-        else showToast(`${runner.name} → ${toBase} (chain)`);
       } else {
         if (!G.pendingBatter) return;
         // 목적지에 기존 주자 있으면 → 파라미터 저장 후 대기
@@ -637,8 +681,6 @@ export default function GameScreen({ setup, onEnd }: Props) {
           advCode: batterAdvCode,
           deflection,
         });
-        if (toBase === 'HOME') showToast(`${G.pendingBatter.runner.name} 득점!`);
-        else showToast(`${G.pendingBatter.runner.name} → ${toBase} (chain)`);
       }
     },
     [UI, chainPendingBase, chainTransit, G.pendingBatter, dispatch, showToast, chainCausedBy]
@@ -719,14 +761,6 @@ export default function GameScreen({ setup, onEnd }: Props) {
 
       // chainCausedBy가 있으면 자동으로 chain 모드
       const effectiveChain = chain || !!chainCausedBy;
-      console.log('[confirmRunAdv]', {
-        base,
-        dest,
-        chainCausedBy,
-        effectiveChain,
-        chain,
-        destHasRunner: dest !== 'HOME' && !!G.runners[dest as Base],
-      });
 
       // chain 연결동작 또는 자력진루(도루/폭투/포일/보크) + 목적 베이스에 기존 주자 있음
       // → auto-push 방지, 기존 주자 이동을 사용자가 수동 선택
@@ -800,12 +834,13 @@ export default function GameScreen({ setup, onEnd }: Props) {
 
   // ── Runner Out ────────────────────────────────────────────────────────────
   const openRunOut = useCallback(() => {
+    if (!guardThreeOut()) return;
     if (!UI.selRunnerBase || !G.runners[UI.selRunnerBase]) {
       showToast('다이아몬드에서 주자를 먼저 클릭하세요');
       return;
     }
     setUI((p) => ({ ...p, runOutOpen: true, runOutResult: null }));
-  }, [UI.selRunnerBase, G.runners, showToast]);
+  }, [UI.selRunnerBase, G.runners, showToast, guardThreeOut]);
 
   const confirmRunOut = useCallback(
     (fielderSeq: number[], deflection?: import('../types').DeflectionInfo) => {
@@ -888,14 +923,15 @@ export default function GameScreen({ setup, onEnd }: Props) {
         ...p,
         playersOpen: true,
         playersTitle: `${POS_NAME[pos]} 교체`,
-        playerList: [...bench],
+        playerList: availableBench(bench),
         playerSelIdx: null,
       }));
     },
-    [G, dispatch, showToast]
+    [G, dispatch, showToast, availableBench]
   );
 
   const openPitcherChange = useCallback(() => {
+    if (!guardThreeOut()) return;
     const side: 'away' | 'home' = G.half === 'top' ? 'home' : 'away';
     const bench = side === 'home' ? G.homeBench : G.awayBench;
     const mid = G.balls > 0 || G.strikes > 0 ? { balls: G.balls, strikes: G.strikes } : undefined;
@@ -907,19 +943,38 @@ export default function GameScreen({ setup, onEnd }: Props) {
       ...p,
       playersOpen: true,
       playersTitle: '투수 교체',
-      playerList: [...bench],
+      playerList: availableBench(bench),
       playerSelIdx: null,
     }));
-  }, [G, dispatch, showToast]);
+  }, [G, dispatch, showToast, availableBench, guardThreeOut]);
 
   const confirmPlayerSel = useCallback(() => {
     if (UI.playerSelIdx === null) {
       showToast('선수 선택');
       return;
     }
+    const selected = UI.playerList[UI.playerSelIdx];
+    // 동명이인 검사 — 선택된 선수가 속한 팀(라인업+벤치) 안에 같은 이름 + 다른 등번호가 있으면 경고
+    const teamRosters = [
+      [...G.awayLineup, ...G.awayBench],
+      [...G.homeLineup, ...G.homeBench],
+    ];
+    let dupes: (typeof selected)[] = [];
+    for (const roster of teamRosters) {
+      const inThisTeam = roster.some((p) => p.num === selected.num && p.name === selected.name);
+      if (!inThisTeam) continue;
+      dupes = roster.filter((p) => p.name === selected.name && p.num !== selected.num);
+      break;
+    }
+    if (dupes.length > 0) {
+      const ok = window.confirm(
+        `같은 팀에 "${selected.name}" 선수가 있습니다.\n선택하신 (등번호 : ${selected.num}) 선수가 맞습니까?`
+      );
+      if (!ok) return;
+    }
     setUI((p) => ({ ...p, playersOpen: false }));
-    if (playerCbRef.current) playerCbRef.current(UI.playerList[UI.playerSelIdx]);
-  }, [UI, showToast]);
+    if (playerCbRef.current) playerCbRef.current(selected);
+  }, [UI, G, showToast]);
 
   const openRunnerSubst = useCallback(
     (base: import('../types').Base) => {
@@ -934,11 +989,11 @@ export default function GameScreen({ setup, onEnd }: Props) {
         ...p,
         playersOpen: true,
         playersTitle: `대주자 교체 (${base})`,
-        playerList: [...bench],
+        playerList: availableBench(bench),
         playerSelIdx: null,
       }));
     },
-    [G, dispatch, showToast]
+    [G, dispatch, showToast, availableBench]
   );
 
   const openBatterSubst = useCallback(() => {
@@ -953,10 +1008,10 @@ export default function GameScreen({ setup, onEnd }: Props) {
       ...p,
       playersOpen: true,
       playersTitle: '대타 교체',
-      playerList: [...bench],
+      playerList: availableBench(bench),
       playerSelIdx: null,
     }));
-  }, [G, dispatch, showToast]);
+  }, [G, dispatch, showToast, availableBench]);
 
   // ── Runner toggle ─────────────────────────────────────────────────────────
   const toggleRunnerSel = useCallback(
@@ -1044,7 +1099,9 @@ export default function GameScreen({ setup, onEnd }: Props) {
   }, [chainTransit, chainPendingBase, G.runners, dispatch, showToast]);
 
   // ── Game flow ─────────────────────────────────────────────────────────────
+
   const handlePlaceBatter = useCallback(() => {
+    if (!guardThreeOut()) return;
     if (!G.pendingBatter) return;
     const dest = G.pendingBatter.dest;
     if (G.runners[dest]) {
@@ -1052,25 +1109,35 @@ export default function GameScreen({ setup, onEnd }: Props) {
       return;
     }
     dispatch({ type: 'PLACE_BATTER' });
-  }, [G.pendingBatter, G.runners, dispatch, showToast]);
+  }, [G.pendingBatter, G.runners, dispatch, showToast, guardThreeOut]);
 
   const handleNextBatter = useCallback(() => {
+    if (!guardThreeOut()) return;
     setChainBases(new Set());
     setChainPendingBase(null);
     setChainCausedBy(null);
     dispatch({ type: 'NEXT_BATTER' });
-  }, [dispatch]);
+  }, [dispatch, guardThreeOut]);
 
   const handleNextInning = useCallback(() => {
     setChainBases(new Set());
     setChainPendingBase(null);
     setChainCausedBy(null);
+    // 현재 공수에 득점이 있으면 자책점 검토 모달 먼저 — 모달 확인 시 NEXT_INNING dispatch
+    const hasScored = Object.values(G.cells).some(
+      (c) => c.scored && c.inning === G.inning && c.half === G.half
+    );
+    if (hasScored) {
+      setScoreReviewTarget({ inning: G.inning, half: G.half });
+      setPendingNextInning(true);
+      return;
+    }
+    // 득점 없으면 바로 이닝 교대
     dispatch({ type: 'NEXT_INNING' });
     setUI((p) => ({ ...p, selRunnerBase: null }));
     showToast(
       `${G.half === 'top' ? G.inning : G.inning + 1}회 ${G.half === 'top' ? '말' : '초'} 시작`
     );
-    // 라인업 포지션 확인 모달은 3-out 감지 useEffect에서 자동 오픈
   }, [G, dispatch, showToast]);
 
   const resetChainUI = useCallback(() => {
@@ -1090,7 +1157,6 @@ export default function GameScreen({ setup, onEnd }: Props) {
     dispatch({ type: 'UNDO' });
     resetChainUI();
     setUI((p) => ({ ...p, selRunnerBase: null }));
-    showToast('Undo 완료');
   }, [G.history.length, dispatch, showToast, resetChainUI]);
 
   const handleClear = useCallback(() => {
@@ -1099,16 +1165,16 @@ export default function GameScreen({ setup, onEnd }: Props) {
   }, [dispatch, resetChainUI]);
 
   const handleOverflow = useCallback(() => {
+    if (!guardThreeOut()) return;
     dispatch({ type: 'ADD_OVERFLOW' });
     showToast(`${G.curBatterOrder}번타자 ${G.inning}회 추가 타석`);
-  }, [G, dispatch, showToast]);
+  }, [G, dispatch, showToast, guardThreeOut]);
 
   const handleEnd = useCallback(() => {
     if (confirm('경기를 종료하시겠습니까?')) {
-      showToast('경기 종료 처리됨');
       setTimeout(onEnd, 1000);
     }
-  }, [onEnd, showToast]);
+  }, [onEnd]);
 
   // ── Keyboard shortcuts ────────────────────────────────────────────────────
   useEffect(() => {
@@ -1152,6 +1218,7 @@ export default function GameScreen({ setup, onEnd }: Props) {
             localStorage.setItem('kbo_sheet_state', JSON.stringify(G));
             window.open('?sheet=1', '_blank', 'noopener,noreferrer');
           }}
+          onOpenScoreReview={() => setScoreReviewTarget({ inning: G.inning, half: G.half })}
         />
 
         {showSheet ? (
@@ -1178,6 +1245,10 @@ export default function GameScreen({ setup, onEnd }: Props) {
                   onFielderClick={handleFielderClick}
                   onRunnerContextMenu={openRunnerSubst}
                   onBatterContextMenu={openBatterSubst}
+                  onBatterRightClick={() => {
+                    dispatch({ type: 'TOGGLE_BATTER_SIDE' });
+                    showToast('좌·우 전환');
+                  }}
                   onChainPendingClick={handleChainPendingClick}
                   onChainEnd={() => {
                     if (chainTransit && chainPendingBase) {
@@ -1289,17 +1360,23 @@ export default function GameScreen({ setup, onEnd }: Props) {
               onBatOut={openBatOut}
               onRunAdv={openRunAdv}
               onRunOut={openRunOut}
-              onDefl={() => setUI((p) => ({ ...p, deflOpen: true, deflFielder: null }))}
-              onMoundVisit={() => setMoundOpen(true)}
+              onDefl={() => {
+                if (!guardThreeOut()) return;
+                setUI((p) => ({ ...p, deflOpen: true, deflFielder: null }));
+              }}
+              onMoundVisit={() => {
+                if (!guardThreeOut()) return;
+                setMoundOpen(true);
+              }}
               onBatterTimeout={() => {
+                if (!guardThreeOut()) return;
                 dispatch({ type: 'CELL_NOTE', note: 'BT' });
                 dispatch({ type: 'GAME_EVENT', eventType: 'batter_timeout' });
-                showToast('타자 타임아웃 기록');
               }}
               onPitcherLeave={() => {
+                if (!guardThreeOut()) return;
                 dispatch({ type: 'CELL_NOTE', note: 'PL' });
                 dispatch({ type: 'GAME_EVENT', eventType: 'pitcher_leave' });
-                showToast('투수판 이탈 기록');
               }}
               onPitcherChange={openPitcherChange}
               onNextBatter={handleNextBatter}
@@ -1319,6 +1396,38 @@ export default function GameScreen({ setup, onEnd }: Props) {
       </div>
 
       {/* ── Modals ── */}
+      {threeOutAlertOpen && (
+        <div
+          className="ov open"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setThreeOutAlertOpen(false);
+          }}
+        >
+          <div
+            className="ov-card"
+            style={{ minWidth: 320, maxWidth: 420, textAlign: 'center', padding: '20px 24px' }}
+          >
+            <div
+              style={{
+                fontSize: 14,
+                fontWeight: 700,
+                color: 'var(--red)',
+                marginBottom: 6,
+              }}
+            >
+              3아웃입니다
+            </div>
+            <div style={{ fontSize: 12, color: 'var(--text2)', marginBottom: 16 }}>
+              이닝교대를 누른 후 진행해 주세요.
+            </div>
+            <div className="modal-footer" style={{ justifyContent: 'center' }}>
+              <button className="btn-ok" onClick={() => setThreeOutAlertOpen(false)}>
+                확인
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       <EditRowModal
         info={editRowInfo}
         onClose={() => setEditRowInfo(null)}
@@ -1410,6 +1519,73 @@ export default function GameScreen({ setup, onEnd }: Props) {
         onClose={() => setLineupReviewTeam(null)}
       />
 
+      {scoreReviewTarget &&
+        (() => {
+          const { inning, half } = scoreReviewTarget;
+          // 해당 이닝/half에서 득점한 셀들 → ScoredRunRow 변환
+          const offenseLU = half === 'top' ? G.awayLineup : G.homeLineup;
+          const findName = (order?: number) => {
+            if (!order) return '';
+            const p = offenseLU.find((x) => x.order === order);
+            return p?.name || '';
+          };
+          const rows: ScoredRunRow[] = Object.values(G.cells)
+            .filter((c) => c.scored && c.inning === inning && c.half === half)
+            .map((c) => {
+              const homeNote = (c.runnerNotes || []).find((n) => n.base === 'HOME');
+              const causedBy = homeNote?.causedBy;
+              return {
+                cellKey: `${c.half}-${c.inning}-${c.order}-${c.appearance}`,
+                runnerName: findName(c.order),
+                runnerOrder: c.order,
+                causedByName: causedBy ? findName(causedBy) : '',
+                causedByOrder: causedBy,
+                earned: c.earned ?? false,
+                scorePitcher: c.scorePitcher || '',
+              };
+            });
+          // 해당 half에서 실제 등판한 투수만 (수비 팀)
+          const defendingSideForRow: 'away' | 'home' = half === 'top' ? 'home' : 'away';
+          const pitcherList = getActivePitchers(defendingSideForRow);
+          return (
+            <ScoreReviewModal
+              open={true}
+              inning={inning}
+              half={half}
+              rows={rows}
+              pitcherList={pitcherList}
+              onSave={(edits) => {
+                edits.forEach((e) => {
+                  dispatch({
+                    type: 'EDIT_SCORED_RUN',
+                    cellKey: e.cellKey,
+                    newEarned: e.newEarned,
+                    newScorePitcher: e.newScorePitcher,
+                  });
+                });
+                if (edits.length > 0) showToast(`${edits.length}건 변경 적용됨`);
+                const wasPending = pendingNextInning;
+                setScoreReviewTarget(null);
+                setPendingNextInning(false);
+                // '다음이닝' 클릭에서 시작된 모달이면 확인 시 실제로 이닝 교대
+                if (wasPending) {
+                  dispatch({ type: 'NEXT_INNING' });
+                  setUI((p) => ({ ...p, selRunnerBase: null }));
+                  showToast(
+                    `${G.half === 'top' ? G.inning : G.inning + 1}회 ${
+                      G.half === 'top' ? '말' : '초'
+                    } 시작`
+                  );
+                }
+              }}
+              onClose={() => {
+                setScoreReviewTarget(null);
+                setPendingNextInning(false); // 취소 시 이닝 교대 안 함
+              }}
+            />
+          );
+        })()}
+
       <StrikeoutModal
         open={UI.stkOpen}
         pitchType={UI.stkPitchType}
@@ -1427,12 +1603,15 @@ export default function GameScreen({ setup, onEnd }: Props) {
         earned={UI.runAdvEarned}
         rbi={UI.runAdvRbi}
         pitcher={UI.runAdvPitcher}
-        pitcherList={
-          G.half === 'top'
-            ? G.homeLineup.filter((p) => p.pos === 1).concat(G.homeBench.filter((p) => p.pos === 1))
-            : G.awayLineup.filter((p) => p.pos === 1).concat(G.awayBench.filter((p) => p.pos === 1))
-        }
+        pitcherList={getActivePitchers(G.half === 'top' ? 'home' : 'away')}
         defLU={defLU}
+        inDpPlay={Object.values(G.cells).some(
+          (c) =>
+            c.half === G.half &&
+            c.inning === G.inning &&
+            (c.isDoublePlay || c.isTriplePlay) &&
+            c.order === (G.curBatterOrder === 1 ? 9 : G.curBatterOrder - 1)
+        )}
         onSelectReason={(v) => setUI((p) => ({ ...p, runAdvResult: v }))}
         onSelectDest={(d) => setUI((p) => ({ ...p, runAdvDest: d }))}
         onSetEarned={(v) => setUI((p) => ({ ...p, runAdvEarned: v }))}
@@ -1461,11 +1640,7 @@ export default function GameScreen({ setup, onEnd }: Props) {
         earned={UI.runAdvEarned}
         rbi={UI.runAdvRbi}
         pitcher={UI.runAdvPitcher}
-        pitcherList={
-          G.half === 'top'
-            ? G.homeLineup.filter((p) => p.pos === 1).concat(G.homeBench.filter((p) => p.pos === 1))
-            : G.awayLineup.filter((p) => p.pos === 1).concat(G.awayBench.filter((p) => p.pos === 1))
-        }
+        pitcherList={getActivePitchers(G.half === 'top' ? 'home' : 'away')}
         defLU={defLU}
         onSelectReason={(v) => setUI((p) => ({ ...p, runAdvResult: v }))}
         onSelectDest={(d) => setUI((p) => ({ ...p, runAdvDest: d }))}

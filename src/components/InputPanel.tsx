@@ -146,7 +146,7 @@ export default function InputPanel({
             <span className="ip-lbl">파울</span>
           </button>
         </div>
-        <div className="ip-g3 ip-g2-special" style={{ marginTop: 5 }}>
+        <div className="ip-g2 ip-g2-special" style={{ marginTop: 5 }}>
           <button className="ip-btn b-S" onClick={() => onPitch('FE')}>
             <span className="ip-lbl">파울실책</span>
           </button>
@@ -155,6 +155,9 @@ export default function InputPanel({
           </button>
           <button className="ip-btn b-S" onClick={() => onPitch('BF')}>
             <span className="ip-lbl">번트파울</span>
+          </button>
+          <button className="ip-btn b-S" onClick={onPitcherLeave}>
+            <span className="ip-lbl">투수판이탈</span>
           </button>
         </div>
         <div style={{ borderTop: '1px solid var(--border2)', paddingTop: 4, marginTop: 5 }}>
@@ -215,10 +218,7 @@ export default function InputPanel({
       {/* 견제/기타 */}
       <div className="ip-sec">
         <div className="ip-sec-t">견제/기타</div>
-        <div className="ip-g2" style={{ marginTop: 2 }}>
-          <button className="ip-btn b-S" onClick={onPitcherLeave}>
-            <span className="ip-lbl">투수판이탈</span>
-          </button>
+        <div className="ip-g3" style={{ marginTop: 2 }}>
           <button className="ip-btn b-S" onClick={onBatterTimeout}>
             <span className="ip-lbl">타자타임</span>
           </button>

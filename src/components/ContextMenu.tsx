@@ -28,16 +28,8 @@ export default function ContextMenu({ ctx, onClose, onSubst, onPitcherChange }: 
       onClick={(e) => e.stopPropagation()}
     >
       <div className="ctx-t">{ctx.title}</div>
-      <div
-        className="ctx-item"
-        onClick={() => {
-          onClose();
-          onSubst(ctx.pos);
-        }}
-      >
-        교체
-      </div>
-      {ctx.pos === 1 && (
+      {ctx.pos === 1 ? (
+        // 투수는 전용 투수교체만 사용 (일반 교체는 투수에 안 먹음)
         <div
           className="ctx-item"
           onClick={() => {
@@ -47,10 +39,17 @@ export default function ContextMenu({ ctx, onClose, onSubst, onPitcherChange }: 
         >
           투수 교체
         </div>
+      ) : (
+        <div
+          className="ctx-item"
+          onClick={() => {
+            onClose();
+            onSubst(ctx.pos);
+          }}
+        >
+          교체
+        </div>
       )}
-      <div className="ctx-item" onClick={() => onClose()}>
-        선수 정보
-      </div>
     </div>
   );
 }

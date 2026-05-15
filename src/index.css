@@ -680,6 +680,7 @@ button {
 .ss-tbl {
   border-collapse: collapse;
   font-size: 11px;
+  table-layout: fixed; /* 모든 컬럼 너비를 헤더 td/th 의 width 로 고정 — 그리드 정렬 균일하게 */
 }
 .ss-tbl th {
   background: #e8e8e8;
@@ -702,9 +703,6 @@ button {
   border: 1px solid #b0b5bd;
   padding: 0;
   vertical-align: top;
-}
-.ss-row-cur {
-  background: #fff9e6 !important;
 }
 .ss-row-overflow td {
   border-top: 1px dashed #b0b5bd !important;
@@ -755,10 +753,10 @@ button {
   padding: 2px 2px;
 }
 
-/* Score cell */
+/* Score cell — 부모 td 너비에 맞춰 늘어남 (정렬 일치) */
 .sc {
   position: relative;
-  width: 92px;
+  width: 100%;
   height: 88px;
   display: flex;
   align-items: center;
@@ -1590,4 +1588,60 @@ button {
   padding: 2px 2px;
   min-width: 26px;
   font-family: 'IBM Plex Mono', monospace;
+}
+
+/* ── 인쇄 (A4 landscape) — ScoreSheet 만 한 장에 출력 ─────────────────────── */
+@media print {
+  @page {
+    size: A4 landscape;
+    margin: 2mm;
+  }
+  body,
+  html {
+    background: #fff !important;
+    height: auto !important;
+    overflow: visible !important;
+  }
+  /* 인쇄에 안 들어가는 것들 — 입력패널/다이아몬드/scoreboard/모달/PitcherLogPanel/하단 투수카드/상단 컨트롤 */
+  .left-panel,
+  .ip,
+  .scoreboard,
+  .ov,
+  #s-game .game-body.view-main,
+  .plp,
+  .ss-top,
+  .ss-pitcher-card {
+    display: none !important;
+  }
+  /* 상위 컨테이너 — 높이/스크롤 제약 풀기 */
+  #root,
+  .screen,
+  .screen.active,
+  .game-wrap,
+  .game-body,
+  .game-body.view-sheet {
+    background: #fff !important;
+    height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
+    display: block !important;
+  }
+  /* ScoreSheet 영역 — 스크롤 풀고 A4 한 장에 맞도록 축소
+     18개 stat 컬럼 추가로 너비 증가 (~2010px). scale 0.48 * width 215% ≈ 페이지의 103% 확보 후 안쪽으로 마진. */
+  .ss-area {
+    height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
+    transform: scale(0.48);
+    transform-origin: top left;
+    width: 200% !important; /* 컨테이너 충분히 넓게 — 내부 컨텐츠 안 짤리게 */
+  }
+  .ss-area > div[style*='overflow'] {
+    overflow: visible !important;
+    height: auto !important;
+  }
+  /* 인쇄 시엔 inner zoom 초기화 (위 transform 만으로 축소) */
+  .ss-area > div > div[style*='zoom'] {
+    zoom: 1 !important;
+  }
 }
