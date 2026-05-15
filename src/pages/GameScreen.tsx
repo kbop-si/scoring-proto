@@ -30,6 +30,7 @@ import DeflModal from '../components/modals/DeflModal';
 import PlayersModal from '../components/modals/PlayersModal';
 import DefenseListModal from '../components/modals/DefenseListModal';
 import MoundVisitModal from '../components/modals/MoundVisitModal';
+import GameEndModal from '../components/modals/GameEndModal';
 import LineupReviewModal from '../components/modals/LineupReviewModal';
 import ScoreReviewModal, { type ScoredRunRow } from '../components/modals/ScoreReviewModal';
 
@@ -133,6 +134,7 @@ export default function GameScreen({ setup, onEnd }: Props) {
   // 라인업 드래그 상태 — 드래그 중인 (team, lineup array index)
   const [luDrag, setLuDrag] = useState<{ team: 'away' | 'home'; idx: number } | null>(null);
   const [luDragOver, setLuDragOver] = useState<{ team: 'away' | 'home'; idx: number } | null>(null);
+  const [gameEndOpen, setGameEndOpen] = useState(false);
 
   useEffect(() => {
     if (localStorage.getItem('kbo_sheet_state')) {
@@ -1174,10 +1176,8 @@ export default function GameScreen({ setup, onEnd }: Props) {
   }, [G, dispatch, showToast, guardThreeOut]);
 
   const handleEnd = useCallback(() => {
-    if (confirm('경기를 종료하시겠습니까?')) {
-      setTimeout(onEnd, 1000);
-    }
-  }, [onEnd]);
+    setGameEndOpen(true);
+  }, []);
 
   // ── Keyboard shortcuts ────────────────────────────────────────────────────
   useEffect(() => {
@@ -1569,6 +1569,17 @@ export default function GameScreen({ setup, onEnd }: Props) {
         result={defListResult}
         defLU={defLU}
         onClose={() => setDefListOpen(false)}
+      />
+
+      <GameEndModal
+        open={gameEndOpen}
+        G={G}
+        onConfirm={(decisions) => {
+          dispatch({ type: 'SET_GAME_DECISIONS', decisions });
+          setGameEndOpen(false);
+          setTimeout(onEnd, 300);
+        }}
+        onClose={() => setGameEndOpen(false)}
       />
 
       <MoundVisitModal

@@ -9,6 +9,7 @@ import {
   displayName,
 } from '../data/constants';
 import { cellKey, isOut, isOnBase } from '../store/gameReducer';
+import { computePitcherRows, type PitcherRow } from '../utils/pitcherStats';
 import { PitchMark } from './modals/PitchMark';
 
 interface Props {
@@ -3663,170 +3664,20 @@ export default function ScoreSheet({ G, onSelCell }: Props) {
                     return `${full} ${rem}/3`;
                   };
 
-                  // 투수별 통계 집계
-                  const changes = (G.pitcherChanges || [])
-                    .filter((c) => c.half === half)
-                    .sort((a, b) =>
-                      a.inning !== b.inning ? a.inning - b.inning : a.order - b.order
-                    );
-                  const defLU = half === 'top' ? G.homeLineup : G.awayLineup;
-                  // 선발 투수는 PITCHER_CHANGE 첫 항목의 oldName (= 교체된 전임자가 곧 선발).
-                  // 교체가 없으면 현재 라인업의 pos=1 가 선발.
-                  const starterName =
-                    changes[0]?.oldName ||
-                    defLU.find((p) => p.pos === 1)?.name ||
-                    activePitcherName;
-                  type PStat = {
-                    name: string;
-                    entryInn: number;
-                    entryOrd: number;
-                    bf: number; // 타자
-                    np: number; // 투구수
-                    ab: number; // 타수
-                    h: number; // 피안타
-                    hr: number; // 피홈런
-                    sh: number; // 희타
-                    sf: number; // 희비
-                    bb: number; // 4구
-                    ibb: number; // 고의4구
-                    hbp: number; // 사구
-                    so: number; // 탈삼진
-                    wp: number; // 폭투
-                    bk: number; // 보크
-                    r: number; // 실점
-                    er: number; // 자책점
-                    outs: number;
-                  };
-                  const rows: PStat[] = [
-                    {
-                      name: starterName,
-                      entryInn: 1,
-                      entryOrd: 1,
-                      bf: 0,
-                      np: 0,
-                      ab: 0,
-                      h: 0,
-                      hr: 0,
-                      sh: 0,
-                      sf: 0,
-                      bb: 0,
-                      ibb: 0,
-                      hbp: 0,
-                      so: 0,
-                      wp: 0,
-                      bk: 0,
-                      r: 0,
-                      er: 0,
-                      outs: 0,
-                    },
-                  ];
-                  changes.forEach((ch) => {
-                    rows.push({
-                      name: ch.name,
-                      entryInn: ch.inning,
-                      entryOrd: ch.order,
-                      bf: 0,
-                      np: 0,
-                      ab: 0,
-                      h: 0,
-                      hr: 0,
-                      sh: 0,
-                      sf: 0,
-                      bb: 0,
-                      ibb: 0,
-                      hbp: 0,
-                      so: 0,
-                      wp: 0,
-                      bk: 0,
-                      r: 0,
-                      er: 0,
-                      outs: 0,
-                    });
-                  });
+                  const rows = computePitcherRows(G, half, activePitcherName);
 
-                  // 셀별 active pitcher 결정 후 stat 누적
-                  const isHitR = (r: string) =>
-                    /^\/[789]$/.test(r) ||
-                    ['H1', '/hit', 'INT', 'BUNT', 'OBUNT'].includes(r) ||
-                    /^>[789]/.test(r) ||
-                    r === 'H2' ||
-                    r === '>hit' ||
-                    /^>>>[789]$/.test(r) ||
-                    r === 'H3' ||
-                    r === '>>>hit' ||
-                    r === 'HR' ||
-                    r === 'GHR';
-                  Object.values(G.cells)
-                    .filter((c) => c.half === half && (c.result || c.pitches.length > 0))
-                    .sort((a, b) =>
-                      a.inning !== b.inning
-                        ? a.inning - b.inning
-                        : a.appearance !== b.appearance
-                          ? a.appearance - b.appearance
-                          : a.order - b.order
-                    )
-                    .forEach((c) => {
-                      // active pitcher: 가장 마지막 (entryInn, entryOrd) <= (c.inning, c.order)
-                      let idx = 0;
-                      for (let i = 0; i < rows.length; i++) {
-                        const e = rows[i];
-                        if (
-                          e.entryInn < c.inning ||
-                          (e.entryInn === c.inning && e.entryOrd <= c.order)
-                        ) {
-                          idx = i;
-                        }
-                      }
-                      const s = rows[idx];
-                      s.np += (c.pitches || []).length;
-                      const r = c.result || '';
-                      if (!r) return;
-                      s.bf += 1;
-                      const exclAB = ['B', 'IB', 'IB2', 'HP', 'INT', 'SF', 'SH'].includes(r);
-                      if (!exclAB) s.ab += 1;
-                      if (isHitR(r)) s.h += 1;
-                      if (r === 'HR' || r === 'GHR') s.hr += 1;
-                      if (r === 'B') s.bb += 1;
-                      if (r === 'IB' || r === 'IB2') {
-                        s.ibb += 1;
-                        s.bb += 1;
-                      }
-                      if (r === 'HP') s.hbp += 1;
-                      if (/^K|^ꓘ/.test(r)) s.so += 1;
-                      if (r === 'SH' || r === 'SH진루' || r.includes('SH')) s.sh += 1;
-                      if (r === 'SF' || r === '/SF') s.sf += 1;
-                      // 타자 아웃 (BAT_OUT/STRIKEOUT 결과) — reducer 가 set 한 cellOutNum 을 신뢰
-                      if (c.cellOutNum) s.outs += 1;
-                      // 주자 아웃 (RUN_OUT 또는 DP/TP propagation) — 별도 1아웃 추가
-                      if (c.runOutNum) s.outs += 1;
-                      if (c.scored) {
-                        // scorePitcher 가 있으면 그 투수에 귀속, 없거나 매칭 실패 시 활성 투수(s)에 폴백
-                        const sp = c.scorePitcher
-                          ? rows.find(
-                              (x) =>
-                                x.name === c.scorePitcher ||
-                                c.scorePitcher!.startsWith(`${x.name}(`)
-                            )
-                          : null;
-                        const target = sp || s;
-                        target.r += 1;
-                        if (c.earned === true) target.er += 1;
-                        else if (c.earned === 'half') target.er += 0.5;
-                      }
-                      // 폭투/보크 from eventLog
-                      (c.eventLog || []).forEach((e) => {
-                        if (e.kind === 'runner_steal') {
-                          if (e.advCode === 'W' || e.advCode === '(W)') s.wp += 1;
-                          if (
-                            e.advCode === 'BK' ||
-                            e.advCode === '(BK)' ||
-                            e.advCode === '✓BK' ||
-                            e.advCode === '✓(BK)'
-                          )
-                            s.bk += 1;
-                        }
-                      });
-                    });
+                  // 투수 판정 마크 (W/L/S/H/BS) — half='top'(원정 공격) → HOME 투수
+                  const decisionTeam: 'away' | 'home' = half === 'top' ? 'home' : 'away';
+                  const decision = G.gameDecisions?.[decisionTeam];
+                  const markOf = (name: string): string => {
+                    if (!decision || !name) return '';
+                    if (name === decision.win) return '승';
+                    if (name === decision.loss) return '패';
+                    if (name === decision.save) return 'S';
+                    if (decision.holds.includes(name)) return 'H';
+                    if (decision.bs.includes(name)) return 'BS';
+                    return '';
+                  };
 
                   const totalRows = 10;
                   const blankCount = Math.max(0, totalRows - rows.length);
@@ -3870,8 +3721,8 @@ export default function ScoreSheet({ G, onSelCell }: Props) {
                       <tbody>
                         {rows.map((row, i) => {
                           const cells = [
-                            '', // 승패 S.H
-                            '', // B/S
+                            markOf(row.name), // 승패/S/H/BS
+                            '', // B/S (예비)
                             i === 0 ? row.name : `${row.name} (${row.entryInn},${row.entryOrd})`,
                             formatIP(row.outs),
                             row.bf || '',
@@ -3928,7 +3779,7 @@ export default function ScoreSheet({ G, onSelCell }: Props) {
                         ))}
                         {(() => {
                           // 합계(누적) 행: 컬럼별 합산
-                          const sum = (k: keyof PStat) =>
+                          const sum = (k: keyof PitcherRow) =>
                             rows.reduce((a, x) => a + (x[k] as number), 0);
                           const totalOuts = sum('outs');
                           const totals = [
@@ -4478,165 +4329,18 @@ export default function ScoreSheet({ G, onSelCell }: Props) {
                     if (rem === 0) return `${full}`;
                     return `${full} ${rem}/3`;
                   };
-                  type PStat = {
-                    name: string;
-                    entryInn: number;
-                    entryOrd: number;
-                    bf: number;
-                    np: number;
-                    ab: number;
-                    h: number;
-                    hr: number;
-                    sh: number;
-                    sf: number;
-                    bb: number;
-                    ibb: number;
-                    hbp: number;
-                    so: number;
-                    wp: number;
-                    bk: number;
-                    r: number;
-                    er: number;
-                    outs: number;
+                  const rows = computePitcherRows(G, half, activePitcherName);
+                  const decisionTeam: 'away' | 'home' = half === 'top' ? 'home' : 'away';
+                  const decision = G.gameDecisions?.[decisionTeam];
+                  const markOf = (name: string): string => {
+                    if (!decision || !name) return '';
+                    if (name === decision.win) return '승';
+                    if (name === decision.loss) return '패';
+                    if (name === decision.save) return 'S';
+                    if (decision.holds.includes(name)) return 'H';
+                    if (decision.bs.includes(name)) return 'BS';
+                    return '';
                   };
-                  const changes = (G.pitcherChanges || [])
-                    .filter((c) => c.half === half)
-                    .sort((a, b) =>
-                      a.inning !== b.inning ? a.inning - b.inning : a.order - b.order
-                    );
-                  const defLU = half === 'top' ? G.homeLineup : G.awayLineup;
-                  // 선발 투수는 PITCHER_CHANGE 첫 항목의 oldName (= 교체된 전임자가 곧 선발).
-                  // 교체가 없으면 현재 라인업의 pos=1 가 선발.
-                  const starterName =
-                    changes[0]?.oldName ||
-                    defLU.find((p) => p.pos === 1)?.name ||
-                    activePitcherName;
-                  const rows: PStat[] = [
-                    {
-                      name: starterName,
-                      entryInn: 1,
-                      entryOrd: 1,
-                      bf: 0,
-                      np: 0,
-                      ab: 0,
-                      h: 0,
-                      hr: 0,
-                      sh: 0,
-                      sf: 0,
-                      bb: 0,
-                      ibb: 0,
-                      hbp: 0,
-                      so: 0,
-                      wp: 0,
-                      bk: 0,
-                      r: 0,
-                      er: 0,
-                      outs: 0,
-                    },
-                  ];
-                  changes.forEach((ch) => {
-                    rows.push({
-                      name: ch.name,
-                      entryInn: ch.inning,
-                      entryOrd: ch.order,
-                      bf: 0,
-                      np: 0,
-                      ab: 0,
-                      h: 0,
-                      hr: 0,
-                      sh: 0,
-                      sf: 0,
-                      bb: 0,
-                      ibb: 0,
-                      hbp: 0,
-                      so: 0,
-                      wp: 0,
-                      bk: 0,
-                      r: 0,
-                      er: 0,
-                      outs: 0,
-                    });
-                  });
-                  const isHitR = (r: string) =>
-                    /^\/[789]$/.test(r) ||
-                    ['H1', '/hit', 'INT', 'BUNT', 'OBUNT'].includes(r) ||
-                    /^>[789]/.test(r) ||
-                    r === 'H2' ||
-                    r === '>hit' ||
-                    /^>>>[789]$/.test(r) ||
-                    r === 'H3' ||
-                    r === '>>>hit' ||
-                    r === 'HR' ||
-                    r === 'GHR';
-                  Object.values(G.cells)
-                    .filter((c) => c.half === half && (c.result || c.pitches.length > 0))
-                    .sort((a, b) =>
-                      a.inning !== b.inning
-                        ? a.inning - b.inning
-                        : a.appearance !== b.appearance
-                          ? a.appearance - b.appearance
-                          : a.order - b.order
-                    )
-                    .forEach((c) => {
-                      let idx = 0;
-                      for (let i = 0; i < rows.length; i++) {
-                        const e = rows[i];
-                        if (
-                          e.entryInn < c.inning ||
-                          (e.entryInn === c.inning && e.entryOrd <= c.order)
-                        ) {
-                          idx = i;
-                        }
-                      }
-                      const s = rows[idx];
-                      s.np += (c.pitches || []).length;
-                      const r = c.result || '';
-                      if (!r) return;
-                      s.bf += 1;
-                      const exclAB = ['B', 'IB', 'IB2', 'HP', 'INT', 'SF', 'SH'].includes(r);
-                      if (!exclAB) s.ab += 1;
-                      if (isHitR(r)) s.h += 1;
-                      if (r === 'HR' || r === 'GHR') s.hr += 1;
-                      if (r === 'B') s.bb += 1;
-                      if (r === 'IB' || r === 'IB2') {
-                        s.ibb += 1;
-                        s.bb += 1;
-                      }
-                      if (r === 'HP') s.hbp += 1;
-                      if (/^K|^ꓘ/.test(r)) s.so += 1;
-                      if (r === 'SH' || r === 'SH진루' || r.includes('SH')) s.sh += 1;
-                      if (r === 'SF' || r === '/SF') s.sf += 1;
-                      // 타자 아웃 — reducer 가 set 한 cellOutNum 을 신뢰
-                      if (c.cellOutNum) s.outs += 1;
-                      // 주자 아웃 (RUN_OUT 또는 DP/TP propagation) — 별도 1아웃 추가
-                      if (c.runOutNum) s.outs += 1;
-                      if (c.scored) {
-                        // scorePitcher 가 있으면 그 투수에 귀속, 없거나 매칭 실패 시 활성 투수(s)에 폴백
-                        const sp = c.scorePitcher
-                          ? rows.find(
-                              (x) =>
-                                x.name === c.scorePitcher ||
-                                c.scorePitcher!.startsWith(`${x.name}(`)
-                            )
-                          : null;
-                        const target = sp || s;
-                        target.r += 1;
-                        if (c.earned === true) target.er += 1;
-                        else if (c.earned === 'half') target.er += 0.5;
-                      }
-                      (c.eventLog || []).forEach((e) => {
-                        if (e.kind === 'runner_steal') {
-                          if (e.advCode === 'W' || e.advCode === '(W)') s.wp += 1;
-                          if (
-                            e.advCode === 'BK' ||
-                            e.advCode === '(BK)' ||
-                            e.advCode === '✓BK' ||
-                            e.advCode === '✓(BK)'
-                          )
-                            s.bk += 1;
-                        }
-                      });
-                    });
                   const totalRowsN = 10;
                   const blankCountN = Math.max(0, totalRowsN - rows.length);
                   return (
@@ -4678,7 +4382,7 @@ export default function ScoreSheet({ G, onSelCell }: Props) {
                       <tbody>
                         {rows.map((row, i) => {
                           const cellsR = [
-                            '',
+                            markOf(row.name),
                             '',
                             i === 0 ? row.name : `${row.name} (${row.entryInn},${row.entryOrd})`,
                             formatIP(row.outs),
@@ -4737,7 +4441,7 @@ export default function ScoreSheet({ G, onSelCell }: Props) {
                           </tr>
                         ))}
                         {(() => {
-                          const sum = (k: keyof PStat) =>
+                          const sum = (k: keyof PitcherRow) =>
                             rows.reduce((a, x) => a + (x[k] as number), 0);
                           const totalOuts = sum('outs');
                           const totals = [

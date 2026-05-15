@@ -153,6 +153,20 @@ export interface PitcherStats {
   pitchStrikes: number;
 }
 
+// 경기 종료 시 양팀 투수 판정 — 값은 투수명 (pitcherChanges.name / 선발투수명과 매칭)
+export interface TeamDecisions {
+  win?: string;
+  loss?: string;
+  save?: string;
+  holds: string[];
+  bs: string[];
+}
+
+export interface GameDecisions {
+  away: TeamDecisions;
+  home: TeamDecisions;
+}
+
 export interface GameState {
   league: string;
   awayTeam: string;
@@ -207,6 +221,8 @@ export interface GameState {
   umpireRight?: string;
   recorder1?: string;
   recorder2?: string;
+  // 경기 종료 시 산정된 양팀 투수 판정 (W/L/S/H/BS). 종료 모달 확인 시 set.
+  gameDecisions?: GameDecisions;
 }
 
 export interface HistorySnapshot {
@@ -458,4 +474,5 @@ export type GameAction =
       cellKey: string;
       newEarned: boolean | 'half';
       newScorePitcher?: string;
-    };
+    }
+  | { type: 'SET_GAME_DECISIONS'; decisions: GameDecisions };

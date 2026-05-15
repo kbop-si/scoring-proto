@@ -1190,11 +1190,11 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
       const outs = Math.min(state.outs + 1 + extraOuts, 3);
 
       // 3아웃 시 잔루: 남은 주자(DP/TP 아웃 제외) 셀에 lobCell 표기
-      // (이닝 교대는 자동 X — 사용자가 '다음이닝' 버튼 눌러야 NEXT_INNING 으로 advance)
+      // 타자일순 대비 — 같은 (inning, order) 의 가장 최근 PA (높은 app) 셀에 찍어야 함
       if (outs === 3) {
         for (const runner of Object.values(runners).filter(Boolean)) {
           if (runner) {
-            for (let app = 0; app <= 5; app++) {
+            for (let app = 5; app >= 0; app--) {
               const rk = cellKey(runner.inning, runner.order, app, runner.half || state.half);
               if (cells[rk]) {
                 cells = { ...cells, [rk]: { ...cells[rk], lobCell: true } };
@@ -1563,11 +1563,12 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
       }
 
       // 3아웃 시 잔루: 남은 주자(runners = 이미 out 제거된 상태) 셀에 lobCell 표기
+      // 타자일순 대비 — 가장 최근 PA (높은 app) 셀에 찍음
       if (outs === 3) {
         for (const rem of Object.values(runners).filter(Boolean)) {
           if (rem) {
             let found = false;
-            for (let app = 0; app <= 5; app++) {
+            for (let app = 5; app >= 0; app--) {
               const rk = cellKey(rem.inning, rem.order, app, rem.half || state.half);
               if (cells[rk]) {
                 cells = { ...cells, [rk]: { ...cells[rk], lobCell: true } };
@@ -1577,7 +1578,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
             }
             if (!found) {
               const otherHalf: Half = (rem.half || state.half) === 'top' ? 'bottom' : 'top';
-              for (let app = 0; app <= 5; app++) {
+              for (let app = 5; app >= 0; app--) {
                 const rk = cellKey(rem.inning, rem.order, app, otherHalf);
                 if (cells[rk]) {
                   cells = { ...cells, [rk]: { ...cells[rk], lobCell: true } };
@@ -2331,11 +2332,11 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
       if (isOut(result) || result === 'K') {
         const outs = state.outs + 1;
 
-        // 3아웃 시 잔루: 남은 주자 셀에 lobCell 표기 (이닝 교대는 사용자가 '다음이닝' 누를 때까지 대기)
+        // 3아웃 시 잔루: 남은 주자 셀에 lobCell 표기 (타자일순 대비 — 가장 최근 PA 셀에)
         if (outs === 3) {
           for (const runner of Object.values(state.runners).filter(Boolean)) {
             if (runner) {
-              for (let app = 0; app <= 5; app++) {
+              for (let app = 5; app >= 0; app--) {
                 const rk = cellKey(runner.inning, runner.order, app, runner.half || state.half);
                 if (cells[rk]) {
                   cells = { ...cells, [rk]: { ...cells[rk], lobCell: true } };
@@ -2725,6 +2726,10 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
         homeER,
         history: saveHist(state),
       };
+    }
+
+    case 'SET_GAME_DECISIONS': {
+      return { ...state, gameDecisions: action.decisions };
     }
 
     default:
