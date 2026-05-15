@@ -21,6 +21,9 @@ export default function LineupScreen({ setup, onUpdateLineups, onStart }: Props)
   const [benchSelIdx, setBenchSelIdx] = useState<number | null>(null);
   const [srchName, setSrchName] = useState('');
   const [srchNum, setSrchNum] = useState('');
+  // 라인업 행 드래그 — 타순 swap
+  const [luDrag, setLuDrag] = useState<number | null>(null);
+  const [luDragOver, setLuDragOver] = useState<number | null>(null);
 
   const [ls, setLs] = useState<LineupState>({
     awayLineup: setup.awayLineup,
@@ -74,6 +77,18 @@ export default function LineupScreen({ setup, onUpdateLineups, onStart }: Props)
   const handleChangePOS = (idx: number, pos: number) => {
     const newLu = [...lu];
     newLu[idx] = { ...newLu[idx], pos };
+    updateLU(newLu);
+  };
+
+  // 타순 swap — 두 자리의 선수를 교환하면서 order 는 array index 기반으로 유지
+  const handleSwapOrders = (idx1: number, idx2: number) => {
+    if (idx1 === idx2 || idx1 < 0 || idx2 < 0 || idx1 >= lu.length || idx2 >= lu.length) return;
+    const a = lu[idx1];
+    const b = lu[idx2];
+    if (a.order === 0 || b.order === 0) return; // 투수 제외
+    const newLu = [...lu];
+    newLu[idx1] = { ...b, order: a.order };
+    newLu[idx2] = { ...a, order: b.order };
     updateLU(newLu);
   };
 
@@ -307,17 +322,39 @@ export default function LineupScreen({ setup, onUpdateLineups, onStart }: Props)
               <tbody>
                 {lu.map((p, i) => {
                   const isSel = luSelIdx === i;
+                  const isDragOver = luDragOver === i;
+                  const dragProps = {
+                    draggable: p.order > 0,
+                    onDragStart: () => p.order > 0 && setLuDrag(i),
+                    onDragOver: (e: React.DragEvent) => {
+                      if (luDrag !== null && p.order > 0) {
+                        e.preventDefault();
+                        if (luDragOver !== i) setLuDragOver(i);
+                      }
+                    },
+                    onDragLeave: () => setLuDragOver(null),
+                    onDrop: () => {
+                      if (luDrag !== null && p.order > 0) handleSwapOrders(luDrag, i);
+                      setLuDrag(null);
+                      setLuDragOver(null);
+                    },
+                    onDragEnd: () => {
+                      setLuDrag(null);
+                      setLuDragOver(null);
+                    },
+                  };
+                  const rowBg = isDragOver ? '#fef9c3' : isSel ? 'rgba(16,44,87,0.08)' : '#ffffff';
                   return (
                     <tr
                       key={i}
                       onClick={() => setLuSelIdx(luSelIdx === i ? null : i)}
                       style={{
-                        background: isSel ? 'rgba(16,44,87,0.08)' : '#ffffff',
-                        cursor: 'pointer',
+                        background: rowBg,
+                        cursor: p.order > 0 ? 'grab' : 'pointer',
                       }}
                     >
-                      {/* 타순: input 박스 제거하고 텍스트만 렌더링 */}
-                      <td style={{ ...tdStyle, fontWeight: 800 }}>
+                      {/* 타순: 드래그 가능 */}
+                      <td {...dragProps} style={{ ...tdStyle, fontWeight: 800 }}>
                         {p.order === 0 ? '투' : p.order}
                       </td>
                       <td style={tdStyle}>
@@ -339,7 +376,10 @@ export default function LineupScreen({ setup, onUpdateLineups, onStart }: Props)
                           ))}
                         </select>
                       </td>
-                      <td style={tdStyle}>{displayName(p.name, p.num, dupeNames)}</td>
+                      {/* 선수명: 드래그 가능 */}
+                      <td {...dragProps} style={tdStyle}>
+                        {displayName(p.name, p.num, dupeNames)}
+                      </td>
                     </tr>
                   );
                 })}
