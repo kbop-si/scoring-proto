@@ -1131,7 +1131,7 @@ function ScoreCell({
                         deflection={deflection}
                         x={hrZx}
                         y={hrZy}
-                        fontSize={15}
+                        fontSize={12}
                         color={zoneColor}
                       />
                       {!deflection && hrDot && (
@@ -1905,7 +1905,9 @@ export default function ScoreSheet({ G, onSelCell }: Props) {
     setViewHalf(G.half);
   }, [G.half]);
 
-  const lu = (viewHalf === 'top' ? G.awayLineup : G.homeLineup).filter((p) => p.order > 0);
+  const lu = (viewHalf === 'top' ? G.awayLineup : G.homeLineup)
+    .filter((p) => p.order > 0)
+    .sort((a, b) => a.order - b.order);
   const half = viewHalf;
   // 동명이인 검출 — 현재 viewHalf 팀의 라인업+벤치 통합
   const sheetDupes = getDuplicateNames([
@@ -2905,23 +2907,6 @@ export default function ScoreSheet({ G, onSelCell }: Props) {
                                     </>
                                   );
                                 })()}
-                                {app > 0 && c && (
-                                  <span
-                                    title={`타자일순 — ${inn}회 ${app + 1}번째 타석`}
-                                    style={{
-                                      position: 'absolute',
-                                      top: 0,
-                                      left: 1,
-                                      fontSize: 8,
-                                      color: '#0369a1',
-                                      fontWeight: 700,
-                                      lineHeight: 1,
-                                      pointerEvents: 'none',
-                                    }}
-                                  >
-                                    {inn}회·{app + 1}
-                                  </span>
-                                )}
                                 {inningEndLine[ck] && (
                                   <span
                                     style={{

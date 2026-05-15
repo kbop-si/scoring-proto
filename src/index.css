@@ -547,7 +547,15 @@ button {
 .lineup-tbl {
   width: 100%;
   border-collapse: collapse;
+  table-layout: fixed; /* 컬럼 너비 고정 — 긴 이름이 와도 좌·우 칸 정렬 유지 */
 }
+.lineup-tbl col.lu-col-order {
+  width: 30px;
+}
+.lineup-tbl col.lu-col-pos {
+  width: 30px;
+}
+/* 선수명 컬럼 — 남은 공간 균등 분배 */
 .lineup-tbl th {
   background: #e8f0f8;
   font-weight: 700;
@@ -561,6 +569,15 @@ button {
   border: 1px solid #e2e8f0;
   text-align: center;
   font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.lineup-tbl td[draggable='true'] {
+  cursor: grab;
+}
+.lineup-tbl td[draggable='true']:active {
+  cursor: grabbing;
 }
 .lineup-tbl tr.bat-pit td {
   background: #f0f4f8;
