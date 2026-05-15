@@ -725,7 +725,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
                   update.scored = true;
                   // 볼넷/사구 밀어내기 득점 — 자책, 책임은 현재 투수
                   update.earned = true;
-                  update.scorePitcher = pitcher.name;
+                  update.scorePitcher = `${pitcher.name}(${pitcher.num})`;
                 }
                 cells = { ...cells, [rk]: { ...cells[rk], ...update } };
               }
@@ -955,7 +955,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
               ...cells[state.selCellKey],
               scored: true,
               earned: true,
-              scorePitcher: state.pitcher.name,
+              scorePitcher: `${state.pitcher.name}(${state.pitcher.num})`,
             },
           };
         }
@@ -994,7 +994,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
                   update.scored = true;
                   // 볼넷/사구 밀어내기 득점 — 자책, 책임은 현재 투수
                   update.earned = true;
-                  update.scorePitcher = state.pitcher.name;
+                  update.scorePitcher = `${state.pitcher.name}(${state.pitcher.num})`;
                 }
                 cells = { ...cells, [rk]: { ...cells[rk], ...update } };
               }
