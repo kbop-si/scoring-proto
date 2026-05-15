@@ -475,4 +475,5 @@ export type GameAction =
       newEarned: boolean | 'half';
       newScorePitcher?: string;
     }
-  | { type: 'SET_GAME_DECISIONS'; decisions: GameDecisions };
+  | { type: 'SET_GAME_DECISIONS'; decisions: GameDecisions }
+  | { type: 'SWAP_FIELD_POS'; team: 'away' | 'home'; idx1: number; idx2: number };

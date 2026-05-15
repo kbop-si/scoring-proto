@@ -1,3 +1,4 @@
+import { useRef, useState } from 'react';
 import type { GameState, Base, BaseTargetState, Runner } from '../types';
 import { BASE_XY, FPOS_XY } from '../data/constants';
 
@@ -18,6 +19,7 @@ interface Props {
   onBatterRightClick?: () => void; // 스위치 타자 좌/우 토글 (hitType=3 만 의미)
   onChainPendingClick?: () => void;
   onChainEnd?: () => void;
+  onFieldPosSwap?: (fromPos: number, toPos: number) => void;
 }
 
 function getNextBases(from: string): string[] {
@@ -44,7 +46,12 @@ export default function Diamond({
   onBatterRightClick,
   onChainPendingClick,
   onChainEnd,
+  onFieldPosSwap,
 }: Props) {
+  // 수비 위치 드래그 — drag start/over 사이에 React 재렌더 전에 dragover 가 fire 되면
+  // state-based closure 가 stale 해져 preventDefault 누락. ref 로 동기 읽기.
+  const posDragFromRef = useRef<number | null>(null);
+  const [posDragOver, setPosDragOver] = useState<number | null>(null);
   const curLU = G.half === 'top' ? G.awayLineup : G.homeLineup;
   const defLU = G.half === 'top' ? G.homeLineup : G.awayLineup;
   const batter = curLU[G.curBatterOrder - 1];
@@ -200,6 +207,65 @@ export default function Diamond({
             );
           })}
         </svg>
+
+        {/* 수비수 드래그 오버레이 — 원형 (P=1, D=0 제외) */}
+        {onFieldPosSwap &&
+          defLU
+            .filter((p) => p.pos >= 2 && p.pos <= 9)
+            .map((p) => {
+              const fp = FPOS_XY[p.pos];
+              if (!fp) return null;
+              const isOver = posDragOver === p.pos;
+              // 텍스트 라벨(번호+이름) 영역에 맞춰 컨테이너 비례로
+              const sizePct = p.pos === 2 ? 22 : 18;
+              return (
+                <div
+                  key={`pos-drag-${p.pos}`}
+                  draggable
+                  onDragStart={(e) => {
+                    e.dataTransfer.effectAllowed = 'move';
+                    e.dataTransfer.setData('text/plain', String(p.pos));
+                    posDragFromRef.current = p.pos;
+                  }}
+                  onDragOver={(e) => {
+                    const from = posDragFromRef.current;
+                    if (from !== null && from !== p.pos) {
+                      e.preventDefault();
+                      e.dataTransfer.dropEffect = 'move';
+                      if (posDragOver !== p.pos) setPosDragOver(p.pos);
+                    }
+                  }}
+                  onDragLeave={() => setPosDragOver(null)}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    const from =
+                      posDragFromRef.current ?? Number(e.dataTransfer.getData('text/plain'));
+                    if (from && from !== p.pos) onFieldPosSwap(from, p.pos);
+                    posDragFromRef.current = null;
+                    setPosDragOver(null);
+                  }}
+                  onDragEnd={() => {
+                    posDragFromRef.current = null;
+                    setPosDragOver(null);
+                  }}
+                  title={`${p.num} ${p.name} (수비 ${p.pos}) — 드래그로 위치 교환`}
+                  style={{
+                    position: 'absolute',
+                    left: `calc(${pct(fp.x)} - ${sizePct / 2}%)`,
+                    top: `calc(${pct(fp.y)} - ${sizePct / 2}%)`,
+                    width: `${sizePct}%`,
+                    height: `${sizePct}%`,
+                    borderRadius: '50%',
+                    cursor: 'grab',
+                    border: isOver ? `2px solid ${SUB_COLOR}` : 'none',
+                    background: isOver ? 'rgba(251, 191, 36, 0.35)' : 'transparent',
+                    zIndex: 5,
+                    userSelect: 'none',
+                    WebkitUserSelect: 'none',
+                  }}
+                />
+              );
+            })}
 
         {/* Batter dot — hitType 1(우타)=왼쪽, 2(좌타)=오른쪽, 3(스위치)=좌/우 토글 가능
             현재 셀의 batterSide override 가 있으면 그 값으로, 없으면 hitType 기본값 */}

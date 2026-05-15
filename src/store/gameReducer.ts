@@ -2732,6 +2732,54 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
       return { ...state, gameDecisions: action.decisions };
     }
 
+    case 'SWAP_FIELD_POS': {
+      const luKey = action.team === 'away' ? 'awayLineup' : 'homeLineup';
+      const lu = [...state[luKey]];
+      const { idx1, idx2 } = action;
+      if (idx1 === idx2 || idx1 < 0 || idx2 < 0 || idx1 >= lu.length || idx2 >= lu.length)
+        return state;
+      const p1 = lu[idx1];
+      const p2 = lu[idx2];
+      // P(pos=1)/D(pos=0) 는 swap 대상 제외
+      if (p1.pos === 1 || p2.pos === 1 || p1.pos === 0 || p2.pos === 0) return state;
+      // pos 교환
+      lu[idx1] = { ...p1, pos: p2.pos };
+      lu[idx2] = { ...p2, pos: p1.pos };
+      const newSubs = [
+        {
+          inning: state.inning,
+          half: state.half,
+          side: action.team,
+          kind: 'D' as const,
+          pos: p2.pos,
+          newName: p1.name,
+          newNum: p1.num,
+          oldName: p1.name,
+          oldNum: p1.num,
+          order: p1.order,
+          atOrder: state.curBatterOrder,
+        },
+        {
+          inning: state.inning,
+          half: state.half,
+          side: action.team,
+          kind: 'D' as const,
+          pos: p1.pos,
+          newName: p2.name,
+          newNum: p2.num,
+          oldName: p2.name,
+          oldNum: p2.num,
+          order: p2.order,
+          atOrder: state.curBatterOrder,
+        },
+      ];
+      return {
+        ...state,
+        [luKey]: lu,
+        substitutions: [...state.substitutions, ...newSubs],
+      };
+    }
+
     default:
       return state;
   }

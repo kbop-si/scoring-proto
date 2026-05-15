@@ -134,6 +134,11 @@ export default function GameScreen({ setup, onEnd }: Props) {
   // 라인업 드래그 상태 — 드래그 중인 (team, lineup array index)
   const [luDrag, setLuDrag] = useState<{ team: 'away' | 'home'; idx: number } | null>(null);
   const [luDragOver, setLuDragOver] = useState<{ team: 'away' | 'home'; idx: number } | null>(null);
+  // 수비 위치 드래그 상태 — pos swap
+  const [posDrag, setPosDrag] = useState<{ team: 'away' | 'home'; idx: number } | null>(null);
+  const [posDragOver, setPosDragOver] = useState<{ team: 'away' | 'home'; idx: number } | null>(
+    null
+  );
   const [gameEndOpen, setGameEndOpen] = useState(false);
 
   useEffect(() => {
@@ -1294,6 +1299,14 @@ export default function GameScreen({ setup, onEnd }: Props) {
                     setChainTransit(null);
                     setChainCausedBy(null);
                   }}
+                  onFieldPosSwap={(fromPos, toPos) => {
+                    const team: 'away' | 'home' = G.half === 'top' ? 'home' : 'away';
+                    const lu = team === 'away' ? G.awayLineup : G.homeLineup;
+                    const idx1 = lu.findIndex((p) => p.pos === fromPos);
+                    const idx2 = lu.findIndex((p) => p.pos === toPos);
+                    if (idx1 < 0 || idx2 < 0) return;
+                    dispatch({ type: 'SWAP_FIELD_POS', team, idx1, idx2 });
+                  }}
                 />
               </div>
               <div className="lineup-section">
@@ -1370,8 +1383,12 @@ export default function GameScreen({ setup, onEnd }: Props) {
                             luDragOver?.team === 'away' && luDragOver?.idx === aLuIdx;
                           const isDragOverH =
                             luDragOver?.team === 'home' && luDragOver?.idx === hLuIdx;
-                          // 팀별 드래그 핸들러 묶음 — 같은 행의 3개 셀(타순/수비/선수명)에 spread
-                          const makeDragProps = (
+                          const isPosDragOverA =
+                            posDragOver?.team === 'away' && posDragOver?.idx === aLuIdx;
+                          const isPosDragOverH =
+                            posDragOver?.team === 'home' && posDragOver?.idx === hLuIdx;
+                          // 타순/선수명 셀 드래그 — 타순 swap
+                          const makeOrderDragProps = (
                             team: 'away' | 'home',
                             player: typeof a,
                             luIdx: number
@@ -1397,16 +1414,57 @@ export default function GameScreen({ setup, onEnd }: Props) {
                               setLuDragOver(null);
                             },
                           });
-                          const aDrag = makeDragProps('away', a, aLuIdx);
-                          const hDrag = makeDragProps('home', h, hLuIdx);
+                          // 수비 셀 드래그 — pos swap (P/D 제외)
+                          const makePosDragProps = (
+                            team: 'away' | 'home',
+                            player: typeof a,
+                            luIdx: number
+                          ) => ({
+                            draggable: !!player && player.pos > 1,
+                            onDragStart: () => player && setPosDrag({ team, idx: luIdx }),
+                            onDragOver: (e: React.DragEvent) => {
+                              if (posDrag?.team === team && player && player.pos > 1) {
+                                e.preventDefault();
+                                setPosDragOver({ team, idx: luIdx });
+                              }
+                            },
+                            onDragLeave: () => setPosDragOver(null),
+                            onDrop: () => {
+                              if (
+                                posDrag?.team === team &&
+                                player &&
+                                player.pos > 1 &&
+                                posDrag.idx !== luIdx
+                              ) {
+                                dispatch({
+                                  type: 'SWAP_FIELD_POS',
+                                  team,
+                                  idx1: posDrag.idx,
+                                  idx2: luIdx,
+                                });
+                              }
+                              setPosDrag(null);
+                              setPosDragOver(null);
+                            },
+                            onDragEnd: () => {
+                              setPosDrag(null);
+                              setPosDragOver(null);
+                            },
+                          });
+                          const aDrag = makeOrderDragProps('away', a, aLuIdx);
+                          const hDrag = makeOrderDragProps('home', h, hLuIdx);
+                          const aPosDrag = makePosDragProps('away', a, aLuIdx);
+                          const hPosDrag = makePosDragProps('home', h, hLuIdx);
                           const aBg = isDragOverA ? { background: '#fef9c3' } : undefined;
                           const hBg = isDragOverH ? { background: '#fef9c3' } : undefined;
+                          const aPosBg = isPosDragOverA ? { background: '#fef9c3' } : undefined;
+                          const hPosBg = isPosDragOverH ? { background: '#fef9c3' } : undefined;
                           return (
                             <tr key={i} className={rowCls}>
                               <td {...aDrag} style={aBg}>
                                 {a?.order ?? ''}
                               </td>
-                              <td {...aDrag} style={aBg}>
+                              <td {...aPosDrag} style={aPosBg}>
                                 {a ? (a.pos === 0 ? 'D' : String(a.pos)) : ''}
                               </td>
                               <td {...aDrag} style={{ textAlign: 'left', paddingLeft: 4, ...aBg }}>
@@ -1415,7 +1473,7 @@ export default function GameScreen({ setup, onEnd }: Props) {
                               <td {...hDrag} style={hBg}>
                                 {h?.order ?? ''}
                               </td>
-                              <td {...hDrag} style={hBg}>
+                              <td {...hPosDrag} style={hPosBg}>
                                 {h ? (h.pos === 0 ? 'D' : String(h.pos)) : ''}
                               </td>
                               <td {...hDrag} style={{ textAlign: 'left', paddingLeft: 4, ...hBg }}>
