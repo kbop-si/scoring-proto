@@ -1906,9 +1906,7 @@ export default function ScoreSheet({ G, onSelCell }: Props) {
     setViewHalf(G.half);
   }, [G.half]);
 
-  const lu = (viewHalf === 'top' ? G.awayLineup : G.homeLineup)
-    .filter((p) => p.order > 0)
-    .sort((a, b) => a.order - b.order);
+  const lu = (viewHalf === 'top' ? G.awayLineup : G.homeLineup).filter((p) => p.order > 0);
   const half = viewHalf;
   // 동명이인 검출 — 현재 viewHalf 팀의 라인업+벤치 통합
   const sheetDupes = getDuplicateNames([

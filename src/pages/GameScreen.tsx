@@ -131,9 +131,6 @@ export default function GameScreen({ setup, onEnd }: Props) {
 
   const [UI, setUI] = useState<UIState>(initialUI);
   const [showSheet, setShowSheet] = useState(false);
-  // 라인업 드래그 상태 — 드래그 중인 (team, lineup array index)
-  const [luDrag, setLuDrag] = useState<{ team: 'away' | 'home'; idx: number } | null>(null);
-  const [luDragOver, setLuDragOver] = useState<{ team: 'away' | 'home'; idx: number } | null>(null);
   // 수비 위치 드래그 상태 — pos swap
   const [posDrag, setPosDrag] = useState<{ team: 'away' | 'home'; idx: number } | null>(null);
   const [posDragOver, setPosDragOver] = useState<{ team: 'away' | 'home'; idx: number } | null>(
@@ -1347,73 +1344,17 @@ export default function GameScreen({ setup, onEnd }: Props) {
                             : isCurHome
                               ? 'bat-cur-home'
                               : '';
-                          // 라인업 array index 조회 (drag 키)
+                          // 라인업 array index 조회 (수비 위치 swap 키)
                           const aLuIdx = a
                             ? G.awayLineup.findIndex((p) => p.order === a.order)
                             : -1;
                           const hLuIdx = h
                             ? G.homeLineup.findIndex((p) => p.order === h.order)
                             : -1;
-                          // 드래그 핸들러 빌더
-                          const swapOrders = (
-                            team: 'away' | 'home',
-                            srcIdx: number,
-                            dstIdx: number
-                          ) => {
-                            if (srcIdx < 0 || dstIdx < 0 || srcIdx === dstIdx) return;
-                            const lu = team === 'away' ? G.awayLineup : G.homeLineup;
-                            const srcOrder = lu[srcIdx].order;
-                            const dstOrder = lu[dstIdx].order;
-                            // 타순이 0(투수) 이면 swap 안 함 — 타석 1~9 끼리만
-                            if (srcOrder === 0 || dstOrder === 0) return;
-                            dispatch({
-                              type: 'CHANGE_LU_ORDER',
-                              team,
-                              idx: srcIdx,
-                              order: dstOrder,
-                            });
-                            dispatch({
-                              type: 'CHANGE_LU_ORDER',
-                              team,
-                              idx: dstIdx,
-                              order: srcOrder,
-                            });
-                          };
-                          const isDragOverA =
-                            luDragOver?.team === 'away' && luDragOver?.idx === aLuIdx;
-                          const isDragOverH =
-                            luDragOver?.team === 'home' && luDragOver?.idx === hLuIdx;
                           const isPosDragOverA =
                             posDragOver?.team === 'away' && posDragOver?.idx === aLuIdx;
                           const isPosDragOverH =
                             posDragOver?.team === 'home' && posDragOver?.idx === hLuIdx;
-                          // 타순/선수명 셀 드래그 — 타순 swap
-                          const makeOrderDragProps = (
-                            team: 'away' | 'home',
-                            player: typeof a,
-                            luIdx: number
-                          ) => ({
-                            draggable: !!player && player.order > 0,
-                            onDragStart: () => player && setLuDrag({ team, idx: luIdx }),
-                            onDragOver: (e: React.DragEvent) => {
-                              if (luDrag?.team === team) {
-                                e.preventDefault();
-                                setLuDragOver({ team, idx: luIdx });
-                              }
-                            },
-                            onDragLeave: () => setLuDragOver(null),
-                            onDrop: () => {
-                              if (luDrag?.team === team && player) {
-                                swapOrders(team, luDrag.idx, luIdx);
-                              }
-                              setLuDrag(null);
-                              setLuDragOver(null);
-                            },
-                            onDragEnd: () => {
-                              setLuDrag(null);
-                              setLuDragOver(null);
-                            },
-                          });
                           // 수비 셀 드래그 — pos swap (P/D 제외)
                           const makePosDragProps = (
                             team: 'away' | 'home',
@@ -1451,34 +1392,22 @@ export default function GameScreen({ setup, onEnd }: Props) {
                               setPosDragOver(null);
                             },
                           });
-                          const aDrag = makeOrderDragProps('away', a, aLuIdx);
-                          const hDrag = makeOrderDragProps('home', h, hLuIdx);
                           const aPosDrag = makePosDragProps('away', a, aLuIdx);
                           const hPosDrag = makePosDragProps('home', h, hLuIdx);
-                          const aBg = isDragOverA ? { background: '#fef9c3' } : undefined;
-                          const hBg = isDragOverH ? { background: '#fef9c3' } : undefined;
                           const aPosBg = isPosDragOverA ? { background: '#fef9c3' } : undefined;
                           const hPosBg = isPosDragOverH ? { background: '#fef9c3' } : undefined;
                           return (
                             <tr key={i} className={rowCls}>
-                              <td {...aDrag} style={aBg}>
-                                {a?.order ?? ''}
-                              </td>
+                              <td>{a?.order ?? ''}</td>
                               <td {...aPosDrag} style={aPosBg}>
                                 {a ? (a.pos === 0 ? 'D' : String(a.pos)) : ''}
                               </td>
-                              <td {...aDrag} style={{ textAlign: 'left', paddingLeft: 4, ...aBg }}>
-                                {a?.name ?? ''}
-                              </td>
-                              <td {...hDrag} style={hBg}>
-                                {h?.order ?? ''}
-                              </td>
+                              <td style={{ textAlign: 'left', paddingLeft: 4 }}>{a?.name ?? ''}</td>
+                              <td>{h?.order ?? ''}</td>
                               <td {...hPosDrag} style={hPosBg}>
                                 {h ? (h.pos === 0 ? 'D' : String(h.pos)) : ''}
                               </td>
-                              <td {...hDrag} style={{ textAlign: 'left', paddingLeft: 4, ...hBg }}>
-                                {h?.name ?? ''}
-                              </td>
+                              <td style={{ textAlign: 'left', paddingLeft: 4 }}>{h?.name ?? ''}</td>
                             </tr>
                           );
                         }
