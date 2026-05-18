@@ -83,7 +83,7 @@ export default function CreateScreen({ setup, onConfirm, onBack }: Props) {
             padding: '12px 16px',
           }}
         >
-          경기 생성
+          경기게시
         </div>
         <div className="modal-body" style={{ padding: '18px 22px 14px 22px' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>

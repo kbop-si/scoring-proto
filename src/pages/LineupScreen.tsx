@@ -386,12 +386,6 @@ export default function LineupScreen({ setup, onUpdateLineups, onStart }: Props)
               </tbody>
             </table>
             <div style={{ marginTop: 10, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-              <button
-                style={smallBtn(false)}
-                onClick={() => benchSelIdx !== null && handleAddBench(benchSelIdx, luSelIdx)}
-              >
-                선수추가
-              </button>
               <button style={smallBtn(false)} onClick={handleAddPitcher}>
                 투수타석
               </button>
@@ -432,7 +426,7 @@ export default function LineupScreen({ setup, onUpdateLineups, onStart }: Props)
           </div>
 
           <div className="lu-pane" style={panelStyle}>
-            <div style={sectionTitleStyle}>벤치</div>
+            <div style={sectionTitleStyle}>엔트리</div>
             <table className="lu-tbl" style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
                 <tr>

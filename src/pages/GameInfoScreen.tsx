@@ -244,7 +244,7 @@ export default function GameInfoScreen({
             padding: '11px 16px',
           }}
         >
-          게임정보입력
+          경기 정보
         </div>
         <div
           style={{ padding: '16px 20px 12px', overflowY: 'auto', maxHeight: 'calc(100vh - 100px)' }}
@@ -252,11 +252,11 @@ export default function GameInfoScreen({
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 20 }}>
             {/* 1열 */}
             <div>
-              <div style={sectionTitleStyle}>명칭</div>
+              <div style={sectionTitleStyle}>기본정보</div>
               <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: 14 }}>
                 <tbody>
                   <tr>
-                    <td style={tdLabel}>게임키</td>
+                    <td style={tdLabel}>경기키</td>
                     <td style={tdInput}>
                       <input readOnly value={gameKey} style={readonlySt} />
                     </td>

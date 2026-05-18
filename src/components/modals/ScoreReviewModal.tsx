@@ -108,7 +108,7 @@ export default function ScoreReviewModal({
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
               <thead>
                 <tr>
-                  {['#', '득점 주자', '시점 타자', '자책 여부', '실점 투수'].map((h) => (
+                  {['', '득점 주자', '시점 타자', '자책 여부', '실점 투수'].map((h) => (
                     <th
                       key={h}
                       style={{
