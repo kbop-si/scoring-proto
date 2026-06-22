@@ -2573,7 +2573,15 @@ export default function ScoreSheet({ G, onSelCell }: Props) {
                           style={{
                             minWidth: 80,
                             padding: '1px 4px',
+                            cursor: 'pointer',
                             ...dashedBottom,
+                          }}
+                          onClick={() => {
+                            const lastKey = [...innCols]
+                              .reverse()
+                              .map(({ inn, app }) => cellKey(inn, ord, app, half))
+                              .find((k) => !!G.cells[k]?.result);
+                            if (lastKey) onSelCell(lastKey);
                           }}
                         >
                           {layer ? (

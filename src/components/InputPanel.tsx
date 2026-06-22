@@ -15,8 +15,9 @@ interface Props {
   onPitcherChange: () => void;
   onNextBatter: () => void;
   onNextInning: () => void;
-  onUndo: () => void;
+  onRevert: () => void;
   onClear: () => void;
+  onClearInning: () => void;
   onOverflow: () => void;
   onPlaceBatter: () => void;
   onEnd: () => void;
@@ -36,8 +37,9 @@ export default function InputPanel({
   onPitcherLeave,
   onNextBatter,
   onNextInning,
-  onUndo,
+  onRevert,
   onClear,
+  onClearInning,
   onPlaceBatter,
   onEnd,
   onToast,
@@ -241,11 +243,14 @@ export default function InputPanel({
           <button className="act-btn a-inn" onClick={onNextInning}>
             다음이닝
           </button>
-          <button className="act-btn a-undo" onClick={onUndo}>
+          <button className="act-btn a-revert" onClick={onRevert}>
             되돌리기
           </button>
           <button className="act-btn a-clear" onClick={onClear}>
             타석지우기
+          </button>
+          <button className="act-btn a-clear" onClick={onClearInning}>
+            이닝지우기
           </button>
           <button
             className="act-btn"

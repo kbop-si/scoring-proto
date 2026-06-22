@@ -406,7 +406,10 @@ export type GameAction =
       insertIndex?: number;
       deflection?: DeflectionInfo;
     }
-  | { type: 'UNDO' }
+  | { type: 'REVERT' }
+  | { type: 'REVERT_TO'; cellKey: string }
+  | { type: 'DELETE_INNING'; inning: number }
+  | { type: 'EDIT_PITCH_SEQ'; cellKey: string; pitches: PitchType[] }
   | { type: 'SEL_CELL'; key: string }
   | {
       type: 'SUBST';
@@ -449,6 +452,7 @@ export type GameAction =
     }
   | { type: 'SET_GAME_INFO'; awayTeam: string; homeTeam: string; date: string; league: string }
   | { type: 'INIT_GAME'; setup: GameSetup }
+  | { type: 'LOAD_GAME'; state: GameState }
   | { type: 'GAME_EVENT'; eventType: 'mound' | 'batter_timeout' | 'pitcher_leave'; detail?: string }
   | { type: 'CELL_NOTE'; note: string }
   | { type: 'EDIT_PITCH'; cellKey: string; entryIdx: number; newPitch: PitchType }

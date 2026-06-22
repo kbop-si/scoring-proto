@@ -1,6 +1,7 @@
 import { useReducer, useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import type {
   GameSetup,
+  GameState,
   UIState,
   Base,
   BaseTargetState,
@@ -131,6 +132,7 @@ export default function GameScreen({ setup, onEnd }: Props) {
 
   const [UI, setUI] = useState<UIState>(initialUI);
   const [showSheet, setShowSheet] = useState(false);
+  const [pendingRevertKey, setPendingRevertKey] = useState<string | null>(null);
   // 수비 위치 드래그 상태 — pos swap
   const [posDrag, setPosDrag] = useState<{ team: 'away' | 'home'; idx: number } | null>(null);
   const [posDragOver, setPosDragOver] = useState<{ team: 'away' | 'home'; idx: number } | null>(
@@ -196,7 +198,7 @@ export default function GameScreen({ setup, onEnd }: Props) {
         seenForceHomeRef.current.add(k);
         trigger = { inning: c.inning, half: c.half };
       } else if (!hasForceHome && seenForceHomeRef.current.has(k)) {
-        // UNDO 등으로 force-home 이 사라진 경우 ref 도 정리
+        // REVERT 등으로 force-home 이 사라진 경우 ref 도 정리
         seenForceHomeRef.current.delete(k);
       }
     });
@@ -290,6 +292,31 @@ export default function GameScreen({ setup, onEnd }: Props) {
     clearTimeout(toastTimerRef.current);
     toastTimerRef.current = setTimeout(() => setToastVisible(false), 2200);
   }, []);
+
+  // ── 로컬 저장/불러오기 (백엔드 없이 브라우저 localStorage 스냅샷) ─────────────
+  const handleLocalSave = useCallback(() => {
+    try {
+      localStorage.setItem('kbo_saved_game', JSON.stringify(G));
+      showToast('로컬에 저장했습니다');
+    } catch {
+      showToast('저장 실패 (저장 공간 부족)');
+    }
+  }, [G, showToast]);
+
+  const handleLocalLoad = useCallback(() => {
+    const raw = localStorage.getItem('kbo_saved_game');
+    if (!raw) {
+      showToast('저장된 기록이 없습니다');
+      return;
+    }
+    try {
+      const state = JSON.parse(raw) as GameState;
+      dispatch({ type: 'LOAD_GAME', state });
+      showToast('저장된 기록을 불러왔습니다');
+    } catch {
+      showToast('불러오기 실패 (손상된 데이터)');
+    }
+  }, [dispatch, showToast]);
 
   const clearBaseTargets = useCallback(() => {
     setBaseTargets({ active: false, fromBase: '', onSelect: null });
@@ -1156,20 +1183,33 @@ export default function GameScreen({ setup, onEnd }: Props) {
     setChainBatterOpen(false);
   }, []);
 
-  const handleUndo = useCallback(() => {
+  const handleRevert = useCallback(() => {
     if (!G.history.length) {
       showToast('되돌릴 내용 없음');
       return;
     }
-    dispatch({ type: 'UNDO' });
+    dispatch({ type: 'REVERT' });
     resetChainUI();
     setUI((p) => ({ ...p, selRunnerBase: null }));
   }, [G.history.length, dispatch, showToast, resetChainUI]);
 
   const handleClear = useCallback(() => {
-    dispatch({ type: 'CLEAR_CELL' });
-    resetChainUI();
-  }, [dispatch, resetChainUI]);
+    const cell = G.cells[G.selCellKey];
+    if (cell?.result) {
+      setPendingRevertKey(G.selCellKey);
+    } else {
+      dispatch({ type: 'CLEAR_CELL' });
+      resetChainUI();
+    }
+  }, [G.cells, G.selCellKey, dispatch, resetChainUI]);
+
+  const handleClearInning = useCallback(() => {
+    if (!G.history.length) {
+      showToast('되돌릴 내용 없음');
+      return;
+    }
+    setPendingRevertKey(`__inning__${G.inning}`);
+  }, [G.inning, G.history.length, showToast]);
 
   const handleOverflow = useCallback(() => {
     if (!guardThreeOut()) return;
@@ -1197,12 +1237,12 @@ export default function GameScreen({ setup, onEnd }: Props) {
       else if (e.key === 'i' || e.key === 'I') handleNextInning();
       else if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
         e.preventDefault();
-        handleUndo();
+        handleRevert();
       }
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [handlePitch, handleNextBatter, handleNextInning, handleUndo]);
+  }, [handlePitch, handleNextBatter, handleNextInning, handleRevert]);
 
   // ── Lineup helpers for main view ─────────────────────────────────────────
   const awayBatters = G.awayLineup.filter((p) => p.order > 0).sort((a, b) => a.order - b.order);
@@ -1224,11 +1264,20 @@ export default function GameScreen({ setup, onEnd }: Props) {
             window.open('?sheet=1', '_blank', 'noopener,noreferrer');
           }}
           onOpenScoreReview={() => setScoreReviewTarget({ inning: G.inning, half: G.half })}
+          onLocalSave={handleLocalSave}
+          onLocalLoad={handleLocalLoad}
         />
 
         {showSheet ? (
           <div className="game-body view-sheet">
-            <ScoreSheet G={G} onSelCell={(key) => dispatch({ type: 'SEL_CELL', key })} />
+            <ScoreSheet
+              G={G}
+              onSelCell={(key) => {
+                dispatch({ type: 'SEL_CELL', key });
+                const cell = G.cells[key];
+                if (cell?.result) setPendingRevertKey(key);
+              }}
+            />
             <PitcherLogPanel G={G} onEditRow={handleEditRow} />
           </div>
         ) : (
@@ -1458,8 +1507,9 @@ export default function GameScreen({ setup, onEnd }: Props) {
               onPitcherChange={openPitcherChange}
               onNextBatter={handleNextBatter}
               onNextInning={handleNextInning}
-              onUndo={handleUndo}
+              onRevert={handleRevert}
               onClear={handleClear}
+              onClearInning={handleClearInning}
               onOverflow={handleOverflow}
               onPlaceBatter={handlePlaceBatter}
               onEnd={handleEnd}
@@ -1521,6 +1571,9 @@ export default function GameScreen({ setup, onEnd }: Props) {
         onSaveBatOutCode={(cellKey, newResult, newBallType) =>
           dispatch({ type: 'EDIT_BAT_OUT_CODE', cellKey, newResult, newBallType })
         }
+        onSavePitchSeq={(cellKey, pitches) =>
+          dispatch({ type: 'EDIT_PITCH_SEQ', cellKey, pitches })
+        }
       />
       <BatAdvModal
         open={UI.batAdvOpen}
@@ -1568,6 +1621,82 @@ export default function GameScreen({ setup, onEnd }: Props) {
         }}
         onClose={() => setGameEndOpen(false)}
       />
+
+      {pendingRevertKey &&
+        (() => {
+          const isInning = pendingRevertKey.startsWith('__inning__');
+          const inningNum = isInning ? Number(pendingRevertKey.replace('__inning__', '')) : null;
+          const msg = isInning
+            ? `${inningNum}회 이닝 전체가 삭제됩니다. 계속하시겠습니까?`
+            : '이 타석 이후의 모든 기록이 삭제됩니다. 계속하시겠습니까?';
+          const title = isInning ? '이닝 삭제' : '타석 삭제';
+          const onConfirm = () => {
+            if (isInning && inningNum !== null) {
+              dispatch({ type: 'DELETE_INNING', inning: inningNum });
+            } else {
+              dispatch({ type: 'REVERT_TO', cellKey: pendingRevertKey });
+            }
+            resetChainUI();
+            setPendingRevertKey(null);
+          };
+          return (
+            <div
+              style={{
+                position: 'fixed',
+                inset: 0,
+                background: 'rgba(0,0,0,0.45)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                zIndex: 2000,
+              }}
+              onClick={() => setPendingRevertKey(null)}
+            >
+              <div
+                style={{
+                  background: '#fff',
+                  borderRadius: 8,
+                  padding: '20px 24px',
+                  maxWidth: 340,
+                  boxShadow: '0 10px 30px rgba(0,0,0,0.25)',
+                }}
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 8 }}>{title}</div>
+                <div style={{ fontSize: 13, color: '#374151', marginBottom: 16 }}>{msg}</div>
+                <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                  <button
+                    onClick={() => setPendingRevertKey(null)}
+                    style={{
+                      padding: '6px 16px',
+                      fontSize: 13,
+                      border: '1px solid #cbd5e1',
+                      background: '#fff',
+                      borderRadius: 4,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    취소
+                  </button>
+                  <button
+                    onClick={onConfirm}
+                    style={{
+                      padding: '6px 16px',
+                      fontSize: 13,
+                      border: '1px solid #dc2626',
+                      background: '#dc2626',
+                      color: '#fff',
+                      borderRadius: 4,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    삭제
+                  </button>
+                </div>
+              </div>
+            </div>
+          );
+        })()}
 
       <MoundVisitModal
         open={moundOpen}

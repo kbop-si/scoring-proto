@@ -428,6 +428,13 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
       };
     }
 
+    // ── LOAD_GAME ────────────────────────────────────────────────────────────
+    // 로컬 저장본 복원: 저장된 state 스냅샷을 통째로 교체.
+    // (idempotent — 같은 페이로드를 두 번 보내도 동일 결과)
+    case 'LOAD_GAME': {
+      return action.state;
+    }
+
     // ── SET_GAME_INFO ────────────────────────────────────────────────────────
     case 'SET_GAME_INFO': {
       return {
@@ -1624,7 +1631,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
 
       const runners = { ...state.runners, [dest]: runner };
       const next = nextBatterState({ ...state, runners });
-      // PLACE_BATTER 는 BAT_ADV 의 자동 후속 단계라 별도 history 안 쌓음 (UNDO 시 BAT_ADV 한 번으로 같이 풀리도록)
+      // PLACE_BATTER 는 BAT_ADV 의 자동 후속 단계라 별도 history 안 쌓음 (REVERT 시 BAT_ADV 한 번으로 같이 풀리도록)
       return { ...state, runners, ...next, pendingBatter: null };
     }
 
@@ -2011,7 +2018,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
         popped = true;
       }
 
-      // 타깃과 매칭되는 snapshot 이 없으면 일반 UNDO 한 번으로 폴백
+      // 타깃과 매칭되는 snapshot 이 없으면 일반 REVERT 한 번으로 폴백
       if (!popped) {
         history = [...state.history];
         const top = history.pop()!;
@@ -2049,12 +2056,48 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
       return { ...state, cells, selCellKey: nk };
     }
 
-    // ── UNDO ─────────────────────────────────────────────────────────────────
-    case 'UNDO': {
+    // ── REVERT ───────────────────────────────────────────────────────────────
+    case 'REVERT': {
       if (!state.history.length) return state;
       const history = [...state.history];
       const prev = history.pop()!;
       return { ...state, ...prev, history };
+    }
+
+    // ── REVERT_TO — 특정 타석 이전 상태로 복원 ──────────────────────────────────
+    case 'REVERT_TO': {
+      if (!state.history.length) return state;
+      const [targetHalf, targetInning, targetOrder] = parseKey(action.cellKey);
+      let history = [...state.history];
+      let result = state;
+      while (history.length > 0) {
+        const top = history[history.length - 1];
+        history = history.slice(0, -1);
+        result = { ...result, ...top, history };
+        const isBefore =
+          top.inning < targetInning ||
+          (top.inning === targetInning && top.half === 'top' && targetHalf === 'bottom') ||
+          (top.inning === targetInning &&
+            top.half === targetHalf &&
+            top.curBatterOrder < targetOrder);
+        if (isBefore) break;
+      }
+      return result;
+    }
+
+    // ── DELETE_INNING — 해당 이닝 전체 삭제 ──────────────────────────────────
+    case 'DELETE_INNING': {
+      if (!state.history.length) return state;
+      const { inning } = action;
+      let history = [...state.history];
+      let result = state;
+      while (history.length > 0) {
+        const top = history[history.length - 1];
+        history = history.slice(0, -1);
+        result = { ...result, ...top, history };
+        if (top.inning < inning) break;
+      }
+      return result;
     }
 
     // ── SUBST ────────────────────────────────────────────────────────────────
@@ -2503,6 +2546,81 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
           ...state.cells,
           [ck]: { ...cell, eventLog: newEventLog, pitches: newPitches },
         },
+        history: saveHist(state),
+      };
+    }
+
+    // ── EDIT_PITCH_SEQ — 투구 시퀀스 전체 교체 ──────────────────────────────
+    case 'EDIT_PITCH_SEQ': {
+      const { cellKey: ck, pitches: newPitches } = action;
+      const cell = state.cells[ck];
+      if (!cell) return state;
+
+      // eventLog의 pitch 항목을 새 시퀀스로 교체 (비-pitch 항목 위치 유지)
+      let newPitchIdx = 0;
+      const oldPitchCount = cell.pitches.length;
+      const newPitchCount = newPitches.length;
+      // 기존 pitch 항목 수와 새 pitch 수 중 적은 쪽까지 교체
+      const replaceCount = Math.min(oldPitchCount, newPitchCount);
+      let replaced = 0;
+      let removals = oldPitchCount - newPitchCount; // 제거할 pitch 항목 수 (양수면 제거)
+      const eventLog = cell.eventLog ?? [];
+      const newEventLog: typeof cell.eventLog = [];
+      for (const e of eventLog) {
+        if (e.kind === 'pitch') {
+          if (replaced < replaceCount) {
+            newEventLog.push({ kind: 'pitch', pitch: newPitches[newPitchIdx++] });
+            replaced++;
+          } else if (removals > 0) {
+            removals--; // 초과 pitch 항목 제거
+          }
+        } else {
+          newEventLog.push(e);
+        }
+      }
+      // 새 pitch가 더 많으면 뒤에 추가
+      while (newPitchIdx < newPitchCount) {
+        newEventLog.push({ kind: 'pitch', pitch: newPitches[newPitchIdx++] });
+      }
+
+      // 현재 진행 중인 PA면 볼·스트라이크 카운트 재계산
+      const isCurrentPA = ck === state.selCellKey && !cell.result;
+      let balls = state.balls;
+      let strikes = state.strikes;
+      if (isCurrentPA) {
+        balls = 0;
+        strikes = 0;
+        for (const p of newPitches) {
+          switch (p) {
+            case 'S':
+            case 'SW':
+            case 'BS':
+            case 'PC3':
+              strikes++;
+              break;
+            case 'F':
+            case 'FE':
+              if (strikes < 2) strikes++;
+              break;
+            case 'BF':
+              strikes++;
+              break;
+            case 'B':
+            case 'PC1':
+            case 'PC2':
+              balls++;
+              break;
+          }
+        }
+        balls = Math.min(balls, 4);
+        strikes = Math.min(strikes, 3);
+      }
+
+      return {
+        ...state,
+        balls,
+        strikes,
+        cells: { ...state.cells, [ck]: { ...cell, pitches: newPitches, eventLog: newEventLog } },
         history: saveHist(state),
       };
     }

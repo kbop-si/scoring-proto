@@ -66,6 +66,7 @@ interface Props {
   onSaveRunnerReason: (cellKey: string, entryIdx: number, newAdvCode: string) => void;
   onSaveBatResultCode: (cellKey: string, newResult: string) => void;
   onSaveBatOutCode: (cellKey: string, newResult: string, newBallType?: '땅' | '뜬' | '라') => void;
+  onSavePitchSeq: (cellKey: string, pitches: PitchType[]) => void;
 }
 
 // 아웃 결과의 prefix 추출 (땅/F/f/L/IF/SF/BU/SH)
@@ -83,6 +84,47 @@ function parseOutResult(result: string): {
   return { prefix: '', fielders: result };
 }
 
+// 투구 시퀀스에서 볼·스트라이크 카운트 계산
+function computeCount(pitches: PitchType[]): { balls: number; strikes: number } {
+  let balls = 0;
+  let strikes = 0;
+  for (const p of pitches) {
+    switch (p) {
+      case 'S':
+      case 'SW':
+      case 'BS':
+      case 'PC3':
+        strikes = Math.min(strikes + 1, 3);
+        break;
+      case 'F':
+      case 'FE':
+        if (strikes < 2) strikes++;
+        break;
+      case 'BF':
+        strikes = Math.min(strikes + 1, 3);
+        break;
+      case 'B':
+      case 'PC1':
+      case 'PC2':
+        balls = Math.min(balls + 1, 4);
+        break;
+    }
+  }
+  return { balls, strikes };
+}
+
+// 결과 타입별 필요 볼·스트라이크 검증
+function validateSeq(pitches: PitchType[], result: string | null): string | null {
+  if (!result) return null;
+  const { balls, strikes } = computeCount(pitches);
+  if (result === 'K' || result === 'KW' || result === 'KE' || result === 'KP') {
+    if (strikes < 3) return `삼진 결과에는 스트라이크가 3개 필요합니다 (현재 ${strikes}개)`;
+  } else if (result === 'B' || result === 'BB') {
+    if (balls < 4) return `볼넷 결과에는 볼이 4개 필요합니다 (현재 ${balls}개)`;
+  }
+  return null;
+}
+
 export default function EditRowModal({
   info,
   onClose,
@@ -91,6 +133,7 @@ export default function EditRowModal({
   onSaveRunnerReason,
   onSaveBatResultCode,
   onSaveBatOutCode,
+  onSavePitchSeq,
 }: Props) {
   // 아웃 편집 state — info가 bat_out_code일 때만 의미 있음
   const initialOut =
@@ -99,12 +142,19 @@ export default function EditRowModal({
       : { prefix: '' as const, fielders: '' };
   const [outPrefix, setOutPrefix] = useState<typeof initialOut.prefix>(initialOut.prefix);
   const [outFielders, setOutFielders] = useState(initialOut.fielders);
+  // pitch_seq 편집 state
+  const [seqPitches, setSeqPitches] = useState<PitchType[]>([]);
+  const [seqError, setSeqError] = useState<string | null>(null);
   // info 바뀌면 state 재설정
   useEffect(() => {
     if (info?.kind === 'bat_out_code') {
       const p = parseOutResult(info.currentResult);
       setOutPrefix(p.prefix);
       setOutFielders(p.fielders);
+    }
+    if (info?.kind === 'pitch_seq') {
+      setSeqPitches([...info.pitches]);
+      setSeqError(null);
     }
   }, [info]);
 
@@ -126,6 +176,14 @@ export default function EditRowModal({
     minWidth: 280,
     maxWidth: 420,
     boxShadow: '0 10px 30px rgba(0,0,0,0.2)',
+  };
+  const arrowBtn: React.CSSProperties = {
+    padding: '1px 5px',
+    fontSize: 11,
+    border: '1px solid #cbd5e1',
+    background: '#fff',
+    borderRadius: 3,
+    cursor: 'pointer',
   };
 
   if (info.kind === 'pitch') {
@@ -450,6 +508,185 @@ export default function EditRowModal({
                 color: '#fff',
                 borderRadius: 4,
                 cursor: outFielders ? 'pointer' : 'not-allowed',
+              }}
+            >
+              저장
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (info.kind === 'pitch_seq') {
+    const FOUL_TYPES: PitchType[] = ['F', 'BF', 'FE'];
+    const moveUp = (i: number) => {
+      if (i === 0) return;
+      const next = [...seqPitches];
+      [next[i - 1], next[i]] = [next[i], next[i - 1]];
+      setSeqPitches(next);
+      setSeqError(null);
+    };
+    const moveDown = (i: number) => {
+      if (i === seqPitches.length - 1) return;
+      const next = [...seqPitches];
+      [next[i], next[i + 1]] = [next[i + 1], next[i]];
+      setSeqPitches(next);
+      setSeqError(null);
+    };
+    const changeType = (i: number, p: PitchType) => {
+      const next = [...seqPitches];
+      next[i] = p;
+      setSeqPitches(next);
+      setSeqError(null);
+    };
+    const remove = (i: number) => {
+      setSeqPitches(seqPitches.filter((_, idx) => idx !== i));
+      setSeqError(null);
+    };
+    const addFoul = (p: PitchType) => {
+      setSeqPitches([...seqPitches, p]);
+      setSeqError(null);
+    };
+    const handleSave = () => {
+      const err = validateSeq(seqPitches, info.result);
+      if (err) {
+        setSeqError(err);
+        return;
+      }
+      onSavePitchSeq(info.cellKey, seqPitches);
+      onClose();
+    };
+    const counts: { b: number; s: number }[] = [];
+    let rb = 0;
+    let rs = 0;
+    for (const p of seqPitches) {
+      switch (p) {
+        case 'S':
+        case 'SW':
+        case 'BS':
+        case 'PC3':
+          rs = Math.min(rs + 1, 3);
+          break;
+        case 'F':
+        case 'FE':
+          if (rs < 2) rs++;
+          break;
+        case 'BF':
+          rs = Math.min(rs + 1, 3);
+          break;
+        case 'B':
+        case 'PC1':
+        case 'PC2':
+          rb = Math.min(rb + 1, 4);
+          break;
+      }
+      counts.push({ b: rb, s: rs });
+    }
+    return (
+      <div style={overlay} onClick={onClose}>
+        <div
+          style={{ ...dialog, minWidth: 340, maxWidth: 480 }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div style={{ fontWeight: 700, marginBottom: 10, fontSize: 14 }}>볼카운트 순서 수정</div>
+          <div style={{ maxHeight: 320, overflowY: 'auto', marginBottom: 8 }}>
+            {seqPitches.map((p, i) => (
+              <div
+                key={i}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 4,
+                  marginBottom: 4,
+                  padding: '3px 4px',
+                  background: '#f8fafc',
+                  borderRadius: 4,
+                }}
+              >
+                <span style={{ width: 20, color: '#94a3b8', fontSize: 11 }}>{i + 1}</span>
+                <select
+                  value={p}
+                  onChange={(e) => changeType(i, e.target.value as PitchType)}
+                  style={{
+                    fontSize: 12,
+                    flex: 1,
+                    padding: '2px 4px',
+                    borderRadius: 3,
+                    border: '1px solid #cbd5e1',
+                  }}
+                >
+                  {PITCH_OPTIONS.map((o) => (
+                    <option key={o.code} value={o.code}>
+                      {o.label}
+                    </option>
+                  ))}
+                </select>
+                <span style={{ fontSize: 11, color: '#64748b', width: 36, textAlign: 'right' }}>
+                  {counts[i].b}B {counts[i].s}S
+                </span>
+                <button onClick={() => moveUp(i)} disabled={i === 0} style={arrowBtn}>
+                  ▲
+                </button>
+                <button
+                  onClick={() => moveDown(i)}
+                  disabled={i === seqPitches.length - 1}
+                  style={arrowBtn}
+                >
+                  ▼
+                </button>
+                <button onClick={() => remove(i)} style={{ ...arrowBtn, color: '#ef4444' }}>
+                  ✕
+                </button>
+              </div>
+            ))}
+          </div>
+          <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
+            {FOUL_TYPES.map((ft) => (
+              <button
+                key={ft}
+                onClick={() => addFoul(ft)}
+                style={{
+                  fontSize: 11,
+                  padding: '3px 8px',
+                  border: '1px solid #92400e',
+                  color: '#92400e',
+                  background: '#fff',
+                  borderRadius: 4,
+                  cursor: 'pointer',
+                }}
+              >
+                + {PITCH_OPTIONS.find((o) => o.code === ft)?.label}
+              </button>
+            ))}
+          </div>
+          {seqError && (
+            <div style={{ fontSize: 11, color: '#ef4444', marginBottom: 6 }}>{seqError}</div>
+          )}
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6 }}>
+            <button
+              onClick={onClose}
+              style={{
+                padding: '4px 12px',
+                fontSize: 12,
+                border: '1px solid #cbd5e1',
+                background: '#fff',
+                borderRadius: 4,
+                cursor: 'pointer',
+              }}
+            >
+              취소
+            </button>
+            <button
+              onClick={handleSave}
+              style={{
+                padding: '4px 12px',
+                fontSize: 12,
+                border: '1px solid #1e40af',
+                background: '#1e40af',
+                color: '#fff',
+                borderRadius: 4,
+                cursor: 'pointer',
               }}
             >
               저장

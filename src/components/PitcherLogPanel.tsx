@@ -502,7 +502,8 @@ export type EditRowInfo =
       cellKey: string;
       currentResult: string;
       currentBallType?: '땅' | '뜬' | '라';
-    };
+    }
+  | { kind: 'pitch_seq'; cellKey: string; pitches: PitchType[]; result: string | null };
 
 export default function PitcherLogPanel({
   G,
@@ -778,7 +779,34 @@ export default function PitcherLogPanel({
                     ? (r as Extract<LogRow, { kind: 'result' }>).pitchNum || ''
                     : (r as { pitchNum: string }).pitchNum}
                 </div>
-                <div className="plp-cell">{r.paStart ? r.batter : ''}</div>
+                <div
+                  className="plp-cell"
+                  style={{
+                    cursor: r.paStart && onEditRow && r.cellKey ? 'pointer' : undefined,
+                    textDecoration:
+                      r.paStart && onEditRow && r.cellKey ? 'underline dotted' : undefined,
+                    color: r.paStart && onEditRow && r.cellKey ? '#1e40af' : undefined,
+                  }}
+                  onClick={
+                    r.paStart && onEditRow && r.cellKey
+                      ? (e) => {
+                          e.stopPropagation();
+                          const cell = G.cells[r.cellKey!];
+                          if (cell && cell.pitches.length > 0) {
+                            onEditRow({
+                              kind: 'pitch_seq',
+                              cellKey: r.cellKey!,
+                              pitches: [...cell.pitches],
+                              result: cell.result ?? null,
+                            });
+                          }
+                        }
+                      : undefined
+                  }
+                  title={r.paStart && onEditRow && r.cellKey ? '클릭하여 볼카운트 수정' : undefined}
+                >
+                  {r.paStart ? r.batter : ''}
+                </div>
                 <div
                   className="plp-cell"
                   style={{
