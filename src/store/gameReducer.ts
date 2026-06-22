@@ -2100,6 +2100,101 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
       return result;
     }
 
+    // ── DELETE_CELL — 특정 타석만 직접 삭제 ─────────────────────────────────
+    // 이후 타석은 유지하되, 해당 타석에서 출루한 주자만 runners에서 제거.
+    // 강제 진루·연쇄 플레이 등 복잡한 케이스는 수동 수정 필요.
+    case 'DELETE_CELL': {
+      const { cellKey: ck } = action;
+      const cell = state.cells[ck];
+      if (!cell || !cell.result) return state;
+
+      const cells = { ...state.cells };
+      delete cells[ck];
+
+      // 해당 타석 출루자를 루에서 제거
+      const runners = { ...state.runners };
+      for (const base of ['1B', '2B', '3B'] as const) {
+        if (runners[base]?.order === cell.order) delete runners[base];
+      }
+
+      // 점수/안타/실책/자책 전체 재계산 (ScoreSheet 와 동일 공식)
+      const HIT = new Set(['H1', 'H2', 'H3', 'HR', 'GHR', 'INT', 'BUNT', 'OBUNT']);
+      let awayR = 0,
+        homeR = 0,
+        awayH = 0,
+        homeH = 0,
+        awayE = 0,
+        homeE = 0,
+        awayER = 0,
+        homeER = 0;
+      const awayInn = Array(15).fill(null) as (number | null)[];
+      const homeInn = Array(15).fill(null) as (number | null)[];
+
+      for (const c of Object.values(cells)) {
+        const away = c.half === 'top';
+        const i = Math.min(c.inning - 1, 14);
+        const add = (arr: (number | null)[], idx: number) => {
+          arr[idx] = (arr[idx] ?? 0) + 1;
+        };
+
+        // 주자 득점 (HR 타자 본인 제외)
+        if (c.scored) {
+          if (away) {
+            awayR++;
+            add(awayInn, i);
+          } else {
+            homeR++;
+            add(homeInn, i);
+          }
+          if (c.earned !== false) {
+            if (away) awayER++;
+            else homeER++;
+          }
+        }
+        // HR 타자 본인 득점
+        if (c.result === 'HR' || c.result === 'GHR') {
+          if (away) {
+            awayR++;
+            add(awayInn, i);
+            awayH++;
+          } else {
+            homeR++;
+            add(homeInn, i);
+            homeH++;
+          }
+          if (c.earned !== false) {
+            if (away) awayER++;
+            else homeER++;
+          }
+        } else if (c.result && HIT.has(c.result)) {
+          if (away) awayH++;
+          else homeH++;
+        }
+        // 실책 (E1~E9)
+        if (c.result && /^E\d/.test(c.result)) {
+          if (away) awayE++;
+          else homeE++;
+        }
+      }
+
+      return {
+        ...state,
+        cells,
+        runners,
+        awayR,
+        homeR,
+        awayH,
+        homeH,
+        awayE,
+        homeE,
+        awayER,
+        homeER,
+        awayInn,
+        homeInn,
+        history: saveHist(state),
+      };
+    }
+
     // ── SUBST ────────────────────────────────────────────────────────────────
     case 'SUBST': {
       const { side, pos, player, mid } = action;

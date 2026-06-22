@@ -409,6 +409,7 @@ export type GameAction =
   | { type: 'REVERT' }
   | { type: 'REVERT_TO'; cellKey: string }
   | { type: 'DELETE_INNING'; inning: number }
+  | { type: 'DELETE_CELL'; cellKey: string }
   | { type: 'EDIT_PITCH_SEQ'; cellKey: string; pitches: PitchType[] }
   | { type: 'SEL_CELL'; key: string }
   | {

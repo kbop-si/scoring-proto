@@ -7,11 +7,19 @@ interface Props {
   onToggleSheet?: () => void;
   onOpenSheetWindow?: () => void;
   onOpenScoreReview?: () => void;
+  onLocalSave?: () => void;
+  onLocalLoad?: () => void;
 }
 
 const MAX_INN = 15;
 
-export default function Scoreboard({ G, onOpenSheetWindow, onOpenScoreReview }: Props) {
+export default function Scoreboard({
+  G,
+  onOpenSheetWindow,
+  onOpenScoreReview,
+  onLocalSave,
+  onLocalLoad,
+}: Props) {
   const inns = Array.from({ length: MAX_INN }, (_, i) => i + 1);
 
   // Compute per-inning runs from cells
@@ -158,6 +166,26 @@ export default function Scoreboard({ G, onOpenSheetWindow, onOpenScoreReview }: 
           style={{ marginLeft: 4 }}
         >
           <span>자책점 검토</span>
+        </button>
+      )}
+      {onLocalSave && (
+        <button
+          className="sb-sheet-btn"
+          onClick={onLocalSave}
+          title="현재 기록지를 브라우저에 저장"
+          style={{ marginLeft: 4 }}
+        >
+          <span>로컬저장</span>
+        </button>
+      )}
+      {onLocalLoad && (
+        <button
+          className="sb-sheet-btn"
+          onClick={onLocalLoad}
+          title="저장된 기록지 불러오기"
+          style={{ marginLeft: 4 }}
+        >
+          <span>로컬불러오기</span>
         </button>
       )}
     </div>

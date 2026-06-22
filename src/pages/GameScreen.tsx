@@ -1,4 +1,20 @@
-import { useReducer, useState, useCallback, useEffect, useRef, useMemo } from 'react';
+import {
+  useReducer,
+  useState,
+  useCallback,
+  useEffect,
+  useRef,
+  useMemo,
+  useLayoutEffect,
+} from 'react';
+
+// 모듈 로드마다 덮어씀 — if 가드 없음
+(window as unknown as Record<string, unknown>)['__kboDeleteCell'] = (key: string) =>
+  (
+    (window as unknown as Record<string, unknown>)['__kboDispatch'] as
+      | ((k: string) => void)
+      | undefined
+  )?.(key);
 import type {
   GameSetup,
   GameState,
@@ -121,6 +137,80 @@ function getAdvCode(reason: string, fielderSeq?: FielderEntry[]): string | undef
   if (reason === '다른주자수비') return fstr || undefined;
   // 타자의도움 → advCode 없음
   return undefined;
+}
+
+function DeleteConfirmModal({
+  pendingKey,
+  onConfirm,
+  onCancel,
+}: {
+  pendingKey: string | null;
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  if (!pendingKey) return null;
+  const isInning = pendingKey.startsWith('__inning__');
+  const title = isInning ? '이닝 삭제' : '타석 삭제';
+  const msg = isInning
+    ? `${pendingKey.replace('__inning__', '')}회 이닝 전체가 삭제됩니다.`
+    : '이 타석 이후의 모든 기록이 삭제됩니다.';
+  return (
+    <div
+      style={{
+        position: 'fixed',
+        inset: 0,
+        background: 'rgba(0,0,0,0.45)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        zIndex: 2000,
+      }}
+      onClick={onCancel}
+    >
+      <div
+        style={{
+          background: '#fff',
+          borderRadius: 8,
+          padding: '20px 24px',
+          minWidth: 280,
+          boxShadow: '0 10px 30px rgba(0,0,0,0.25)',
+        }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 8 }}>{title}</div>
+        <div style={{ fontSize: 13, color: '#374151', marginBottom: 16 }}>{msg}</div>
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+          <button
+            onClick={onCancel}
+            style={{
+              padding: '6px 16px',
+              fontSize: 13,
+              border: '1px solid #cbd5e1',
+              background: '#fff',
+              borderRadius: 4,
+              cursor: 'pointer',
+            }}
+          >
+            취소
+          </button>
+          <button
+            onClick={onConfirm}
+            style={{
+              padding: '6px 16px',
+              fontSize: 13,
+              border: '1px solid #dc2626',
+              background: '#dc2626',
+              color: '#fff',
+              borderRadius: 4,
+              cursor: 'pointer',
+            }}
+          >
+            삭제
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 export default function GameScreen({ setup, onEnd }: Props) {
@@ -1244,6 +1334,12 @@ export default function GameScreen({ setup, onEnd }: Props) {
     return () => window.removeEventListener('keydown', handler);
   }, [handlePitch, handleNextBatter, handleNextInning, handleRevert]);
 
+  // useLayoutEffect — 렌더 후 동기적으로 실행, HMR과 무관
+  useLayoutEffect(() => {
+    (window as unknown as Record<string, unknown>)['__kboDispatch'] = (key: string) =>
+      dispatch({ type: 'DELETE_CELL', cellKey: key });
+  });
+
   // ── Lineup helpers for main view ─────────────────────────────────────────
   const awayBatters = G.awayLineup.filter((p) => p.order > 0).sort((a, b) => a.order - b.order);
   const homeBatters = G.homeLineup.filter((p) => p.order > 0).sort((a, b) => a.order - b.order);
@@ -1272,11 +1368,8 @@ export default function GameScreen({ setup, onEnd }: Props) {
           <div className="game-body view-sheet">
             <ScoreSheet
               G={G}
-              onSelCell={(key) => {
-                dispatch({ type: 'SEL_CELL', key });
-                const cell = G.cells[key];
-                if (cell?.result) setPendingRevertKey(key);
-              }}
+              onSelCell={(key) => dispatch({ type: 'SEL_CELL', key })}
+              onDeleteCell={(key) => dispatch({ type: 'DELETE_CELL', cellKey: key })}
             />
             <PitcherLogPanel G={G} onEditRow={handleEditRow} />
           </div>
@@ -1622,81 +1715,23 @@ export default function GameScreen({ setup, onEnd }: Props) {
         onClose={() => setGameEndOpen(false)}
       />
 
-      {pendingRevertKey &&
-        (() => {
-          const isInning = pendingRevertKey.startsWith('__inning__');
-          const inningNum = isInning ? Number(pendingRevertKey.replace('__inning__', '')) : null;
-          const msg = isInning
-            ? `${inningNum}회 이닝 전체가 삭제됩니다. 계속하시겠습니까?`
-            : '이 타석 이후의 모든 기록이 삭제됩니다. 계속하시겠습니까?';
-          const title = isInning ? '이닝 삭제' : '타석 삭제';
-          const onConfirm = () => {
-            if (isInning && inningNum !== null) {
-              dispatch({ type: 'DELETE_INNING', inning: inningNum });
-            } else {
-              dispatch({ type: 'REVERT_TO', cellKey: pendingRevertKey });
-            }
-            resetChainUI();
-            setPendingRevertKey(null);
-          };
-          return (
-            <div
-              style={{
-                position: 'fixed',
-                inset: 0,
-                background: 'rgba(0,0,0,0.45)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                zIndex: 2000,
-              }}
-              onClick={() => setPendingRevertKey(null)}
-            >
-              <div
-                style={{
-                  background: '#fff',
-                  borderRadius: 8,
-                  padding: '20px 24px',
-                  maxWidth: 340,
-                  boxShadow: '0 10px 30px rgba(0,0,0,0.25)',
-                }}
-                onClick={(e) => e.stopPropagation()}
-              >
-                <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 8 }}>{title}</div>
-                <div style={{ fontSize: 13, color: '#374151', marginBottom: 16 }}>{msg}</div>
-                <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-                  <button
-                    onClick={() => setPendingRevertKey(null)}
-                    style={{
-                      padding: '6px 16px',
-                      fontSize: 13,
-                      border: '1px solid #cbd5e1',
-                      background: '#fff',
-                      borderRadius: 4,
-                      cursor: 'pointer',
-                    }}
-                  >
-                    취소
-                  </button>
-                  <button
-                    onClick={onConfirm}
-                    style={{
-                      padding: '6px 16px',
-                      fontSize: 13,
-                      border: '1px solid #dc2626',
-                      background: '#dc2626',
-                      color: '#fff',
-                      borderRadius: 4,
-                      cursor: 'pointer',
-                    }}
-                  >
-                    삭제
-                  </button>
-                </div>
-              </div>
-            </div>
-          );
-        })()}
+      <DeleteConfirmModal
+        pendingKey={pendingRevertKey}
+        onConfirm={() => {
+          if (!pendingRevertKey) return;
+          if (pendingRevertKey.startsWith('__inning__')) {
+            dispatch({
+              type: 'DELETE_INNING',
+              inning: Number(pendingRevertKey.replace('__inning__', '')),
+            });
+          } else {
+            dispatch({ type: 'REVERT_TO', cellKey: pendingRevertKey });
+          }
+          resetChainUI();
+          setPendingRevertKey(null);
+        }}
+        onCancel={() => setPendingRevertKey(null)}
+      />
 
       <MoundVisitModal
         open={moundOpen}
