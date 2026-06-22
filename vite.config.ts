@@ -8,8 +8,8 @@ export default defineConfig({
       name: 'serve-docs-index',
       configureServer(server) {
         server.middlewares.use((req: { url?: string }, _res: unknown, next: () => void) => {
-          if (req.url === '/kboScoring/docs' || req.url === '/kboScoring/docs/') {
-            req.url = '/kboScoring/docs/index.html';
+          if (req.url === '/scoring-proto/docs' || req.url === '/scoring-proto/docs/') {
+            req.url = '/scoring-proto/docs/index.html';
           }
           next();
         });
@@ -22,5 +22,5 @@ export default defineConfig({
       },
     },
   ],
-  base: '/kboScoring/',
+  base: '/scoring-proto/',
 });
