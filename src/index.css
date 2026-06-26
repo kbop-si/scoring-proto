@@ -1037,16 +1037,21 @@ button {
   grid-template-columns: 1fr 1fr 1fr;
   gap: 5px;
 }
+.ip-g4 {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr 1fr;
+  gap: 4px;
+}
 .ip-btn {
   border: 1.5px solid var(--border);
   background: #fff;
   border-radius: 4px;
-  padding: 10px 6px;
+  padding: 7px 5px;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 3px;
+  gap: 2px;
   cursor: pointer;
   transition: all 0.1s;
 }
@@ -1059,24 +1064,24 @@ button {
   filter: brightness(0.95);
 }
 .ip-icon {
-  font-size: 14px;
+  font-size: 11px;
   line-height: 1;
 }
 .ip-lbl {
-  font-size: 20px;
+  font-size: 14px;
   color: #fff;
   font-weight: bold;
 }
 .ip-sub {
-  font-size: 15px;
+  font-size: 11px;
   color: #fff;
   font-weight: bold;
 }
 .ip-g2-special .ip-btn {
-  min-height: 72px;
+  min-height: 28px;
 }
 .ip-g2-special .ip-lbl {
-  font-size: 18px;
+  font-size: 12px;
 }
 .b-S {
   background: #102c57;
@@ -1108,8 +1113,8 @@ button {
   border: 1.5px solid var(--border);
   background: #fff;
   border-radius: 4px;
-  padding: 14px 6px;
-  font-size: 14px;
+  padding: 8px 6px;
+  font-size: 12px;
   font-weight: 700;
   cursor: pointer;
   text-align: center;
@@ -1120,13 +1125,13 @@ button {
   background: #102c57;
   color: #fff;
   border-color: #102c57;
-  font-size: 18px;
+  font-size: 14px;
 }
 .ta-btn.out {
   background: #102c57;
   color: #fff;
   border-color: #102c57;
-  font-size: 18px;
+  font-size: 14px;
 }
 .sp-row {
   display: flex;

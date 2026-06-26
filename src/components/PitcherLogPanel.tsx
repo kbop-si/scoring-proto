@@ -125,6 +125,12 @@ const SIDE_NOTE_LABEL: Record<string, string> = {
   M_R: '마운드방문(코칭스태프)',
   M_B: '마운드방문(포수)',
   M_BD: '마운드방문(포수덕아웃)',
+  VR: '비디오판독',
+  CS: '체크스윙',
+  ME: '기타메모',
+  GD: '경기지연/중단',
+  WE: '경고·퇴장',
+  UC: '심판교체',
 };
 
 type LogRow = {
@@ -365,13 +371,15 @@ function buildPitcherLog(G: GameState): LogRow[] {
             dest: entry.dest,
           });
         } else {
-          // 이벤트 (투수판이탈·마운드방문 등) — 타자명 표시 안 함
+          // 이벤트 (투수판이탈·마운드방문 등)
           const label =
             SIDE_NOTE_LABEL[(entry as { note: string }).note] ?? (entry as { note: string }).note;
+          const isFirstEvent = !batterShown;
+          if (isFirstEvent) batterShown = true;
           rows.push({
             ...base,
             no: noMap[curPitcher] ?? 0,
-            paStart: false,
+            paStart: isFirstEvent,
             kind: 'event',
             label,
           });
@@ -395,7 +403,9 @@ function buildPitcherLog(G: GameState): LogRow[] {
       });
       for (const note of cell.sideNotes || []) {
         const label = SIDE_NOTE_LABEL[note] ?? note;
-        rows.push({ ...base, no: noMap[pitcher], paStart: false, kind: 'event', label });
+        const isFirstNote = !batterShown;
+        if (isFirstNote) batterShown = true;
+        rows.push({ ...base, no: noMap[pitcher], paStart: isFirstNote, kind: 'event', label });
       }
     }
 
@@ -477,7 +487,9 @@ function buildPitcherLog(G: GameState): LogRow[] {
     if (!cell.eventLog || cell.eventLog.length === 0) {
       for (const note of cell.sideNotes || []) {
         const label = SIDE_NOTE_LABEL[note] ?? note;
-        rows.push({ ...base, no: noMap[pitcher], paStart: false, kind: 'event', label });
+        const isFirstNote = !batterShown;
+        if (isFirstNote) batterShown = true;
+        rows.push({ ...base, no: noMap[pitcher], paStart: isFirstNote, kind: 'event', label });
       }
     }
   }
@@ -508,12 +520,15 @@ export type EditRowInfo =
 export default function PitcherLogPanel({
   G,
   onEditRow,
+  onDeleteCell,
 }: {
   G: GameState;
   onEditRow?: (info: EditRowInfo) => void;
+  onDeleteCell?: (key: string) => void;
 }) {
   const [selInning, setSelInning] = useState<string | null>(null);
   const [collapsed, setCollapsed] = useState<Set<number>>(new Set());
+  const [confirmDeleteKey, setConfirmDeleteKey] = useState<string | null>(null);
   const bodyRef = useRef<HTMLDivElement>(null);
 
   const rows = buildPitcherLog(G);
@@ -655,15 +670,29 @@ export default function PitcherLogPanel({
 
             // ── 사이드 이벤트 행 ────────────────────────────────────────
             if (r.kind === 'event') {
+              const evPaIdx = filteredPaIdx[i];
+              const evCollapsed = collapsed.has(evPaIdx);
               return (
-                <div key={i} className="plp-row" style={{ background: '#fffbeb' }}>
+                <div
+                  key={i}
+                  className="plp-row"
+                  style={{
+                    background: '#fffbeb',
+                    borderTop: r.paStart ? '1px solid #cbd5e1' : undefined,
+                    cursor: r.paStart ? 'pointer' : undefined,
+                  }}
+                  onClick={r.paStart ? () => togglePa(evPaIdx) : undefined}
+                  title={r.paStart ? '클릭하여 접기/펼치기' : undefined}
+                >
                   <div className="plp-cell" style={{ color: '#94a3b8' }}>
-                    {r.no}
+                    {r.paStart ? (evCollapsed ? '▶' : '▼') : r.no}
+                  </div>
+                  <div className="plp-cell">{r.paStart ? r.inning : ''}</div>
+                  <div className="plp-cell" style={{ fontWeight: 600 }}>
+                    {r.paStart ? r.pitcher : ''}
                   </div>
                   <div className="plp-cell" />
-                  <div className="plp-cell" />
-                  <div className="plp-cell" />
-                  <div className="plp-cell" />
+                  <div className="plp-cell">{r.paStart ? r.batter : ''}</div>
                   <div className="plp-cell" style={{ fontWeight: 600, color: '#b45309' }}>
                     {r.label}
                   </div>
@@ -833,6 +862,61 @@ export default function PitcherLogPanel({
                         resultRow!.hitData
                       )
                     : (r as { label: string }).label}
+                  {r.paStart && onDeleteCell && r.cellKey && G.cells[r.cellKey]?.result && (
+                    <span style={{ marginLeft: 6 }} onClick={(e) => e.stopPropagation()}>
+                      {confirmDeleteKey === r.cellKey ? (
+                        <>
+                          <button
+                            onClick={() => {
+                              onDeleteCell(r.cellKey!);
+                              setConfirmDeleteKey(null);
+                            }}
+                            style={{
+                              fontSize: 9,
+                              padding: '1px 4px',
+                              background: '#dc2626',
+                              color: '#fff',
+                              border: 'none',
+                              borderRadius: 2,
+                              cursor: 'pointer',
+                              marginRight: 2,
+                            }}
+                          >
+                            삭제
+                          </button>
+                          <button
+                            onClick={() => setConfirmDeleteKey(null)}
+                            style={{
+                              fontSize: 9,
+                              padding: '1px 4px',
+                              background: '#fff',
+                              border: '1px solid #cbd5e1',
+                              borderRadius: 2,
+                              cursor: 'pointer',
+                            }}
+                          >
+                            취소
+                          </button>
+                        </>
+                      ) : (
+                        <button
+                          onClick={() => setConfirmDeleteKey(r.cellKey!)}
+                          style={{
+                            fontSize: 9,
+                            padding: '1px 4px',
+                            background: '#fff',
+                            border: '1px solid #e2e8f0',
+                            borderRadius: 2,
+                            cursor: 'pointer',
+                            color: '#94a3b8',
+                          }}
+                          title="타석 삭제"
+                        >
+                          ✕
+                        </button>
+                      )}
+                    </span>
+                  )}
                 </div>
               </div>
             );

@@ -35,8 +35,8 @@ export interface RunnerNote {
   rbi?: boolean;
   steal?: boolean; // 도루에 의한 진루 (통계용)
   advCode?: string; // 진루 사유 코드 표시 — S/(S)/W/(W)/P/(P)/BK/(BK)/✓BK/✓(BK)
-  force?: boolean; // 볼넷/사구 강제진루 (연결동작 화살표 표시 안 함)
-  chain?: boolean; // 연결동작에 의한 진루 (화살표 표시용)
+  force?: boolean; // 볼넷/사구 강제진루 (연속플레이 화살표 표시 안 함)
+  chain?: boolean; // 연속플레이에 의한 진루 (화살표 표시용)
 }
 
 export interface HitData {
@@ -79,7 +79,7 @@ export interface CellData {
   lobCell?: boolean; // 잔루 — 이닝 종료 시 홈에 못 들어온 주자 셀에 표기 (ℓ)
   isDoublePlay?: boolean; // 병살타 여부 (result 문자열에 포함 안 됨)
   isTriplePlay?: boolean; // 삼중살 여부 (result 문자열에 포함 안 됨)
-  chainSkip?: Base; // 연결동작 2베이스 이상 이동 시 최초 건너뛴 베이스 ('2B' | '3B')
+  chainSkip?: Base; // 연속플레이 2베이스 이상 이동 시 최초 건너뛴 베이스 ('2B' | '3B')
   defFielders?: number[]; // 수비수 번호 내부 기록 — FC/INT/Ob 등 result에 직접 안 붙는 경우
   isDPRunner?: boolean; // 병살/삼중살에서 아웃된 주자 셀 (outMap pre-population 구분용)
   sideNotes?: string[]; // 마운드방문/타자타임/투수판이탈 등 투구 영역에 표시
@@ -111,12 +111,88 @@ export interface PitcherData {
 
 export type Runners = Partial<Record<Base, Runner>>;
 
-export interface GameEvent {
-  inning: number;
-  half: Half;
-  type: 'mound' | 'batter_timeout' | 'pitcher_leave';
-  detail?: string;
-}
+export type GameEvent =
+  | {
+      type: 'mound' | 'batter_timeout' | 'pitcher_leave';
+      inning: number;
+      half: Half;
+      pitcher: string;
+      pitchCount: number;
+      detail?: string;
+    }
+  | {
+      type: 'video_review';
+      inning: number;
+      half: Half;
+      order: number;
+      pitchCount: number;
+      team: string;
+      player: string;
+      content: string;
+      situation: string;
+      firstCall: string;
+      result: string;
+      startTime: string;
+      endTime: string;
+    }
+  | {
+      type: 'check_swing';
+      inning: number;
+      half: Half;
+      order: number;
+      pitchCount: number;
+      team: string;
+      player: string;
+      umpire: string;
+      result: string;
+      situation: string;
+    }
+  | {
+      type: 'memo_input';
+      inning: number;
+      half: Half;
+      order: number;
+      pitchCount: number;
+      team: string;
+      player: string;
+      memo: string;
+      startTime: string;
+      endTime: string;
+    }
+  | {
+      type: 'game_delay';
+      inning: number;
+      half: Half;
+      content: string;
+      situation: string;
+      startTime: string;
+      endTime: string;
+      duration: string;
+    }
+  | {
+      type: 'warning_ejection';
+      inning: number;
+      half: Half;
+      team: string;
+      player: string;
+      kind: string;
+      content: string;
+      situation: string;
+      startTime: string;
+      endTime: string;
+    }
+  | {
+      type: 'umpire_change';
+      inning: number;
+      half: Half;
+      oldUmpire: string;
+      newUmpire: string;
+      reason: string;
+      oldPos: string;
+      newPos: string;
+      startTime: string;
+      endTime: string;
+    };
 
 export interface PitcherChange {
   inning: number;
@@ -455,6 +531,7 @@ export type GameAction =
   | { type: 'INIT_GAME'; setup: GameSetup }
   | { type: 'LOAD_GAME'; state: GameState }
   | { type: 'GAME_EVENT'; eventType: 'mound' | 'batter_timeout' | 'pitcher_leave'; detail?: string }
+  | { type: 'ADD_GAME_EVENT'; event: GameEvent }
   | { type: 'CELL_NOTE'; note: string }
   | { type: 'EDIT_PITCH'; cellKey: string; entryIdx: number; newPitch: PitchType }
   | { type: 'EDIT_HIT_ZONE'; cellKey: string; newZone: number }

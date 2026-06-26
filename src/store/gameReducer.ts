@@ -568,6 +568,18 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
 
     // ── SEL_CELL ─────────────────────────────────────────────────────────────
     case 'SEL_CELL': {
+      const selCell = state.cells[action.key];
+      // 빈 셀(결과 없음) 클릭 → 입력 위치도 이동 (중간 삽입 / 삭제 후 재입력)
+      if (!selCell?.result) {
+        const [h, inn, ord] = parseKey(action.key);
+        return {
+          ...state,
+          selCellKey: action.key,
+          half: h,
+          inning: Number(inn),
+          curBatterOrder: Number(ord),
+        };
+      }
       return { ...state, selCellKey: action.key };
     }
 
@@ -1636,7 +1648,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
     }
 
     // ── CHAIN_BATTER_SKIP ────────────────────────────────────────────────────
-    // 연결동작: dest가 막혀있을 때 타자를 toBase로 직접 이동
+    // 연속플레이: dest가 막혀있을 때 타자를 toBase로 직접 이동
     case 'CHAIN_BATTER_SKIP': {
       if (!state.pendingBatter) return state;
       const { runner } = state.pendingBatter;
@@ -2111,11 +2123,12 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
       const cells = { ...state.cells };
       delete cells[ck];
 
-      // 해당 타석 출루자를 루에서 제거
+      // 해당 타석 출루자만 제거 — 나머지 주자는 유지
       const runners = { ...state.runners };
       for (const base of ['1B', '2B', '3B'] as const) {
         if (runners[base]?.order === cell.order) delete runners[base];
       }
+      const outs = state.outs;
 
       // 점수/안타/실책/자책 전체 재계산 (ScoreSheet 와 동일 공식)
       const HIT = new Set(['H1', 'H2', 'H3', 'HR', 'GHR', 'INT', 'BUNT', 'OBUNT']);
@@ -2177,6 +2190,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
         }
       }
 
+      // 삭제 후 해당 셀로 커서 이동 → 바로 재입력 가능
       return {
         ...state,
         cells,
@@ -2191,6 +2205,13 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
         homeER,
         awayInn,
         homeInn,
+        selCellKey: ck,
+        inning: cell.inning,
+        half: cell.half,
+        curBatterOrder: cell.order,
+        outs,
+        balls: 0,
+        strikes: 0,
         history: saveHist(state),
       };
     }
@@ -2571,9 +2592,15 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
         inning: state.inning,
         half: state.half,
         type: action.eventType,
+        pitcher: state.pitcher.name,
+        pitchCount: state.pitchCount,
         detail: action.detail,
       };
       return { ...state, gameEvents: [...state.gameEvents, ev] };
+    }
+
+    case 'ADD_GAME_EVENT': {
+      return { ...state, gameEvents: [...state.gameEvents, action.event] };
     }
 
     // ── EDIT_PITCH (PitcherLogPanel 편집) ────────────────────────────────────

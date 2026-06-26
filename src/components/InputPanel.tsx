@@ -21,7 +21,13 @@ interface Props {
   onOverflow: () => void;
   onPlaceBatter: () => void;
   onEnd: () => void;
-  onToast: (msg: string) => void;
+  onVideoReview: () => void;
+  onCheckSwing: () => void;
+  onMemoInput: () => void;
+  onGameDelay: () => void;
+  onWarningEjection: () => void;
+  onUmpireChange: () => void;
+  onMemoList: () => void;
 }
 
 export default function InputPanel({
@@ -42,7 +48,13 @@ export default function InputPanel({
   onClearInning,
   onPlaceBatter,
   onEnd,
-  onToast,
+  onVideoReview,
+  onCheckSwing,
+  onMemoInput,
+  onGameDelay,
+  onWarningEjection,
+  onUmpireChange,
+  onMemoList,
 }: Props) {
   const pb = G.pendingBatter;
 
@@ -134,7 +146,7 @@ export default function InputPanel({
       {/* Ball count */}
       <div className="ip-sec">
         <div className="ip-sec-t">볼 카운트</div>
-        <div className="ip-g2 ip-g2-special">
+        <div className="ip-g4">
           <button className="ip-btn b-S" onClick={() => onPitch('S')}>
             <span className="ip-lbl">스트라이크</span>
           </button>
@@ -148,7 +160,7 @@ export default function InputPanel({
             <span className="ip-lbl">파울</span>
           </button>
         </div>
-        <div className="ip-g2 ip-g2-special" style={{ marginTop: 5 }}>
+        <div className="ip-g3" style={{ marginTop: 4 }}>
           <button className="ip-btn b-S" onClick={() => onPitch('FE')}>
             <span className="ip-lbl">파울실책</span>
           </button>
@@ -158,15 +170,12 @@ export default function InputPanel({
           <button className="ip-btn b-S" onClick={() => onPitch('BF')}>
             <span className="ip-lbl">번트파울</span>
           </button>
-          <button className="ip-btn b-S" onClick={onPitcherLeave}>
-            <span className="ip-lbl">투수판이탈</span>
-          </button>
         </div>
-        <div style={{ borderTop: '1px solid var(--border2)', paddingTop: 4, marginTop: 5 }}>
-          <div style={{ fontSize: 12, fontWeight: 'bold', color: 'var(--text3)', marginBottom: 3 }}>
+        <div style={{ borderTop: '1px solid var(--border2)', paddingTop: 4, marginTop: 4 }}>
+          <div style={{ fontSize: 10, fontWeight: 'bold', color: 'var(--text3)', marginBottom: 2 }}>
             피치클락
           </div>
-          <div className="ip-g3 ip-g2-special">
+          <div className="ip-g3">
             <button className="ip-btn b-S" onClick={() => onPitch('PC1')}>
               <span className="ip-lbl">투수위반 볼</span>
             </button>
@@ -217,25 +226,52 @@ export default function InputPanel({
         </div>
       </div>
 
-      {/* 견제/기타 */}
+      {/* 기타 */}
       <div className="ip-sec">
-        <div className="ip-sec-t">견제/기타</div>
+        <div className="ip-sec-t">기타</div>
         <div className="ip-g3" style={{ marginTop: 2 }}>
-          <button className="ip-btn b-S" onClick={onBatterTimeout}>
-            <span className="ip-lbl">타자타임</span>
+          <button className="ip-btn b-S" onClick={onPitcherLeave}>
+            <span className="ip-lbl">투수판이탈</span>
           </button>
           <button className="ip-btn b-S" onClick={onMoundVisit}>
             <span className="ip-lbl">마운드방문</span>
           </button>
-          <button className="ip-btn b-S" onClick={() => onToast('메모')}>
-            <span className="ip-lbl">메모</span>
+          <button className="ip-btn b-S" onClick={onBatterTimeout}>
+            <span className="ip-lbl">타자타임</span>
           </button>
+        </div>
+        <div className="ip-g3" style={{ marginTop: 4 }}>
+          <button className="ip-btn b-S" onClick={onVideoReview}>
+            <span className="ip-lbl">비디오판독</span>
+          </button>
+          <button className="ip-btn b-S" onClick={onCheckSwing}>
+            <span className="ip-lbl">체크스윙</span>
+          </button>
+          <button className="ip-btn b-S" onClick={onMemoInput}>
+            <span className="ip-lbl">기타입력</span>
+          </button>
+        </div>
+        <div style={{ borderTop: '1px solid var(--border2)', marginTop: 5, paddingTop: 5 }}>
+          <div className="ip-g4" style={{ marginTop: 0 }}>
+            <button className="ip-btn b-S" onClick={onGameDelay}>
+              <span className="ip-lbl">경기지연/중단</span>
+            </button>
+            <button className="ip-btn b-S" onClick={onWarningEjection}>
+              <span className="ip-lbl">경고·퇴장</span>
+            </button>
+            <button className="ip-btn b-S" onClick={onUmpireChange}>
+              <span className="ip-lbl">심판교체</span>
+            </button>
+            <button className="ip-btn b-S" onClick={onMemoList}>
+              <span className="ip-lbl">목록보기</span>
+            </button>
+          </div>
         </div>
       </div>
 
       {/* Action buttons */}
       <div className="ip-sec">
-        <div className="ip-sec-t">타순 / 이닝 / 기록</div>
+        <div className="ip-sec-t">기록</div>
         <div className="act-row">
           <button className="act-btn a-next" onClick={onNextBatter}>
             다음타자

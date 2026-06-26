@@ -50,6 +50,15 @@ import MoundVisitModal from '../components/modals/MoundVisitModal';
 import GameEndModal from '../components/modals/GameEndModal';
 import LineupReviewModal from '../components/modals/LineupReviewModal';
 import ScoreReviewModal, { type ScoredRunRow } from '../components/modals/ScoreReviewModal';
+import {
+  VideoReviewModal,
+  CheckSwingModal,
+  MemoInputModal,
+  GameDelayModal,
+  WarningEjectionModal,
+  UmpireChangeModal,
+  MemoListModal,
+} from '../components/modals/SpecialEventsModal';
 
 const initialUI: UIState = {
   batAdvOpen: false,
@@ -223,6 +232,8 @@ export default function GameScreen({ setup, onEnd }: Props) {
   const [UI, setUI] = useState<UIState>(initialUI);
   const [showSheet, setShowSheet] = useState(false);
   const [pendingRevertKey, setPendingRevertKey] = useState<string | null>(null);
+  // DELETE_CELL 후 재입력 중: pendingBatter를 빈 베이스 자유 배치 허용
+
   // 수비 위치 드래그 상태 — pos swap
   const [posDrag, setPosDrag] = useState<{ team: 'away' | 'home'; idx: number } | null>(null);
   const [posDragOver, setPosDragOver] = useState<{ team: 'away' | 'home'; idx: number } | null>(
@@ -235,6 +246,22 @@ export default function GameScreen({ setup, onEnd }: Props) {
       localStorage.setItem('kbo_sheet_state', JSON.stringify(G));
     }
   }, [G]);
+
+  // SheetWindow 팝업에서 보낸 타석 삭제 요청 수신
+  useEffect(() => {
+    const handler = (e: StorageEvent) => {
+      if (e.key === 'kbo_delete_request' && e.newValue) {
+        dispatchDeleteCell(e.newValue);
+        localStorage.removeItem('kbo_delete_request');
+      }
+      if (e.key === 'kbo_sel_cell_request' && e.newValue) {
+        dispatch({ type: 'SEL_CELL', key: e.newValue });
+        localStorage.removeItem('kbo_sel_cell_request');
+      }
+    };
+    window.addEventListener('storage', handler);
+    return () => window.removeEventListener('storage', handler);
+  }, [dispatch]);
 
   // KBO 규칙: 한 번 교체로 빠진 선수는 같은 경기에서 어떤 형태로도 재출전 불가.
   // 교체 기록(substitutions/pitcherChanges)의 oldName/oldNum 을 모아 교체 후보 벤치에서 제외.
@@ -323,6 +350,13 @@ export default function GameScreen({ setup, onEnd }: Props) {
   const [defListOpen, setDefListOpen] = useState(false);
   const [defListResult] = useState('');
   const [moundOpen, setMoundOpen] = useState(false);
+  const [videoReviewOpen, setVideoReviewOpen] = useState(false);
+  const [checkSwingOpen, setCheckSwingOpen] = useState(false);
+  const [memoInputOpen, setMemoInputOpen] = useState(false);
+  const [gameDelayOpen, setGameDelayOpen] = useState(false);
+  const [warningEjectionOpen, setWarningEjectionOpen] = useState(false);
+  const [umpireChangeOpen, setUmpireChangeOpen] = useState(false);
+  const [memoListOpen, setMemoListOpen] = useState(false);
   // 3아웃 상태에서 일반 입력 시도하면 띄우는 알럿 모달
   const [threeOutAlertOpen, setThreeOutAlertOpen] = useState(false);
   // 다음이닝 클릭 시 자책점 검토 진행 중인지 (확정 시 NEXT_INNING dispatch)
@@ -492,21 +526,7 @@ export default function GameScreen({ setup, onEnd }: Props) {
 
       // FE: open fielder modal to record which fielder committed the foul error
       if (pitchType === 'FE') {
-        fielderCbRef.current = () => {
-          dispatch({ type: 'PITCH', pitchType: 'FE' });
-          setUI((p) => {
-            if (p.fielderSeq.length > 0) {
-              dispatch({ type: 'CELL_NOTE', note: `E${p.fielderSeq[0]}` });
-            }
-            return p;
-          });
-        };
-        setUI((p) => ({
-          ...p,
-          fielderOpen: true,
-          fielderTitle: '파울실책 수비수',
-          fielderSeq: [],
-        }));
+        dispatch({ type: 'PITCH', pitchType: 'FE' });
         return;
       }
 
@@ -624,7 +644,7 @@ export default function GameScreen({ setup, onEnd }: Props) {
       }
 
       setUI((p) => ({ ...p, batAdvOpen: false, batAdvResult: null, batAdvHitData: null }));
-      // 주자가 있으면 chainCausedBy 설정 (연결동작 표시용)
+      // 주자가 있으면 chainCausedBy 설정 (연속플레이 표시용)
       const hasRunners = Object.values(G.runners).some(Boolean);
       if (hasRunners && !chainCausedBy) setChainCausedBy(G.curBatterOrder);
       if (chain && hitData) {
@@ -634,7 +654,7 @@ export default function GameScreen({ setup, onEnd }: Props) {
           const BASES: Base[] = ['1B', '2B', '3B'];
           const destIdx = BASES.indexOf(dest);
           const blocked = destIdx >= 0 && BASES.slice(0, destIdx + 1).some((b) => G.runners[b]);
-          // 연결동작 유발 타자 저장 (BAT_ADV 전에 캡처 — 이후 curBatterOrder 증가)
+          // 연속플레이 유발 타자 저장 (BAT_ADV 전에 캡처 — 이후 curBatterOrder 증가)
           setChainCausedBy(G.curBatterOrder);
           if (!blocked) {
             // 즉시 chainBases에 추가 → PLACE_BATTER 후 렌더 시 빨간색으로 표시
@@ -645,7 +665,7 @@ export default function GameScreen({ setup, onEnd }: Props) {
           }
         }
       } else if (chain && !hitData) {
-        // 실책/기타 진루(E·FC·#·ob·DP_E·E기록·번트 등) — 1B 기본 + 연결동작 활성화
+        // 실책/기타 진루(E·FC·#·ob·DP_E·E기록·번트 등) — 1B 기본 + 연속플레이 활성화
         const dest: Base = '1B';
         const blocked = !!G.runners['1B'];
         setChainCausedBy(G.curBatterOrder);
@@ -722,7 +742,7 @@ export default function GameScreen({ setup, onEnd }: Props) {
   // ── Chain-pending 타자 클릭 (blocked 상태에서 chain 타자 먼저 전진) ────────
   const handleChainPendingClick = useCallback(() => {
     if (!chainPendingBase) return;
-    // chainTransit: 주자가 연결동작으로 이동 중 (pendingBatter 없음)
+    // chainTransit: 주자가 연속플레이으로 이동 중 (pendingBatter 없음)
     if (!G.pendingBatter && !chainTransit) return;
     setChainBatterOpen(true);
     setUI((p) => ({
@@ -886,7 +906,7 @@ export default function GameScreen({ setup, onEnd }: Props) {
       // chainCausedBy가 있으면 자동으로 chain 모드
       const effectiveChain = chain || !!chainCausedBy;
 
-      // chain 연결동작 또는 자력진루(도루/폭투/포일/보크) + 목적 베이스에 기존 주자 있음
+      // chain 연속플레이 또는 자력진루(도루/폭투/포일/보크) + 목적 베이스에 기존 주자 있음
       // → auto-push 방지, 기존 주자 이동을 사용자가 수동 선택
       const destHasRunner = dest !== 'HOME' && !!G.runners[dest as Base];
       const triggerCollisionUI = (effectiveChain || isSelfAdv) && destHasRunner;
@@ -922,7 +942,7 @@ export default function GameScreen({ setup, onEnd }: Props) {
       }
 
       // chainBases 업데이트: 이전 base 제거, 새 dest 추가
-      // (사용자가 명시적으로 연결동작 체크한 경우에만 — chainCausedBy 자동 적용 X)
+      // (사용자가 명시적으로 연속플레이 체크한 경우에만 — chainCausedBy 자동 적용 X)
       setChainBases((prev) => {
         const next = new Set(prev);
         next.delete(base);
@@ -942,7 +962,7 @@ export default function GameScreen({ setup, onEnd }: Props) {
         advCode,
         // chain 체크 시에만 chainCausedBy 사용, 아니면 reducer가 현재 타자로 자동 귀속
         causedBy: chain ? (chainCausedBy ?? undefined) : undefined,
-        // 작은 화살표는 사용자가 명시적으로 연결동작 체크한 경우에만
+        // 작은 화살표는 사용자가 명시적으로 연속플레이 체크한 경우에만
         chain,
         deflection,
       });
@@ -1140,7 +1160,7 @@ export default function GameScreen({ setup, onEnd }: Props) {
   // ── Runner toggle ─────────────────────────────────────────────────────────
   const toggleRunnerSel = useCallback(
     (base: Base) => {
-      // 연결동작 중인 주자: 일반 주자와 동일하게 선택 → 목적지 클릭 → 모달
+      // 연속플레이 중인 주자: 일반 주자와 동일하게 선택 → 목적지 클릭 → 모달
       if (chainBases.has(base)) {
         setUI((prev) => {
           const next = prev.selRunnerBase === base ? null : base;
@@ -1177,13 +1197,25 @@ export default function GameScreen({ setup, onEnd }: Props) {
     const destIdx = BASES.indexOf(dest);
     const blocked = destIdx >= 0 && BASES.slice(0, destIdx + 1).some((b) => G.runners[b]);
     if (!blocked && !chainPendingBase) {
-      // chainPendingBase가 있으면 auto-place 안 함 (연결동작 진행 중)
       dispatch({ type: 'PLACE_BATTER' });
     } else if (prevPendingRef.current !== G.pendingBatter) {
-      if (!chainPendingBase) showToast('주자를 먼저 이동하세요');
+      if (!chainPendingBase) {
+        // 1루 막힘: 빈 베이스 클릭으로 배치 가능하도록 baseTargets 활성화
+        showToast('빈 루를 클릭하여 타자를 배치하세요');
+        setBaseTargets({
+          active: true,
+          fromBase: 'pending',
+          onSelect: (base) => {
+            if (!G.runners[base as Base]) {
+              dispatch({ type: 'CHAIN_BATTER_SKIP', toBase: base as Base, earned: true });
+            }
+            setBaseTargets({ active: false, fromBase: '', onSelect: null });
+          },
+        });
+      }
     }
     prevPendingRef.current = G.pendingBatter;
-  }, [G.pendingBatter, G.runners, chainPendingBase, dispatch, showToast]);
+  }, [G.pendingBatter, G.runners, chainPendingBase, dispatch, showToast, setBaseTargets]);
 
   // pendingSkipParams가 있고 목적지가 비면 자동 dispatch
   useEffect(() => {
@@ -1212,7 +1244,7 @@ export default function GameScreen({ setup, onEnd }: Props) {
       advCode: tr.advCode,
       steal: tr.steal,
       causedBy: tr.causedBy,
-      // 자력진루는 연결동작 화살표를 표시하지 않음
+      // 자력진루는 연속플레이 화살표를 표시하지 않음
       chain: tr.markChain ?? false,
       // pitcherlog 순서 보정: bumped 주자 기록 앞에 삽입
       insertIndex: tr.insertIndex,
@@ -1283,14 +1315,18 @@ export default function GameScreen({ setup, onEnd }: Props) {
     setUI((p) => ({ ...p, selRunnerBase: null }));
   }, [G.history.length, dispatch, showToast, resetChainUI]);
 
+  const dispatchDeleteCell = useCallback(
+    (key: string) => {
+      dispatch({ type: 'DELETE_CELL', cellKey: key });
+    },
+    [dispatch]
+  );
+
   const handleClear = useCallback(() => {
-    const cell = G.cells[G.selCellKey];
-    if (cell?.result) {
-      setPendingRevertKey(G.selCellKey);
-    } else {
-      dispatch({ type: 'CLEAR_CELL' });
-      resetChainUI();
-    }
+    // 현재 진행 중인 타석(결과 없음)만 클리어
+    if (G.cells[G.selCellKey]?.result) return;
+    dispatch({ type: 'CLEAR_CELL' });
+    resetChainUI();
   }, [G.cells, G.selCellKey, dispatch, resetChainUI]);
 
   const handleClearInning = useCallback(() => {
@@ -1337,7 +1373,7 @@ export default function GameScreen({ setup, onEnd }: Props) {
   // useLayoutEffect — 렌더 후 동기적으로 실행, HMR과 무관
   useLayoutEffect(() => {
     (window as unknown as Record<string, unknown>)['__kboDispatch'] = (key: string) =>
-      dispatch({ type: 'DELETE_CELL', cellKey: key });
+      dispatchDeleteCell(key);
   });
 
   // ── Lineup helpers for main view ─────────────────────────────────────────
@@ -1366,12 +1402,12 @@ export default function GameScreen({ setup, onEnd }: Props) {
 
         {showSheet ? (
           <div className="game-body view-sheet">
-            <ScoreSheet
+            <ScoreSheet G={G} onSelCell={(key) => dispatch({ type: 'SEL_CELL', key })} />
+            <PitcherLogPanel
               G={G}
-              onSelCell={(key) => dispatch({ type: 'SEL_CELL', key })}
-              onDeleteCell={(key) => dispatch({ type: 'DELETE_CELL', cellKey: key })}
+              onEditRow={handleEditRow}
+              onDeleteCell={(key) => dispatchDeleteCell(key)}
             />
-            <PitcherLogPanel G={G} onEditRow={handleEditRow} />
           </div>
         ) : (
           <div className="game-body view-main">
@@ -1606,11 +1642,21 @@ export default function GameScreen({ setup, onEnd }: Props) {
               onOverflow={handleOverflow}
               onPlaceBatter={handlePlaceBatter}
               onEnd={handleEnd}
-              onToast={showToast}
+              onVideoReview={() => setVideoReviewOpen(true)}
+              onCheckSwing={() => setCheckSwingOpen(true)}
+              onMemoInput={() => setMemoInputOpen(true)}
+              onGameDelay={() => setGameDelayOpen(true)}
+              onWarningEjection={() => setWarningEjectionOpen(true)}
+              onUmpireChange={() => setUmpireChangeOpen(true)}
+              onMemoList={() => setMemoListOpen(true)}
             />
 
             {/* 오른쪽: 투구 로그 */}
-            <PitcherLogPanel G={G} onEditRow={handleEditRow} />
+            <PitcherLogPanel
+              G={G}
+              onEditRow={handleEditRow}
+              onDeleteCell={(key) => dispatchDeleteCell(key)}
+            />
           </div>
         )}
       </div>
@@ -1753,6 +1799,63 @@ export default function GameScreen({ setup, onEnd }: Props) {
         }}
         onClose={() => setMoundOpen(false)}
       />
+
+      {(() => {
+        const noteOf: Record<string, string> = {
+          video_review: 'VR',
+          check_swing: 'CS',
+          memo_input: 'ME',
+          game_delay: 'GD',
+          warning_ejection: 'WE',
+          umpire_change: 'UC',
+        };
+        const saveEv = (ev: import('../types').GameEvent) => {
+          dispatch({ type: 'ADD_GAME_EVENT', event: ev });
+          const note = noteOf[ev.type];
+          if (note) dispatch({ type: 'CELL_NOTE', note });
+        };
+        return (
+          <>
+            <VideoReviewModal
+              G={G}
+              open={videoReviewOpen}
+              onClose={() => setVideoReviewOpen(false)}
+              onSave={saveEv}
+            />
+            <CheckSwingModal
+              G={G}
+              open={checkSwingOpen}
+              onClose={() => setCheckSwingOpen(false)}
+              onSave={saveEv}
+            />
+            <MemoInputModal
+              G={G}
+              open={memoInputOpen}
+              onClose={() => setMemoInputOpen(false)}
+              onSave={saveEv}
+            />
+            <GameDelayModal
+              G={G}
+              open={gameDelayOpen}
+              onClose={() => setGameDelayOpen(false)}
+              onSave={saveEv}
+            />
+            <WarningEjectionModal
+              G={G}
+              open={warningEjectionOpen}
+              onClose={() => setWarningEjectionOpen(false)}
+              onSave={saveEv}
+            />
+            <UmpireChangeModal
+              G={G}
+              open={umpireChangeOpen}
+              onClose={() => setUmpireChangeOpen(false)}
+              onSave={saveEv}
+            />
+          </>
+        );
+      })()}
+      <MemoListModal G={G} open={memoListOpen} onClose={() => setMemoListOpen(false)} />
 
       <LineupReviewModal
         open={lineupReviewTeam !== null}

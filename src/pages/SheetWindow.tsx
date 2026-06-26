@@ -32,7 +32,13 @@ export default function SheetWindow() {
 
   return (
     <div style={{ width: '100%', height: '100vh', overflow: 'auto', background: '#fff' }}>
-      <ScoreSheet G={G} onSelCell={() => {}} />
+      <ScoreSheet
+        G={G}
+        onSelCell={(key) => {
+          // 메인 창 GameScreen으로 SEL_CELL 요청 전달
+          localStorage.setItem('kbo_sel_cell_request', key);
+        }}
+      />
     </div>
   );
 }

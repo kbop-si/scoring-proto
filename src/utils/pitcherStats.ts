@@ -94,6 +94,22 @@ export function computePitcherRows(
       s.np += (c.pitches || []).length;
       const r = c.result || '';
       if (!r) return;
+      // BAT_ADV/BAT_OUT이 접촉투구(타격)를 c.pitches 아닌 pitchCount로만 집계하는 결과들에 +1
+      // (B/HP/KW/KP/KE는 이미 PITCH or STRIKEOUT에서 처리됨)
+      const noBatContactPitch = new Set([
+        'B',
+        'IB',
+        'IB2',
+        'HP',
+        'K',
+        'K3B',
+        'KW',
+        'KP',
+        'KE',
+        ...[1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => `#${n}E`),
+        ...[1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => `Ob${n}E`),
+      ]);
+      if (!noBatContactPitch.has(r)) s.np += 1;
       s.bf += 1;
       const exclAB = ['B', 'IB', 'IB2', 'HP', 'INT', 'SF', 'SH'].includes(r);
       if (!exclAB) s.ab += 1;

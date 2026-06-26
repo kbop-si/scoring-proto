@@ -157,7 +157,7 @@ export default function RunAdvModal({
   const removeEntry = (idx: number) => setDefSeq((prev) => prev.filter((_, i) => i !== idx));
 
   // 오른쪽 패널 로컬 상태
-  const [연결동작, set연결동작] = useState(false);
+  const [연속플레이, set연속플레이] = useState(false);
   const [견제삽입, set견제삽입] = useState(false);
   const [견제루, set견제루] = useState<1 | 2 | 3>(1);
   const [도루자기록, set도루자기록] = useState(false);
@@ -168,7 +168,7 @@ export default function RunAdvModal({
   useEffect(() => {
     if (open) {
       setDefSeq([]);
-      set연결동작(false);
+      set연속플레이(false);
       set견제삽입(false);
       set견제루(1);
       set도루자기록(false);
@@ -788,11 +788,11 @@ export default function RunAdvModal({
             >
               <input
                 type="checkbox"
-                checked={연결동작}
-                onChange={(e) => set연결동작(e.target.checked)}
+                checked={연속플레이}
+                onChange={(e) => set연속플레이(e.target.checked)}
                 style={{ accentColor: 'var(--blue)' }}
               />
-              연결동작
+              연속플레이
             </label>
 
             <div>
@@ -890,7 +890,7 @@ export default function RunAdvModal({
             <button
               className="btn-ok"
               onClick={() =>
-                onConfirm(연결동작, fielderSeq, canDefl ? (deflection ?? undefined) : undefined)
+                onConfirm(연속플레이, fielderSeq, canDefl ? (deflection ?? undefined) : undefined)
               }
               disabled={!canConfirm}
               style={{ opacity: canConfirm ? 1 : 0.4 }}

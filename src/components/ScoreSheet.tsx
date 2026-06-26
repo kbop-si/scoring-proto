@@ -15,7 +15,6 @@ import { PitchMark } from './modals/PitchMark';
 interface Props {
   G: GameState;
   onSelCell: (key: string) => void;
-  onDeleteCell?: (key: string) => void; // REVERT_TO 실행 콜백
 }
 
 const BIDX: Record<string, number> = { '1B': 1, '2B': 2, '3B': 3, HOME: 4 };
@@ -186,7 +185,7 @@ function ScoreCell({
   const CHAIN_ARROW: Record<string, string> = { '2B': '↖', '3B': '↙', HOME: '↘' };
   if (result === 'GHR') noteAtBase['2B'] = 'GH'; // 구형 데이터
 
-  // 연결동작 화살표는 마지막(가장 멀리 진루한) chain note 1개에만 표시
+  // 연속플레이 화살표는 마지막(가장 멀리 진루한) chain note 1개에만 표시
   const CHAIN_RANK: Record<string, number> = { '1B': 1, '2B': 2, '3B': 3, HOME: 4 };
   let lastChainBase: string | null = null;
   let lastChainRank = 0;
@@ -245,7 +244,7 @@ function ScoreCell({
       }
     }
 
-    // 연결동작 화살표: 마지막 chain note에만 표시
+    // 연속플레이 화살표: 마지막 chain note에만 표시
     const arrow =
       n.chain && n.causedBy && n.base === lastChainBase ? CHAIN_ARROW[n.base] || '' : '';
 
@@ -1410,7 +1409,7 @@ function ScoreCell({
               })()}
           </svg>
 
-          {/* 연결동작 작은 화살표 — 마지막 chain 베이스의 다이아몬드 꼭지점 근처에 표시 */}
+          {/* 연속플레이 작은 화살표 — 마지막 chain 베이스의 다이아몬드 꼭지점 근처에 표시 */}
           {lastChainBase &&
             (() => {
               const arrowChar = CHAIN_ARROW[lastChainBase] || '';
@@ -1647,9 +1646,8 @@ function ScoreCell({
             <span
               style={{
                 display: 'inline-block',
-                borderTop: `1.5px solid ${rcol}`,
-                borderLeft: `1.5px solid ${rcol}`,
-                padding: '1px 1px 0 2px',
+                border: `1.5px solid ${rcol}`,
+                padding: '0 2px',
                 lineHeight: 1,
               }}
             >
@@ -1891,10 +1889,9 @@ function calcStats(G: GameState, half: 'top' | 'bottom', ord: number) {
   };
 }
 
-export default function ScoreSheet({ G, onSelCell, onDeleteCell }: Props) {
+export default function ScoreSheet({ G, onSelCell }: Props) {
   const [viewHalf, setViewHalf] = useState<'top' | 'bottom'>(G.half);
   const [zoom, setZoom] = useState(1);
-  const [pendingDelete, setPendingDelete] = useState<string | null>(null);
 
   const MIN_ZOOM = 0.6;
   const MAX_ZOOM = 1.8;
@@ -2046,71 +2043,6 @@ export default function ScoreSheet({ G, onSelCell, onDeleteCell }: Props) {
 
   return (
     <div className="ss-area" id="ss-area">
-      {pendingDelete && (
-        <div
-          style={{
-            position: 'fixed',
-            inset: 0,
-            background: 'rgba(0,0,0,0.45)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            zIndex: 9999,
-          }}
-          onClick={() => setPendingDelete(null)}
-        >
-          <div
-            style={{
-              background: '#fff',
-              borderRadius: 8,
-              padding: '20px 24px',
-              minWidth: 280,
-              boxShadow: '0 10px 30px rgba(0,0,0,0.25)',
-            }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 8 }}>타석 삭제</div>
-            <div style={{ fontSize: 13, color: '#374151', marginBottom: 16 }}>
-              이 타석만 삭제합니다. 이후 타석은 유지됩니다.
-            </div>
-            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-              <button
-                onClick={() => setPendingDelete(null)}
-                style={{
-                  padding: '6px 16px',
-                  fontSize: 13,
-                  border: '1px solid #cbd5e1',
-                  borderRadius: 4,
-                  cursor: 'pointer',
-                  background: '#fff',
-                }}
-              >
-                취소
-              </button>
-              <button
-                onClick={() => {
-                  const fn = (window as unknown as Record<string, unknown>)['__kboDeleteCell'] as
-                    | ((k: string) => void)
-                    | undefined;
-                  if (fn) fn(pendingDelete);
-                  setPendingDelete(null);
-                }}
-                style={{
-                  padding: '6px 16px',
-                  fontSize: 13,
-                  border: '1px solid #dc2626',
-                  background: '#dc2626',
-                  color: '#fff',
-                  borderRadius: 4,
-                  cursor: 'pointer',
-                }}
-              >
-                삭제
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
       <div className="ss-top" id="ss-top">
         <div style={{ display: 'flex', gap: 4 }}>
           <button
@@ -2262,25 +2194,6 @@ export default function ScoreSheet({ G, onSelCell, onDeleteCell }: Props) {
           >
             인쇄
           </button>
-          {onDeleteCell && G.cells[G.selCellKey]?.result && (
-            <button
-              type="button"
-              onClick={() => onDeleteCell(G.selCellKey)}
-              style={{
-                padding: '2px 10px',
-                fontSize: 10,
-                fontWeight: 700,
-                borderRadius: 2,
-                cursor: 'pointer',
-                background: '#dc2626',
-                color: '#fff',
-                border: '1px solid #dc2626',
-                marginLeft: 8,
-              }}
-            >
-              타석삭제
-            </button>
-          )}
         </span>
       </div>
 
@@ -2667,10 +2580,7 @@ export default function ScoreSheet({ G, onSelCell, onDeleteCell }: Props) {
                               .reverse()
                               .map(({ inn, app }) => cellKey(inn, ord, app, half))
                               .find((k) => !!G.cells[k]?.result);
-                            if (lastKey) {
-                              onSelCell(lastKey);
-                              setPendingDelete(lastKey);
-                            }
+                            if (lastKey) onSelCell(lastKey);
                           }}
                         >
                           {layer ? (
@@ -2712,11 +2622,11 @@ export default function ScoreSheet({ G, onSelCell, onDeleteCell }: Props) {
                             const c = G.cells[ck] || null;
                             const iS = G.selCellKey === ck;
                             const iC =
+                              ck === G.selCellKey &&
+                              !c?.result &&
                               half === G.half &&
                               ord === G.curBatterOrder &&
-                              inn === G.inning &&
-                              ck === G.selCellKey &&
-                              !c?.result;
+                              inn === G.inning;
                             const oNum = outMap[ck];
 
                             return (
@@ -2724,10 +2634,7 @@ export default function ScoreSheet({ G, onSelCell, onDeleteCell }: Props) {
                                 key={`${inn}-${app}`}
                                 rowSpan={SUB_ROWS}
                                 className={inn === G.inning && half === G.half ? 'cur-inn-col' : ''}
-                                onClick={() => {
-                                  onSelCell(ck);
-                                  if (G.cells[ck]?.result) setPendingDelete(ck);
-                                }}
+                                onClick={() => onSelCell(ck)}
                                 style={{
                                   width: 80,
                                   minWidth: 80,

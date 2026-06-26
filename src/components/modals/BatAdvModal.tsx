@@ -194,7 +194,7 @@ export default function BatAdvModal({
   const [selBall, setSelBall] = useState<BallType | null>(null);
   const [deflection, setDeflection] = useState<DeflectionInfo | null>(null);
   const [defSeq, setDefSeq] = useState<DefRow[]>([]);
-  const [연결동작, set연결동작] = useState(false);
+  const [연속플레이, set연속플레이] = useState(false);
   const [장외홈런, set장외홈런] = useState(false);
   const [hrDist, setHrDist] = useState(110);
   const [ghrDist, setGhrDist] = useState(110);
@@ -210,7 +210,7 @@ export default function BatAdvModal({
       setSelBall(null);
       setDeflection(null);
       setDefSeq([]);
-      set연결동작(false);
+      set연속플레이(false);
       set장외홈런(false);
       setHrDist(110);
       setGhrDist(110);
@@ -305,9 +305,9 @@ export default function BatAdvModal({
     if (NEEDS_FIELDER.has(pendingResult)) {
       if (!defSeq.length) return;
       const seq = defSeq.map((r) => r.pos);
-      onAutoConfirm(buildErrorResult(pendingResult, seq), bt, undefined, 연결동작, defl);
+      onAutoConfirm(buildErrorResult(pendingResult, seq), bt, undefined, 연속플레이, defl);
     } else {
-      onAutoConfirm(pendingResult, bt, undefined, 연결동작, defl);
+      onAutoConfirm(pendingResult, bt, undefined, 연속플레이, defl);
     }
   };
 
@@ -324,7 +324,7 @@ export default function BatAdvModal({
     setGhrDist(110);
     setGhrH(0);
     setGhrM(0);
-    set연결동작(false);
+    set연속플레이(false);
     onClose();
   };
 
@@ -761,7 +761,7 @@ export default function BatAdvModal({
                   const defl = NEEDS_DEFL.has(pendingResult)
                     ? (deflection ?? undefined)
                     : undefined;
-                  onAutoConfirm('HIT', undefined, hd, 연결동작, defl);
+                  onAutoConfirm('HIT', undefined, hd, 연속플레이, defl);
                 }}
                 disabled={!hitReady}
                 style={{ opacity: hitReady ? 1 : 0.4 }}
@@ -818,11 +818,11 @@ export default function BatAdvModal({
             >
               <input
                 type="checkbox"
-                checked={연결동작}
-                onChange={(e) => set연결동작(e.target.checked)}
+                checked={연속플레이}
+                onChange={(e) => set연속플레이(e.target.checked)}
                 style={{ accentColor: 'var(--blue)' }}
               />
-              연결동작
+              연속플레이
             </label>
           </div>
 
