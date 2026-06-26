@@ -1018,12 +1018,32 @@ export default function BatAdvModal({
               <div style={{ padding: '10px', borderBottom: '1px solid var(--border2)' }}>
                 <div className="rs-title">4구, 사구 진루</div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                  <Btn label="B 4구" sel={s('B')} onClick={() => pick('B')} />
+                  <Btn
+                    label="B 4구"
+                    sel={s('B')}
+                    onClick={() => pick('B')}
+                    disabled={editMode && editLockBases !== 1}
+                  />
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 4 }}>
-                    <Btn label="X 자동 고의4구" sel={s('IB2')} onClick={() => pick('IB2')} />
-                    <Btn label="IB 고의 4구" sel={s('IB')} onClick={() => pick('IB')} />
+                    <Btn
+                      label="X 자동 고의4구"
+                      sel={s('IB2')}
+                      onClick={() => pick('IB2')}
+                      disabled={editMode && editLockBases !== 1}
+                    />
+                    <Btn
+                      label="IB 고의 4구"
+                      sel={s('IB')}
+                      onClick={() => pick('IB')}
+                      disabled={editMode && editLockBases !== 1}
+                    />
                   </div>
-                  <Btn label="HP 몸에 맞는 볼" sel={s('HP')} onClick={() => pick('HP')} />
+                  <Btn
+                    label="HP 몸에 맞는 볼"
+                    sel={s('HP')}
+                    onClick={() => pick('HP')}
+                    disabled={editMode && editLockBases !== 1}
+                  />
                 </div>
               </div>
 

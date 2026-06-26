@@ -524,9 +524,24 @@ export default function GameScreen({ setup, onEnd }: Props) {
         return;
       }
 
-      // FE: open fielder modal to record which fielder committed the foul error
+      // FE: 수비수 모달 → FE{pos} dispatch
       if (pitchType === 'FE') {
-        dispatch({ type: 'PITCH', pitchType: 'FE' });
+        fielderCbRef.current = () => {
+          setUI((p) => {
+            const pos = p.fielderSeq[0];
+            dispatch({
+              type: 'PITCH',
+              pitchType: (pos ? `FE${pos}` : 'FE') as import('../types').PitchType,
+            });
+            return p;
+          });
+        };
+        setUI((p) => ({
+          ...p,
+          fielderOpen: true,
+          fielderTitle: '파울실책 수비수',
+          fielderSeq: [],
+        }));
         return;
       }
 

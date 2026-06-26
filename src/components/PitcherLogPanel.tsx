@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import type { GameState, PitchType, HitData } from '../types';
 import { cellKey as makeCellKey } from '../store/gameReducer';
 
-const PITCH_LABEL: Record<PitchType, string> = {
+const PITCH_LABEL: Partial<Record<PitchType, string>> & Record<string, string> = {
   S: '스트라이크',
   SW: '헛스윙',
   B: '볼',
@@ -14,8 +14,10 @@ const PITCH_LABEL: Record<PitchType, string> = {
   PC2: '포수위반 볼',
   PC3: '타자위반 스트라이크',
 };
+// FE{n} → '파울실책(E{n})'
+for (let i = 1; i <= 9; i++) PITCH_LABEL[`FE${i}`] = `파울실책(E${i})`;
 
-const PITCH_COLOR: Record<PitchType, string> = {
+const PITCH_COLOR: Partial<Record<PitchType, string>> & Record<string, string> = {
   S: '#1e40af',
   SW: '#1e40af',
   B: '#15803d',
@@ -27,6 +29,7 @@ const PITCH_COLOR: Record<PitchType, string> = {
   PC2: '#15803d',
   PC3: '#1e40af',
 };
+for (let i = 1; i <= 9; i++) PITCH_COLOR[`FE${i}`] = '#92400e';
 
 // 수비 구역 번호 → 방향 레이블
 const ZONE_DIR: Record<number, string> = {

@@ -117,7 +117,7 @@ export const PITCH_SYM: Record<string, string> = {
   SW: '', // SVG 사용
   B: '—', // 볼
   F: '△', // 파울
-  FE: '▲', // 파울실책
+  FE: '△', // 파울실책
   BS: '●', // 번트헛스윙
   BF: '▲', // 번트파울
   PC1: '', // svg 사용

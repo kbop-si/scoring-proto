@@ -1,7 +1,18 @@
 export type Screen = 'splash' | 'league' | 'create' | 'gameinfo' | 'lineup' | 'game';
 export type Half = 'top' | 'bottom';
 export type Base = '1B' | '2B' | '3B';
-export type PitchType = 'S' | 'SW' | 'B' | 'F' | 'FE' | 'BS' | 'BF' | 'PC1' | 'PC2' | 'PC3';
+export type PitchType =
+  | 'S'
+  | 'SW'
+  | 'B'
+  | 'F'
+  | 'FE'
+  | `FE${1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9}`
+  | 'BS'
+  | 'BF'
+  | 'PC1'
+  | 'PC2'
+  | 'PC3';
 
 export interface Player {
   name: string;

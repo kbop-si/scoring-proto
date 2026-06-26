@@ -897,7 +897,7 @@ button {
   color: #fff;
   padding: 10px 0 10px;
   display: grid;
-  grid-template-columns: 165px 1fr;
+  grid-template-columns: 165px 3fr 1fr;
   gap: 10px;
   align-items: stretch;
   flex-shrink: 0;
@@ -964,17 +964,16 @@ button {
 .ip-bso-card {
   margin-right: 10px;
   background: linear-gradient(180deg, #0a0a0a 0%, #15253d 100%);
-  border: 1px solid #334155;
+  border-radius: 5px;
   display: flex;
   flex-direction: column;
   justify-content: center;
   gap: 0;
-  padding: 8px 10px;
-  align-self: start;
+  padding: 16px 18px;
 }
 .bso-line {
   display: grid;
-  grid-template-columns: 32px 1fr;
+  grid-template-columns: 35px auto;
   align-items: center;
   min-height: 48px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.2);

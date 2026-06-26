@@ -614,7 +614,8 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
       cell.eventLog = [...(cell.eventLog || []), { kind: 'pitch', pitch: pitchType as PitchType }];
 
       let { balls, strikes, pitchBalls, pitchStrikes } = state;
-      switch (pitchType) {
+      const pitchBase = pitchType.startsWith('FE') && pitchType.length > 2 ? 'FE' : pitchType;
+      switch (pitchBase) {
         case 'S':
           strikes++;
           pitchStrikes++;
@@ -2634,7 +2635,8 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
         let balls = 0;
         let strikes = 0;
         for (const p of newPitches) {
-          switch (p) {
+          const pb = p.startsWith('FE') && p.length > 2 ? 'FE' : p;
+          switch (pb) {
             case 'S':
             case 'SW':
             case 'BS':
@@ -2713,7 +2715,8 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
         balls = 0;
         strikes = 0;
         for (const p of newPitches) {
-          switch (p) {
+          const pb = p.startsWith('FE') && p.length > 2 ? 'FE' : p;
+          switch (pb) {
             case 'S':
             case 'SW':
             case 'BS':
