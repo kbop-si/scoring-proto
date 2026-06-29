@@ -1327,8 +1327,9 @@ export default function GameScreen({ setup, onEnd }: Props) {
     }
     dispatch({ type: 'REVERT' });
     resetChainUI();
+    clearBaseTargets();
     setUI((p) => ({ ...p, selRunnerBase: null }));
-  }, [G.history.length, dispatch, showToast, resetChainUI]);
+  }, [G.history.length, dispatch, showToast, resetChainUI, clearBaseTargets]);
 
   const dispatchDeleteCell = useCallback(
     (key: string) => {
@@ -1640,13 +1641,11 @@ export default function GameScreen({ setup, onEnd }: Props) {
               }}
               onBatterTimeout={() => {
                 if (!guardThreeOut()) return;
-                dispatch({ type: 'CELL_NOTE', note: 'BT' });
-                dispatch({ type: 'GAME_EVENT', eventType: 'batter_timeout' });
+                dispatch({ type: 'GAME_EVENT', eventType: 'batter_timeout', note: 'BT' });
               }}
               onPitcherLeave={() => {
                 if (!guardThreeOut()) return;
-                dispatch({ type: 'CELL_NOTE', note: 'PL' });
-                dispatch({ type: 'GAME_EVENT', eventType: 'pitcher_leave' });
+                dispatch({ type: 'GAME_EVENT', eventType: 'pitcher_leave', note: 'PL' });
               }}
               onPitcherChange={openPitcherChange}
               onNextBatter={handleNextBatter}
@@ -1800,14 +1799,10 @@ export default function GameScreen({ setup, onEnd }: Props) {
           setMoundOpen(false);
 
           dispatch({
-            type: 'CELL_NOTE',
-            note: visitor === '코칭스태프' ? 'M_R' : visitor === '포수 덕아웃' ? 'M_BD' : 'M_B',
-          });
-
-          dispatch({
             type: 'GAME_EVENT',
             eventType: 'mound',
             detail: visitor,
+            note: visitor === '코칭스태프' ? 'M_R' : visitor === '포수 덕아웃' ? 'M_BD' : 'M_B',
           });
 
           showToast(`마운드 방문: ${visitor}`);
@@ -1825,9 +1820,8 @@ export default function GameScreen({ setup, onEnd }: Props) {
           umpire_change: 'UC',
         };
         const saveEv = (ev: import('../types').GameEvent) => {
-          dispatch({ type: 'ADD_GAME_EVENT', event: ev });
           const note = noteOf[ev.type];
-          if (note) dispatch({ type: 'CELL_NOTE', note });
+          dispatch({ type: 'ADD_GAME_EVENT', event: { ...ev, cellKey: G.selCellKey }, note });
         };
         return (
           <>
@@ -1870,7 +1864,13 @@ export default function GameScreen({ setup, onEnd }: Props) {
           </>
         );
       })()}
-      <MemoListModal G={G} open={memoListOpen} onClose={() => setMemoListOpen(false)} />
+      <MemoListModal
+        G={G}
+        open={memoListOpen}
+        onClose={() => setMemoListOpen(false)}
+        onEdit={(idx, ev) => dispatch({ type: 'EDIT_GAME_EVENT', index: idx, event: ev })}
+        onDelete={(idx) => dispatch({ type: 'DELETE_GAME_EVENT', index: idx })}
+      />
 
       <LineupReviewModal
         open={lineupReviewTeam !== null}

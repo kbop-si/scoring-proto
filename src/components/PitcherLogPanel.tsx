@@ -31,39 +31,39 @@ const PITCH_COLOR: Partial<Record<PitchType, string>> & Record<string, string> =
 };
 for (let i = 1; i <= 9; i++) PITCH_COLOR[`FE${i}`] = '#92400e';
 
-// 수비 구역 번호 → 방향 레이블
+// 수비 포지션 번호 → pit.xlsx 표기 레이블
+// 1=투수, 2=포수, 3=1루수, 4=2루수, 5=3루수, 6=유격수, 7=좌익수, 8=중견수, 9=우익수
 const ZONE_DIR: Record<number, string> = {
-  1: '1',
-  2: '2',
-  3: '3',
-  4: '4',
-  5: '5',
+  1: '투',
+  2: '포',
+  3: '1',
+  4: '2',
+  5: '3',
   6: '유',
   7: '좌',
   8: '중',
   9: '우',
+  78: '좌중',
+  89: '우중',
 };
 
-// 결과 코드 → 한글 표시
+// 결과 코드 → 한글 표시 (포지션 무관 단일 코드)
 const RESULT_CODE_MAP: Record<string, string> = {
   K: '삼진',
-  KW: '낫아웃',
-  KP: '낫아웃',
-  KE: '낫아웃',
+  KW: '스낫',
+  KP: '스낫',
+  KE: '스낫',
   B: '4구',
-  IB: '고의4구',
+  IB: '고4',
   HP: '사구',
-  HR: '홈런',
-  GHR: '장내홈런',
+  HP2: '사구',
   FC: '야선',
   INT: '타방',
-  HP2: '사구',
-  SH: '희번',
-  SF: '희비',
 };
 
-// result 코드 → 표시 문자열
-// 안타(H1/H2/H3): hitData.zone으로 방향 표시 / 나머지: 저장된 코드 그대로
+// result 코드 → pit.xlsx 땅표표기 문자열
+// 프리픽스: F(뜬공), f(파울플라이), L(직선타), IF(내야플라이), SF(희생플라이), SH(희생번트), BU(번트아웃)
+// 수비번호 조합: '6-3', '6-4-3' 등 첫 번째 포지션만 방향 레이블로 사용
 function formatCellResult(
   result: string,
   ballType?: '땅' | '뜬' | '라',
@@ -71,25 +71,58 @@ function formatCellResult(
   isTP?: boolean,
   hitData?: HitData
 ): string {
-  // 안타 계열 — 방향 + 루타 숫자
-  if (result === 'H1' || result === 'H2' || result === 'H3') {
+  // 안타·홈런 계열 — 방향 + 결과
+  if (
+    result === 'H1' ||
+    result === 'H2' ||
+    result === 'H3' ||
+    result === 'HR' ||
+    result === 'GHR'
+  ) {
     const dir = hitData ? (ZONE_DIR[hitData.zone] ?? String(hitData.zone)) : '';
     if (result === 'H1') return `${dir}안`;
     if (result === 'H2') return `${dir}2`;
     if (result === 'H3') return `${dir}3`;
+    return `${dir}홈`;
   }
 
-  // 한글 코드 매핑
+  // 단일 코드 매핑
   if (RESULT_CODE_MAP[result]) return RESULT_CODE_MAP[result];
 
-  // 수비 번호 조합 (6-3, 4-6-3 등) + 타구 유형·병살 접미사
-  let s = result;
-  if (ballType === '땅') s += '땅';
-  else if (ballType === '뜬') s += '비';
-  else if (ballType === '라') s += '직';
-  if (isTP) s += '삼중';
-  else if (isDP) s += '병';
-  return s;
+  // 태그플레이(T), 루터치(A), 역병살(R) 모드 접미사 제거 후 파싱
+  const cleaned = result.replace(/[TAR]$/, '');
+
+  // 프리픽스 파싱 (길이 내림차순으로 먼저 시도)
+  type Prefix = 'SF' | 'SH' | 'IF' | 'BU' | 'F' | 'f' | 'L';
+  const PREFIXES: Prefix[] = ['SF', 'SH', 'IF', 'BU', 'F', 'f', 'L'];
+  let prefix: Prefix | '' = '';
+  let rest = cleaned;
+  for (const p of PREFIXES) {
+    if (cleaned.startsWith(p)) {
+      prefix = p;
+      rest = cleaned.slice(p.length);
+      break;
+    }
+  }
+
+  // 첫 번째 수비 포지션 → 방향 레이블
+  const firstPos = parseInt(rest.split('-')[0]);
+  const dir = isNaN(firstPos) ? rest : (ZONE_DIR[firstPos] ?? String(firstPos));
+
+  if (prefix === 'SF') return `${dir}희비`;
+  if (prefix === 'SH') return `${dir}희번`;
+  if (prefix === 'BU') return isDP ? `${dir}병` : `${dir}번`;
+  if (prefix === 'F' || prefix === 'IF')
+    return isTP ? `${dir}삼중` : isDP ? `${dir}병` : `${dir}비`;
+  if (prefix === 'f') return `${dir}파`;
+  if (prefix === 'L') return isTP ? `${dir}삼중` : isDP ? `${dir}병` : `${dir}직`;
+
+  // 프리픽스 없음 = 땅볼 계열 수비번호 조합
+  if (isTP) return `${dir}삼중`;
+  if (isDP) return `${dir}병`;
+  if (ballType === '뜬') return `${dir}비`;
+  if (ballType === '라') return `${dir}직`;
+  return `${dir}땅`;
 }
 
 // 베이스 문자 변환

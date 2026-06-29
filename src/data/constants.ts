@@ -293,7 +293,7 @@ export const SAMPLE: { away: Player[]; home: Player[] } = {
     { name: '박승욱', num: '7', pos: 7, order: 6, hitType: 3 },
     { name: '강민제', num: '10', pos: 4, order: 7, hitType: 1 },
     { name: '박지훈', num: '9', pos: 2, order: 8, hitType: 2 },
-    { name: '박진형', num: 'DH', pos: 0, order: 9, hitType: 3 },
+    { name: '박진형', num: '47', pos: 0, order: 9, hitType: 3 },
     // 투수 슬롯 (타순 없음)
     { name: '박시영', num: '8', pos: 1, order: 0, hitType: 1 },
     // 벤치 (29명 채움)

@@ -122,13 +122,14 @@ export interface PitcherData {
 
 export type Runners = Partial<Record<Base, Runner>>;
 
-export type GameEvent =
+type GameEventData =
   | {
       type: 'mound' | 'batter_timeout' | 'pitcher_leave';
       inning: number;
       half: Half;
       pitcher: string;
       pitchCount: number;
+      atBatPitch?: number;
       detail?: string;
     }
   | {
@@ -137,6 +138,7 @@ export type GameEvent =
       half: Half;
       order: number;
       pitchCount: number;
+      atBatPitch?: number;
       team: string;
       player: string;
       content: string;
@@ -152,6 +154,7 @@ export type GameEvent =
       half: Half;
       order: number;
       pitchCount: number;
+      atBatPitch?: number;
       team: string;
       player: string;
       umpire: string;
@@ -164,6 +167,7 @@ export type GameEvent =
       half: Half;
       order: number;
       pitchCount: number;
+      atBatPitch?: number;
       team: string;
       player: string;
       memo: string;
@@ -204,6 +208,8 @@ export type GameEvent =
       startTime: string;
       endTime: string;
     };
+
+export type GameEvent = GameEventData & { cellKey?: string };
 
 export interface PitcherChange {
   inning: number;
@@ -541,8 +547,16 @@ export type GameAction =
   | { type: 'SET_GAME_INFO'; awayTeam: string; homeTeam: string; date: string; league: string }
   | { type: 'INIT_GAME'; setup: GameSetup }
   | { type: 'LOAD_GAME'; state: GameState }
-  | { type: 'GAME_EVENT'; eventType: 'mound' | 'batter_timeout' | 'pitcher_leave'; detail?: string }
-  | { type: 'ADD_GAME_EVENT'; event: GameEvent }
+  | {
+      type: 'GAME_EVENT';
+      eventType: 'mound' | 'batter_timeout' | 'pitcher_leave';
+      detail?: string;
+      note: string;
+      atBatPitch?: number;
+    }
+  | { type: 'ADD_GAME_EVENT'; event: GameEvent; note?: string }
+  | { type: 'EDIT_GAME_EVENT'; index: number; event: GameEvent }
+  | { type: 'DELETE_GAME_EVENT'; index: number }
   | { type: 'CELL_NOTE'; note: string }
   | { type: 'EDIT_PITCH'; cellKey: string; entryIdx: number; newPitch: PitchType }
   | { type: 'EDIT_HIT_ZONE'; cellKey: string; newZone: number }

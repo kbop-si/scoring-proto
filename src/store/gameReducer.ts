@@ -162,6 +162,44 @@ function snapshot(s: GameState): HistorySnapshot {
   };
 }
 
+// REVERT 후 gameEvents의 노트를 복원된 cells에 atBatPitch 위치로 재적용
+function withEventNotes(s: GameState): GameState {
+  let cells = s.cells;
+  for (const ev of s.gameEvents) {
+    if (!ev.cellKey) continue;
+    const note = gameEventNote(ev);
+    if (!note) continue;
+    const cell = cells[ev.cellKey];
+    if (!cell) continue;
+    if ((cell.sideNotes || []).includes(note)) continue;
+
+    const atBatPitch = (ev as Record<string, unknown>).atBatPitch as number | undefined;
+    const log = [...(cell.eventLog || [])];
+    let pc = 0;
+    let insertAt = log.length;
+    if (atBatPitch != null) {
+      for (let i = 0; i <= log.length; i++) {
+        if (pc >= atBatPitch) {
+          insertAt = i;
+          break;
+        }
+        if (i < log.length && log[i].kind === 'pitch') pc++;
+      }
+    }
+    log.splice(insertAt, 0, { kind: 'note' as const, note });
+
+    cells = {
+      ...cells,
+      [ev.cellKey]: {
+        ...cell,
+        sideNotes: [...(cell.sideNotes || []), note],
+        eventLog: log,
+      },
+    };
+  }
+  return cells === s.cells ? s : { ...s, cells };
+}
+
 function saveHist(s: GameState): HistorySnapshot[] {
   const hist = [...s.history, snapshot(s)];
   if (hist.length > 60) hist.shift();
@@ -382,6 +420,25 @@ export const initialGameState: GameState = {
   pitcherChanges: [],
   substitutions: [],
 };
+
+function gameEventNote(ev: { type: string; detail?: string }): string | null {
+  if (ev.type === 'batter_timeout') return 'BT';
+  if (ev.type === 'pitcher_leave') return 'PL';
+  if (ev.type === 'mound') {
+    if (ev.detail === '코칭스태프') return 'M_R';
+    if (ev.detail === '포수 덕아웃') return 'M_BD';
+    return 'M_B';
+  }
+  const map: Record<string, string> = {
+    video_review: 'VR',
+    check_swing: 'CS',
+    memo_input: 'ME',
+    game_delay: 'GD',
+    warning_ejection: 'WE',
+    umpire_change: 'UC',
+  };
+  return map[ev.type] ?? null;
+}
 
 // ── Reducer ───────────────────────────────────────────────────────────────────
 
@@ -2013,11 +2070,17 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
       //   - 현재 셀 비어있음 (신규 타자 들어옴) → 직전 snapshot 의 타순을 타깃
       // 같은 타순 cB 를 가진 snapshot 들을 연속으로 pop (BAT_ADV + 그 PA 동안 일어난 RUN_ADV/PITCH 등 묶어서)
       let targetOrder: number;
+      let targetInning: number;
+      let targetHalf: import('../types').Half;
       if (cell?.result) {
         targetOrder = cell.order;
+        targetInning = cell.inning;
+        targetHalf = cell.half;
       } else {
         const lastSnap = state.history[state.history.length - 1];
         targetOrder = lastSnap.curBatterOrder;
+        targetInning = lastSnap.inning;
+        targetHalf = lastSnap.half;
       }
 
       let history = [...state.history];
@@ -2025,7 +2088,12 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
       let popped = false;
       while (history.length > 0) {
         const top = history[history.length - 1];
-        if (top.curBatterOrder !== targetOrder) break;
+        if (
+          top.curBatterOrder !== targetOrder ||
+          top.inning !== targetInning ||
+          top.half !== targetHalf
+        )
+          break;
         history = history.slice(0, -1);
         result = { ...result, ...top, history };
         popped = true;
@@ -2038,7 +2106,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
         result = { ...result, ...top, history };
       }
 
-      return result;
+      return withEventNotes(result);
     }
 
     // ── ADD_OVERFLOW ─────────────────────────────────────────────────────────
@@ -2074,7 +2142,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
       if (!state.history.length) return state;
       const history = [...state.history];
       const prev = history.pop()!;
-      return { ...state, ...prev, history };
+      return withEventNotes({ ...state, ...prev, history });
     }
 
     // ── REVERT_TO — 특정 타석 이전 상태로 복원 ──────────────────────────────────
@@ -2095,7 +2163,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
             top.curBatterOrder < targetOrder);
         if (isBefore) break;
       }
-      return result;
+      return withEventNotes(result);
     }
 
     // ── DELETE_INNING — 해당 이닝 전체 삭제 ──────────────────────────────────
@@ -2191,11 +2259,15 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
         }
       }
 
+      // 해당 셀에 연결된 gameEvents 제거
+      const gameEvents = state.gameEvents.filter((ev) => ev.cellKey !== ck);
+
       // 삭제 후 해당 셀로 커서 이동 → 바로 재입력 가능
       return {
         ...state,
         cells,
         runners,
+        gameEvents,
         awayR,
         homeR,
         awayH,
@@ -2595,13 +2667,116 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
         type: action.eventType,
         pitcher: state.pitcher.name,
         pitchCount: state.pitchCount,
+        atBatPitch: action.atBatPitch ?? state.cells[state.selCellKey]?.pitches?.length ?? 0,
         detail: action.detail,
+        cellKey: state.selCellKey,
       };
-      return { ...state, gameEvents: [...state.gameEvents, ev] };
+      const ck = state.selCellKey;
+      const base = state.cells[ck] ?? {
+        half: state.half,
+        inning: state.inning,
+        order: state.curBatterOrder,
+        appearance: 0,
+        pitches: [],
+        result: null,
+        runnerNotes: [],
+      };
+      const cells = {
+        ...state.cells,
+        [ck]: {
+          ...base,
+          sideNotes: [...(base.sideNotes || []), action.note],
+          eventLog: [...(base.eventLog || []), { kind: 'note' as const, note: action.note }],
+        },
+      };
+      return { ...state, cells, gameEvents: [...state.gameEvents, ev] };
     }
 
     case 'ADD_GAME_EVENT': {
-      return { ...state, gameEvents: [...state.gameEvents, action.event] };
+      let nextState: GameState = { ...state, gameEvents: [...state.gameEvents, action.event] };
+      if (action.note) {
+        const ck = state.selCellKey;
+        const base = state.cells[ck] ?? {
+          half: state.half,
+          inning: state.inning,
+          order: state.curBatterOrder,
+          appearance: 0,
+          pitches: [],
+          result: null,
+          runnerNotes: [],
+        };
+        nextState = {
+          ...nextState,
+          cells: {
+            ...nextState.cells,
+            [ck]: {
+              ...base,
+              sideNotes: [...(base.sideNotes || []), action.note],
+              eventLog: [...(base.eventLog || []), { kind: 'note' as const, note: action.note }],
+            },
+          },
+        };
+      }
+      return nextState;
+    }
+
+    case 'EDIT_GAME_EVENT': {
+      const oldEv = state.gameEvents[action.index];
+      const events = [...state.gameEvents];
+      events[action.index] = action.event;
+
+      let cells = state.cells;
+      const ck = action.event.cellKey;
+      const note = gameEventNote(action.event);
+      const oldABP = (oldEv as Record<string, unknown>).atBatPitch as number | undefined;
+      const newABP = (action.event as Record<string, unknown>).atBatPitch as number | undefined;
+
+      // atBatPitch가 바뀌면 eventLog 내 노트 위치를 재배치
+      if (ck && note && newABP != null && oldABP !== newABP) {
+        const cell = cells[ck];
+        if (cell) {
+          const log = [...(cell.eventLog || [])];
+          const noteIdx = log.findIndex(
+            (e) => e.kind === 'note' && (e as { note: string }).note === note
+          );
+          if (noteIdx >= 0) {
+            log.splice(noteIdx, 1);
+            let pc = 0;
+            let insertAt = log.length;
+            for (let i = 0; i <= log.length; i++) {
+              if (pc >= newABP) {
+                insertAt = i;
+                break;
+              }
+              if (i < log.length && log[i].kind === 'pitch') pc++;
+            }
+            log.splice(insertAt, 0, { kind: 'note' as const, note });
+            cells = { ...cells, [ck]: { ...cell, eventLog: log } };
+          }
+        }
+      }
+
+      return { ...state, gameEvents: events, cells };
+    }
+
+    case 'DELETE_GAME_EVENT': {
+      const target = state.gameEvents[action.index];
+      const gameEvents = state.gameEvents.filter((_, i) => i !== action.index);
+      let cells = state.cells;
+      if (target?.cellKey) {
+        const note = gameEventNote(target);
+        const cell = cells[target.cellKey];
+        if (note && cell) {
+          const sideNotes = [...(cell.sideNotes || [])];
+          const si = sideNotes.indexOf(note);
+          if (si !== -1) sideNotes.splice(si, 1);
+          const eventLog = [...(cell.eventLog || [])];
+          const li = eventLog.findIndex((e) => e.kind === 'note' && e.note === note);
+          if (li !== -1) eventLog.splice(li, 1);
+          cells = { ...cells, [target.cellKey]: { ...cell, sideNotes, eventLog } };
+        }
+      }
+      return { ...state, gameEvents, cells };
     }
 
     // ── EDIT_PITCH (PitcherLogPanel 편집) ────────────────────────────────────

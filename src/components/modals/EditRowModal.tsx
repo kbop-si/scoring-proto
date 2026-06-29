@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import type { PitchType } from '../../types';
 import type { EditRowInfo } from '../PitcherLogPanel';
 
@@ -145,6 +145,8 @@ export default function EditRowModal({
   // pitch_seq 편집 state
   const [seqPitches, setSeqPitches] = useState<PitchType[]>([]);
   const [seqError, setSeqError] = useState<string | null>(null);
+  const seqDragFromRef = useRef<number | null>(null);
+  const [seqDragOver, setSeqDragOver] = useState<number | null>(null);
   // info 바뀌면 state 재설정
   useEffect(() => {
     if (info?.kind === 'bat_out_code') {
@@ -520,20 +522,6 @@ export default function EditRowModal({
 
   if (info.kind === 'pitch_seq') {
     const FOUL_TYPES: PitchType[] = ['F', 'BF', 'FE'];
-    const moveUp = (i: number) => {
-      if (i === 0) return;
-      const next = [...seqPitches];
-      [next[i - 1], next[i]] = [next[i], next[i - 1]];
-      setSeqPitches(next);
-      setSeqError(null);
-    };
-    const moveDown = (i: number) => {
-      if (i === seqPitches.length - 1) return;
-      const next = [...seqPitches];
-      [next[i], next[i + 1]] = [next[i + 1], next[i]];
-      setSeqPitches(next);
-      setSeqError(null);
-    };
     const changeType = (i: number, p: PitchType) => {
       const next = [...seqPitches];
       next[i] = p;
@@ -556,6 +544,15 @@ export default function EditRowModal({
       }
       onSavePitchSeq(info.cellKey, seqPitches);
       onClose();
+    };
+    const handleDrop = (toIdx: number) => {
+      const fromIdx = seqDragFromRef.current;
+      if (fromIdx === null || fromIdx === toIdx) return;
+      const next = [...seqPitches];
+      const [item] = next.splice(fromIdx, 1);
+      next.splice(toIdx, 0, item);
+      setSeqPitches(next);
+      setSeqError(null);
     };
     const counts: { b: number; s: number }[] = [];
     let rb = 0;
@@ -594,26 +591,49 @@ export default function EditRowModal({
             {seqPitches.map((p, i) => (
               <div
                 key={i}
+                draggable
+                onDragStart={() => {
+                  seqDragFromRef.current = i;
+                }}
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  if (seqDragOver !== i) setSeqDragOver(i);
+                }}
+                onDragLeave={() => setSeqDragOver(null)}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  handleDrop(i);
+                  setSeqDragOver(null);
+                }}
+                onDragEnd={() => {
+                  seqDragFromRef.current = null;
+                  setSeqDragOver(null);
+                }}
                 style={{
                   display: 'flex',
                   alignItems: 'center',
                   gap: 4,
                   marginBottom: 4,
                   padding: '3px 4px',
-                  background: '#f8fafc',
+                  background: seqDragOver === i ? '#dbeafe' : '#f8fafc',
                   borderRadius: 4,
+                  border: seqDragOver === i ? '1px solid #3b82f6' : '1px solid transparent',
+                  cursor: 'grab',
                 }}
               >
+                <span style={{ color: '#94a3b8', fontSize: 13, userSelect: 'none' }}>⠿</span>
                 <span style={{ width: 20, color: '#94a3b8', fontSize: 11 }}>{i + 1}</span>
                 <select
                   value={p}
                   onChange={(e) => changeType(i, e.target.value as PitchType)}
+                  onClick={(e) => e.stopPropagation()}
                   style={{
                     fontSize: 12,
                     flex: 1,
                     padding: '2px 4px',
                     borderRadius: 3,
                     border: '1px solid #cbd5e1',
+                    cursor: 'auto',
                   }}
                 >
                   {PITCH_OPTIONS.map((o) => (
@@ -625,17 +645,13 @@ export default function EditRowModal({
                 <span style={{ fontSize: 11, color: '#64748b', width: 36, textAlign: 'right' }}>
                   {counts[i].b}B {counts[i].s}S
                 </span>
-                <button onClick={() => moveUp(i)} disabled={i === 0} style={arrowBtn}>
-                  ▲
-                </button>
                 <button
-                  onClick={() => moveDown(i)}
-                  disabled={i === seqPitches.length - 1}
-                  style={arrowBtn}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    remove(i);
+                  }}
+                  style={{ ...arrowBtn, color: '#ef4444' }}
                 >
-                  ▼
-                </button>
-                <button onClick={() => remove(i)} style={{ ...arrowBtn, color: '#ef4444' }}>
                   ✕
                 </button>
               </div>

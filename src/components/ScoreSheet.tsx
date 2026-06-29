@@ -435,6 +435,7 @@ function ScoreCell({
   const eventLog = cell?.eventLog || [];
 
   const renderNote = (note: string, key: string | number): React.ReactNode => {
+    if (STAR_NOTES.has(note)) return null;
     if (note === 'M_R') {
       return (
         <div key={key} style={{ fontSize: 10, fontWeight: 900, lineHeight: 1.2, color: '#fa0000' }}>
@@ -665,6 +666,8 @@ function ScoreCell({
 
   const pinchHitter = cell?.pinchHitter;
   const bbChargedTo = cell?.bbChargedTo;
+  const STAR_NOTES = new Set(['VR', 'CS', 'ME', 'GD', 'WE', 'UC']);
+  const hasStarNote = sideNotes.some((n) => STAR_NOTES.has(String(n).trim()));
   return (
     <div className={cls}>
       {pinchHitter && (
@@ -700,6 +703,22 @@ function ScoreCell({
           }}
         >
           ⤴{bbChargedTo}
+        </div>
+      )}
+      {hasStarNote && (
+        <div
+          title="기타 이벤트 (목록에서 확인)"
+          style={{
+            position: 'absolute',
+            bottom: 1,
+            right: 1,
+            fontSize: 10,
+            color: '#7c3aed',
+            lineHeight: 1,
+            pointerEvents: 'none',
+          }}
+        >
+          ★
         </div>
       )}
       <div className="sc-pitches">
@@ -748,6 +767,8 @@ function ScoreCell({
         {!eventLog.some((e) => e.kind === 'note') &&
           sideNotes.map((n, i) => {
             const note = String(n).trim();
+
+            if (STAR_NOTES.has(note)) return null;
 
             if (note === 'M_R') {
               return (
