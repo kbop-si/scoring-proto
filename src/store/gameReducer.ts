@@ -61,6 +61,8 @@ export function isOnBase(r: string | null): boolean {
   if (/^>[789](-[789])?$/.test(r)) return true; // 2루타 >7 >7-8 >8-9 >9
   if (/^>>>[789]$/.test(r)) return true; // 3루타 >>>7 >>>8 >>>9
   if (/^E[\d-]+$/.test(r)) return true; // 실책 진루 E6, E5, E6-3 등
+  if (/^\d[\d-]*E$/.test(r)) return true; // 포구실책 4-3E, 3E 등
+  if (/^E기록[\d-]+$/.test(r)) return true; // 기록실책 E기록4 등
   if (/^E번트\d$/.test(r)) return true; // 번트 실책 E번트6 등
   if (/^KE\d$/.test(r)) return true; // 낫아웃 수비실책 KE2 등
   if (/^FC[\d-]+$/.test(r)) return true; // 야수선택 FC4, FC4-3 등

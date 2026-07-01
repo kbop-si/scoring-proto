@@ -116,6 +116,19 @@ function buildFielderStr(seq: FielderEntry[]): string {
     .join('-');
 }
 
+// 실책 위치 기반 E 배치: 단일→E4, 송구실책→E4-3, 포구실책→4-3E
+function buildSeqWithError(roles: { pos: number; error: boolean }[]): string {
+  if (roles.length === 0) return '';
+  const positions = roles.map((r) => r.pos);
+  const errorIdx = roles.findIndex((r) => r.error);
+  if (errorIdx === -1) return positions.join('-');
+  if (roles.length === 1) return `E${roles[0].pos}`;
+  if (errorIdx === roles.length - 1) {
+    return [...positions.slice(0, -1), `${positions[positions.length - 1]}E`].join('-');
+  }
+  return positions.map((p, i) => (i === errorIdx ? `E${p}` : `${p}`)).join('-');
+}
+
 function getAdvCode(reason: string, fielderSeq?: FielderEntry[]): string | undefined {
   const fstr = fielderSeq && fielderSeq.length > 0 ? buildFielderStr(fielderSeq) : '';
   // 도루
@@ -137,8 +150,9 @@ function getAdvCode(reason: string, fielderSeq?: FielderEntry[]): string | undef
     return parens ? '(BK)' : 'BK';
   }
   // 실책 (수비수 포함)
-  if (reason === 'E 실책') return fstr ? `E${fstr}` : 'E';
-  if (reason === '(E) 기록실책') return fstr ? `(E${fstr})` : '(E)';
+  if (reason === 'E 실책') return fielderSeq?.length ? buildSeqWithError(fielderSeq) : 'E';
+  if (reason === '(E) 기록실책')
+    return fielderSeq?.length ? `(${buildSeqWithError(fielderSeq)})` : '(E)';
   // 주루방해
   if (reason === 'ob 주루방해') return fstr ? `OB${fstr}` : 'OB';
   // 다른주자수비 → 수비수 번호

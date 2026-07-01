@@ -217,7 +217,7 @@ export const RESULT_COL: Record<string, string> = {
 };
 
 // Base path lines for score cell SVG (viewBox 40x40, diamond: top(20,2) right(38,20) bottom(20,38) left(2,20))
-const S1 = [{ x1: 20, y1: 38, x2: 38, y2: 20, c: '#111', w: 2.5 }];
+export const S1 = [{ x1: 20, y1: 38, x2: 38, y2: 20, c: '#111', w: 2.5 }];
 const S2 = [...S1, { x1: 38, y1: 20, x2: 20, y2: 2, c: '#111', w: 2.5 }];
 const S3 = [...S2, { x1: 20, y1: 2, x2: 2, y2: 20, c: '#111', w: 2.5 }];
 

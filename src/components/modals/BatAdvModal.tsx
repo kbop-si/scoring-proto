@@ -82,7 +82,7 @@ const NEEDS_HIT = new Set([
   '→선행주자아웃',
 ]);
 // 실책 수비수 번호가 필요한 결과 — 필드 클릭 한 번으로 바로 확정
-const NEEDS_FIELDER = new Set(['E', 'E번트', 'KE', '#', 'ob', 'FC', 'FC번트']);
+const NEEDS_FIELDER = new Set(['E', 'E번트', 'KE', '#', 'ob', 'FC', 'FC번트', 'E기록']);
 // ballType 라디오를 사용하는 결과 (NEEDS_HIT 외 — FC류는 방향 없이 ballType만)
 const NEEDS_BALLTYPE = new Set(['FC', 'FC번트']);
 
@@ -145,6 +145,20 @@ function buildErrorResult(base: string, seq: number[]): string {
   if (base === 'FC') return `FC${seq.join('-')}`;
   if (base === 'FC번트') return `FC번트${seq.join('-')}`;
   return `E${seq.join('-')}`;
+}
+
+// 실책 위치 기반 E 배치: 단일→E4, 송구실책→E4-3, 포구실책→4-3E
+// error 미체크 시 E를 앞에 붙이는 방식으로 폴백 (E타입은 항상 실책 존재)
+function buildSeqWithError(roles: DefRow[]): string {
+  if (roles.length === 0) return '';
+  const positions = roles.map((r) => r.pos);
+  const errorIdx = roles.findIndex((r) => r.error);
+  if (errorIdx === -1) return `E${positions.join('-')}`;
+  if (roles.length === 1) return `E${roles[0].pos}`;
+  if (errorIdx === roles.length - 1) {
+    return [...positions.slice(0, -1), `${positions[positions.length - 1]}E`].join('-');
+  }
+  return positions.map((p, i) => (i === errorIdx ? `E${p}` : `${p}`)).join('-');
 }
 
 interface DefRow {
@@ -305,7 +319,13 @@ export default function BatAdvModal({
     if (NEEDS_FIELDER.has(pendingResult)) {
       if (!defSeq.length) return;
       const seq = defSeq.map((r) => r.pos);
-      onAutoConfirm(buildErrorResult(pendingResult, seq), bt, undefined, 연속플레이, defl);
+      const result =
+        pendingResult === 'E' || pendingResult === 'E번트'
+          ? buildSeqWithError(defSeq)
+          : pendingResult === 'E기록'
+            ? `E기록${seq.join('-')}`
+            : buildErrorResult(pendingResult, seq);
+      onAutoConfirm(result, bt, undefined, 연속플레이, defl);
     } else {
       onAutoConfirm(pendingResult, bt, undefined, 연속플레이, defl);
     }

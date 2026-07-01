@@ -5,6 +5,7 @@ import {
   RESULT_COL,
   RESULT_SYMBOL,
   BASE_LINES,
+  S1,
   getDuplicateNames,
   displayName,
 } from '../data/constants';
@@ -432,7 +433,7 @@ function ScoreCell({
   const strokeDash = '3,3';
   const rcol = RESULT_COL[result || ''] || '#111';
   const isWalk = result === 'B' || result === 'IB' || result === 'IB2' || result === 'HP';
-  const lines = !isWalk ? BASE_LINES[result || ''] || [] : [];
+  const lines = !isWalk ? BASE_LINES[result || ''] || (isOnBase(result) ? S1 : []) : [];
   const scoredCircle = scored || result === 'HR' || result === 'GHR';
   const earnedColor =
     result === 'HR' || result === 'GHR'
@@ -1947,7 +1948,12 @@ function ScoreCell({
               {result.slice(1)}L
             </span>
           ) : (
-            (RESULT_SYMBOL[result] ?? result.replace(/^(\d([-→]\d)*)U$/, '$1A'))
+            (RESULT_SYMBOL[result] ??
+            result
+              .replace(/^E기록([\d-]+)$/, '$1[E]')
+              .replace(/^(\d([-→]\d)*)U$/, '$1A')
+              .replace(/E(\d)/g, '$1[E]')
+              .replace(/(\d)E/g, '$1[E]'))
           )}
         </div>
       )}
@@ -3706,11 +3712,16 @@ export default function ScoreSheet({ G, onSelCell }: Props) {
                     r === '>>>hit' ||
                     r === 'HR' ||
                     r === 'GHR';
-                  const errCount = (r: string) => {
+                  const errCount = (c: (typeof G.cells)[string]) => {
                     let n = 0;
-                    if (/E\d/.test(r)) n += (r.match(/E\d/g) || []).length;
-                    if (/^E$/.test(r)) n += 1;
-                    if (/^#\dE/.test(r)) n += 1;
+                    const r = c.result ?? '';
+                    // BAT_ADV E 타입: result 문자열에서 E 카운트
+                    n += (r.match(/E\d/g) || []).length; // E4, E4-3
+                    n += (r.match(/\d+E/g) || []).length; // 4-3E, #4E, Ob4E
+                    if (r === 'E') n += 1;
+                    // BAT_OUT / RUN_OUT: 실책 체크박스 기반
+                    n += (c.defRoles ?? []).filter((dr) => dr.error).length;
+                    n += (c.runOutDefRoles ?? []).filter((dr) => dr.error).length;
                     return n;
                   };
                   // 어시스트: result에 '-' 으로 연결된 fielder seq가 2명 이상이면 마지막 putout 이전 fielder 수
@@ -3726,9 +3737,9 @@ export default function ScoreSheet({ G, onSelCell }: Props) {
                     if (!s) return;
                     if (c.result) {
                       if (isHit(c.result)) s.h += 1;
-                      s.e += errCount(c.result);
                       s.a += assistCount(c.result);
                     }
+                    s.e += errCount(c);
                     s.p += (c.pitches || []).length;
                   });
                   // 누적값
