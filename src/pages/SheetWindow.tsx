@@ -35,7 +35,6 @@ export default function SheetWindow() {
       <ScoreSheet
         G={G}
         onSelCell={(key) => {
-          // 메인 창 GameScreen으로 SEL_CELL 요청 전달
           localStorage.setItem('kbo_sel_cell_request', key);
         }}
       />

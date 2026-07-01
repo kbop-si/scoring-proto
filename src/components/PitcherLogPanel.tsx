@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import type { GameState, PitchType, HitData } from '../types';
-import { cellKey as makeCellKey } from '../store/gameReducer';
+import { cellKey as makeCellKey, parseKey } from '../store/gameReducer';
 
 const PITCH_LABEL: Partial<Record<PitchType, string>> & Record<string, string> = {
   S: '스트라이크',
@@ -180,7 +180,14 @@ type LogRow = {
   cellKey?: string;
   entryIdx?: number;
 } & (
-  | { kind: 'pitch'; pitchNum: string; label: string; color: string; pitchCode?: PitchType }
+  | {
+      kind: 'pitch';
+      pitchNum: string;
+      label: string;
+      color: string;
+      pitchCode?: PitchType;
+      showPitcher?: boolean; // mid-PA 투수 교체 직후 첫 투구 — 새 투수 이름 표시용
+    }
   | {
       kind: 'result';
       result: string;
@@ -198,7 +205,7 @@ type LogRow = {
       runnerName?: string;
       dest?: string;
     } // 도루·도루실패·주자아웃
-  | { kind: 'event'; label: string } // 견제·마운드방문 등
+  | { kind: 'event'; label: string; pitcherLabel?: string } // 견제·마운드방문·투수교체 등
 );
 
 function buildPitcherLog(G: GameState): LogRow[] {
@@ -220,14 +227,22 @@ function buildPitcherLog(G: GameState): LogRow[] {
       return seqOf(a) - seqOf(b);
     });
 
-  const topInit = G.homeLineup.find((p) => p.pos === 1)?.name || '—';
-  const botInit = G.awayLineup.find((p) => p.pos === 1)?.name || '—';
   const topCh = G.pitcherChanges
     .filter((c) => c.half === 'top')
     .sort((a, b) => (a.inning !== b.inning ? a.inning - b.inning : a.order - b.order));
   const botCh = G.pitcherChanges
     .filter((c) => c.half === 'bottom')
     .sort((a, b) => (a.inning !== b.inning ? a.inning - b.inning : a.order - b.order));
+  // 초기 투수: 첫 번째 교체 기록의 oldName 사용 (RETRO 교체 후 lineup이 이미 갱신돼 있어
+  // 현재 lineup에서 읽으면 새 투수가 나옴)
+  const topInit =
+    topCh.length > 0 && topCh[0].oldName
+      ? topCh[0].oldName
+      : G.homeLineup.find((p) => p.pos === 1)?.name || '—';
+  const botInit =
+    botCh.length > 0 && botCh[0].oldName
+      ? botCh[0].oldName
+      : G.awayLineup.find((p) => p.pos === 1)?.name || '—';
 
   const noMap: Record<string, number> = {};
   const rows: LogRow[] = [];
@@ -270,19 +285,18 @@ function buildPitcherLog(G: GameState): LogRow[] {
     );
     const startPitcher =
       priorChanges.length > 0 ? priorChanges[priorChanges.length - 1].name : initPitcher;
-    // 이 cell의 PA 도중 발생한 mid-PA 교체
-    const midChange = changes.find(
-      (ch) => ch.inning === cell.inning && ch.order === cell.order && ch.mid
-    );
-    // PA 시작 시점의 투수 vs PA 도중 교체된 투수
+    // 이 cell의 PA 도중 발생한 mid-PA 교체 (복수 가능) — 투구 수 오름차순 정렬
+    const midChanges = changes
+      .filter((ch) => ch.inning === cell.inning && ch.order === cell.order && ch.mid)
+      .sort((a, b) => {
+        const ap = a.mid!.pitches ?? (a.mid!.balls ?? 0) + (a.mid!.strikes ?? 0);
+        const bp = b.mid!.pitches ?? (b.mid!.balls ?? 0) + (b.mid!.strikes ?? 0);
+        return ap - bp;
+      });
+    // PA 시작 시점의 투수
     let curPitcher = startPitcher;
-    const midChangeAfterPitches =
-      midChange?.mid != null
-        ? (midChange.mid.balls ?? 0) + (midChange.mid.strikes ?? 0)
-        : Number.POSITIVE_INFINITY;
-    const newPitcherName = midChange?.name;
-    // 구형 데이터 폴백 / 결과 행에 쓰일 default pitcher (이 cell의 최신 적용 투수)
-    const pitcher = newPitcherName ?? startPitcher;
+    // 구형 데이터 폴백 / 결과 행에 쓰일 default pitcher (PA 최종 투수)
+    const pitcher = midChanges.length > 0 ? midChanges[midChanges.length - 1].name : startPitcher;
     const batterName = batter?.name || `${cell.order}번`;
     const inningLabel = `${cell.inning}회${cell.half === 'top' ? '초' : '말'}`;
     const inningKey = `${cell.inning}-${cell.half}`;
@@ -295,14 +309,79 @@ function buildPitcherLog(G: GameState): LogRow[] {
       batter: batterName,
       cellKey: ck,
     };
+    // ── 대타 / 대주자 교체 행 ───────────────────────────────────────────────
+    const battingSide: 'away' | 'home' = cell.half === 'top' ? 'away' : 'home';
+    let batterShown = false;
+
+    const pinchSubs = (G.substitutions || []).filter(
+      (s) =>
+        s.kind === 'H' &&
+        s.side === battingSide &&
+        s.inning === cell.inning &&
+        s.half === cell.half &&
+        s.atOrder === cell.order
+    );
+    for (const sub of pinchSubs) {
+      const midStr = sub.mid ? ` (${sub.mid.balls}B${sub.mid.strikes}S 후)` : '';
+      rows.push({
+        ...base,
+        no: noMap[pitcher],
+        paStart: !batterShown,
+        kind: 'event',
+        label: `대타 교체: ${sub.oldName} → ${sub.newName}${midStr}`,
+      });
+      batterShown = true;
+    }
+    const runnerSubs = (G.substitutions || []).filter(
+      (s) =>
+        s.kind === 'R' &&
+        s.side === battingSide &&
+        s.inning === cell.inning &&
+        s.half === cell.half &&
+        s.atOrder === cell.order
+    );
+    for (const rs of runnerSubs) {
+      const BASE_KO: Record<string, string> = { '1B': '1루', '2B': '2루', '3B': '3루', HOME: '홈' };
+      const baseLabel = rs.base ? ` (${BASE_KO[rs.base] ?? rs.base})` : '';
+      rows.push({
+        ...base,
+        no: noMap[pitcher],
+        paStart: !batterShown,
+        kind: 'event',
+        label: `대주자 교체: ${rs.oldName} → ${rs.newName}${baseLabel}`,
+      });
+      if (!batterShown) batterShown = true;
+    }
+
     // ── 투구 · 이벤트 행 (eventLog FIFO 순수 입력순, 재정렬 없음) ──
-    let batterShown = false; // 첫 투구/결과 행에만 타자명 표시
     if (cell.eventLog && cell.eventLog.length > 0) {
       let pitchSeq = 0;
+      const pendingMidChanges = [...midChanges]; // 남은 mid-PA 교체 큐 (투구 수 오름차순)
+      let nextPitchShowsPitcher = false; // mid-PA 교체 직후 첫 투구 행에 투수 이름 표시
       cell.eventLog.forEach((entry, entryIdx) => {
-        // 매 이벤트마다 현재 투수 결정 (mid-PA 교체 시점 이후로 전환)
-        if (newPitcherName && curPitcher !== newPitcherName && pitchSeq >= midChangeAfterPitches) {
-          curPitcher = newPitcherName;
+        // 투수 교체 시점 도달: 복수 교체도 순차 처리
+        while (pendingMidChanges.length > 0) {
+          const ch = pendingMidChanges[0];
+          const threshold = ch.mid!.pitches ?? (ch.mid!.balls ?? 0) + (ch.mid!.strikes ?? 0);
+          if (pitchSeq >= threshold) {
+            rows.push({
+              no: 0,
+              inningKey,
+              inning: inningLabel,
+              pitcher: ch.name,
+              batter: batterName,
+              cellKey: ck,
+              paStart: false,
+              kind: 'event',
+              label: `투수 교체: ${curPitcher} → ${ch.name}`,
+              pitcherLabel: ch.name,
+            });
+            curPitcher = ch.name;
+            pendingMidChanges.shift();
+            nextPitchShowsPitcher = true;
+          } else {
+            break;
+          }
         }
         const base = {
           no: 0,
@@ -316,14 +395,11 @@ function buildPitcherLog(G: GameState): LogRow[] {
 
         if (entry.kind === 'pitch') {
           pitchSeq++;
-          // 이 투구가 mid 시점 이후 첫 투구면 새 투수 적용
-          if (newPitcherName && curPitcher !== newPitcherName && pitchSeq > midChangeAfterPitches) {
-            curPitcher = newPitcherName;
-            base.pitcher = curPitcher;
-          }
           noMap[curPitcher] = (noMap[curPitcher] ?? 0) + 1;
           const isFirst = !batterShown;
           batterShown = true;
+          const showPitcher = nextPitchShowsPitcher;
+          nextPitchShowsPitcher = false;
           rows.push({
             ...base,
             no: noMap[curPitcher],
@@ -333,6 +409,7 @@ function buildPitcherLog(G: GameState): LogRow[] {
             label: PITCH_LABEL[entry.pitch] ?? entry.pitch,
             color: PITCH_COLOR[entry.pitch] ?? '#374151',
             pitchCode: entry.pitch,
+            showPitcher,
           });
         } else if (entry.kind === 'runner_steal') {
           const ac = (entry as { advCode?: string }).advCode;
@@ -421,6 +498,22 @@ function buildPitcherLog(G: GameState): LogRow[] {
           });
         }
       });
+      // 루프 후에도 남은 교체(투구 수를 넘은 시점 이후) 마지막에 추가
+      for (const ch of pendingMidChanges) {
+        rows.push({
+          no: 0,
+          inningKey,
+          inning: inningLabel,
+          pitcher: ch.name,
+          batter: batterName,
+          cellKey: ck,
+          paStart: false,
+          kind: 'event',
+          label: `투수 교체: ${curPitcher} → ${ch.name}`,
+          pitcherLabel: ch.name,
+        });
+        curPitcher = ch.name;
+      }
     } else {
       // 구형 데이터 폴백: pitches + sideNotes 별도 처리
       cell.pitches.forEach((pitch, idx) => {
@@ -551,7 +644,22 @@ export type EditRowInfo =
       currentResult: string;
       currentBallType?: '땅' | '뜬' | '라';
     }
-  | { kind: 'pitch_seq'; cellKey: string; pitches: PitchType[]; result: string | null };
+  | { kind: 'pitch_seq'; cellKey: string; pitches: PitchType[]; result: string | null }
+  | {
+      kind: 'batter_edit'; // 볼카운트 수정 + 대타 교체 탭
+      cellKey: string;
+      pitches: PitchType[];
+      result: string | null;
+      battingSide: 'away' | 'home';
+    }
+  | {
+      kind: 'pitcher_edit'; // 투수 교체
+      inning: number;
+      half: 'top' | 'bottom';
+      order: number;
+      pitchingSide: 'away' | 'home';
+      currentPitchCount: number; // 이 타석에서 투구 수
+    };
 
 export default function PitcherLogPanel({
   G,
@@ -566,6 +674,11 @@ export default function PitcherLogPanel({
   const [collapsed, setCollapsed] = useState<Set<number>>(new Set());
   const [confirmDeleteKey, setConfirmDeleteKey] = useState<string | null>(null);
   const bodyRef = useRef<HTMLDivElement>(null);
+
+  // 이닝 변경 시 자동으로 현재 이닝 탭 선택
+  useEffect(() => {
+    setSelInning(`${G.inning}-${G.half}`);
+  }, [G.inning, G.half]);
 
   const rows = buildPitcherLog(G);
 
@@ -708,12 +821,14 @@ export default function PitcherLogPanel({
             if (r.kind === 'event') {
               const evPaIdx = filteredPaIdx[i];
               const evCollapsed = collapsed.has(evPaIdx);
+              const isSubstEvent = r.label.startsWith('대타') || r.label.startsWith('대주자');
+              const canBatterEdit = isSubstEvent && r.paStart && !!onEditRow && !!r.cellKey;
               return (
                 <div
                   key={i}
                   className="plp-row"
                   style={{
-                    background: '#fffbeb',
+                    background: isSubstEvent ? '#fef9c3' : '#fffbeb',
                     borderTop: r.paStart ? '1px solid #cbd5e1' : undefined,
                     cursor: r.paStart ? 'pointer' : undefined,
                   }}
@@ -724,11 +839,68 @@ export default function PitcherLogPanel({
                     {r.paStart ? (evCollapsed ? '▶' : '▼') : r.no}
                   </div>
                   <div className="plp-cell">{r.paStart ? r.inning : ''}</div>
-                  <div className="plp-cell" style={{ fontWeight: 600 }}>
-                    {r.paStart ? r.pitcher : ''}
+                  <div
+                    className="plp-cell"
+                    style={{
+                      fontWeight: 600,
+                      cursor: canBatterEdit ? 'pointer' : undefined,
+                      textDecoration: canBatterEdit ? 'underline dotted' : undefined,
+                      color: canBatterEdit ? '#059669' : undefined,
+                    }}
+                    title={canBatterEdit ? '클릭하여 투수 교체' : undefined}
+                    onClick={
+                      canBatterEdit
+                        ? (e) => {
+                            e.stopPropagation();
+                            const [half, inning, order] = parseKey(r.cellKey!);
+                            const pitchingSide: 'away' | 'home' = half === 'top' ? 'home' : 'away';
+                            const cell = G.cells[r.cellKey!];
+                            onEditRow!({
+                              kind: 'pitcher_edit',
+                              inning,
+                              half,
+                              order,
+                              pitchingSide,
+                              currentPitchCount: cell ? cell.pitches.length : 0,
+                            });
+                          }
+                        : undefined
+                    }
+                  >
+                    {r.paStart
+                      ? r.pitcher
+                      : r.kind === 'event' && 'pitcherLabel' in r && r.pitcherLabel
+                        ? r.pitcherLabel
+                        : ''}
                   </div>
                   <div className="plp-cell" />
-                  <div className="plp-cell">{r.paStart ? r.batter : ''}</div>
+                  <div
+                    className="plp-cell"
+                    style={{
+                      cursor: canBatterEdit ? 'pointer' : undefined,
+                      textDecoration: canBatterEdit ? 'underline dotted' : undefined,
+                    }}
+                    title={canBatterEdit ? '클릭하여 볼카운트/교체 수정' : undefined}
+                    onClick={
+                      canBatterEdit
+                        ? (e) => {
+                            e.stopPropagation();
+                            const cell = G.cells[r.cellKey!];
+                            const [half] = parseKey(r.cellKey!);
+                            const battingSide: 'away' | 'home' = half === 'top' ? 'away' : 'home';
+                            onEditRow!({
+                              kind: 'batter_edit',
+                              cellKey: r.cellKey!,
+                              pitches: cell ? [...cell.pitches] : [],
+                              result: cell?.result ?? null,
+                              battingSide,
+                            });
+                          }
+                        : undefined
+                    }
+                  >
+                    {r.paStart ? r.batter : ''}
+                  </div>
                   <div className="plp-cell" style={{ fontWeight: 600, color: '#b45309' }}>
                     {r.label}
                   </div>
@@ -830,8 +1002,48 @@ export default function PitcherLogPanel({
                   {r.paStart ? (isCollapsed ? '▶' : '▼') : r.no}
                 </div>
                 <div className="plp-cell">{r.paStart ? r.inning : ''}</div>
-                <div className="plp-cell" style={{ fontWeight: 600 }}>
-                  {r.paStart ? r.pitcher : ''}
+                <div
+                  className="plp-cell"
+                  style={{
+                    fontWeight: 600,
+                    cursor:
+                      (r.paStart || (r.kind === 'pitch' && r.showPitcher)) && onEditRow
+                        ? 'pointer'
+                        : undefined,
+                    textDecoration:
+                      (r.paStart || (r.kind === 'pitch' && r.showPitcher)) && onEditRow
+                        ? 'underline dotted'
+                        : undefined,
+                    color:
+                      (r.paStart || (r.kind === 'pitch' && r.showPitcher)) && onEditRow
+                        ? '#059669'
+                        : undefined,
+                  }}
+                  onClick={
+                    (r.paStart || (r.kind === 'pitch' && r.showPitcher)) && onEditRow && r.cellKey
+                      ? (e) => {
+                          e.stopPropagation();
+                          const [half, inning, order] = parseKey(r.cellKey!);
+                          const pitchingSide: 'away' | 'home' = half === 'top' ? 'home' : 'away';
+                          const cell = G.cells[r.cellKey!];
+                          onEditRow({
+                            kind: 'pitcher_edit',
+                            inning,
+                            half,
+                            order,
+                            pitchingSide,
+                            currentPitchCount: cell ? cell.pitches.length : 0,
+                          });
+                        }
+                      : undefined
+                  }
+                  title={
+                    (r.paStart || (r.kind === 'pitch' && r.showPitcher)) && onEditRow
+                      ? '클릭하여 투수 교체'
+                      : undefined
+                  }
+                >
+                  {r.paStart || (r.kind === 'pitch' && r.showPitcher) ? r.pitcher : ''}
                 </div>
                 <div
                   className="plp-cell"
@@ -857,18 +1069,21 @@ export default function PitcherLogPanel({
                       ? (e) => {
                           e.stopPropagation();
                           const cell = G.cells[r.cellKey!];
-                          if (cell && cell.pitches.length > 0) {
-                            onEditRow({
-                              kind: 'pitch_seq',
-                              cellKey: r.cellKey!,
-                              pitches: [...cell.pitches],
-                              result: cell.result ?? null,
-                            });
-                          }
+                          const [half] = parseKey(r.cellKey!);
+                          const battingSide: 'away' | 'home' = half === 'top' ? 'away' : 'home';
+                          onEditRow({
+                            kind: 'batter_edit',
+                            cellKey: r.cellKey!,
+                            pitches: cell ? [...cell.pitches] : [],
+                            result: cell?.result ?? null,
+                            battingSide,
+                          });
                         }
                       : undefined
                   }
-                  title={r.paStart && onEditRow && r.cellKey ? '클릭하여 볼카운트 수정' : undefined}
+                  title={
+                    r.paStart && onEditRow && r.cellKey ? '클릭하여 볼카운트/대타 수정' : undefined
+                  }
                 >
                   {r.paStart ? r.batter : ''}
                 </div>

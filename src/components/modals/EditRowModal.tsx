@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import type { PitchType } from '../../types';
+import type { Player, PitchType } from '../../types';
 import type { EditRowInfo } from '../PitcherLogPanel';
 
 const PITCH_OPTIONS: { code: PitchType; label: string; color: string }[] = [
@@ -67,6 +67,20 @@ interface Props {
   onSaveBatResultCode: (cellKey: string, newResult: string) => void;
   onSaveBatOutCode: (cellKey: string, newResult: string, newBallType?: '땅' | '뜬' | '라') => void;
   onSavePitchSeq: (cellKey: string, pitches: PitchType[]) => void;
+  onPinchHitter?: (
+    cellKey: string,
+    player: Player,
+    mid?: { balls: number; strikes: number }
+  ) => void;
+  onPitcherChange?: (
+    side: 'away' | 'home',
+    inning: number,
+    half: 'top' | 'bottom',
+    order: number,
+    player: Player,
+    mid?: { balls: number; strikes: number; pitches?: number }
+  ) => void;
+  getBench?: (side: 'away' | 'home') => Player[];
 }
 
 // 아웃 결과의 prefix 추출 (땅/F/f/L/IF/SF/BU/SH)
@@ -134,6 +148,9 @@ export default function EditRowModal({
   onSaveBatResultCode,
   onSaveBatOutCode,
   onSavePitchSeq,
+  onPinchHitter,
+  onPitcherChange,
+  getBench,
 }: Props) {
   // 아웃 편집 state — info가 bat_out_code일 때만 의미 있음
   const initialOut =
@@ -142,11 +159,22 @@ export default function EditRowModal({
       : { prefix: '' as const, fielders: '' };
   const [outPrefix, setOutPrefix] = useState<typeof initialOut.prefix>(initialOut.prefix);
   const [outFielders, setOutFielders] = useState(initialOut.fielders);
-  // pitch_seq 편집 state
+  // pitch_seq / batter_edit 편집 state
   const [seqPitches, setSeqPitches] = useState<PitchType[]>([]);
   const [seqError, setSeqError] = useState<string | null>(null);
   const seqDragFromRef = useRef<number | null>(null);
   const [seqDragOver, setSeqDragOver] = useState<number | null>(null);
+  // batter_edit 탭 state
+  const [batterTab, setBatterTab] = useState<'count' | 'pinch'>('count');
+  const [phSelIdx, setPhSelIdx] = useState<number | null>(null);
+  const [phQuery, setPhQuery] = useState('');
+  const [phMidPitchIdx, setPhMidPitchIdx] = useState<number | null>(null);
+  const [phUseMid, setPhUseMid] = useState(false);
+  // pitcher_edit state
+  const [pitcherQuery, setPitcherQuery] = useState('');
+  const [pitcherSelIdx, setPitcherSelIdx] = useState<number | null>(null);
+  const [pitcherMidCount, setPitcherMidCount] = useState(0);
+  const [pitcherUseMid, setPitcherUseMid] = useState(false);
   // info 바뀌면 state 재설정
   useEffect(() => {
     if (info?.kind === 'bat_out_code') {
@@ -154,9 +182,20 @@ export default function EditRowModal({
       setOutPrefix(p.prefix);
       setOutFielders(p.fielders);
     }
-    if (info?.kind === 'pitch_seq') {
-      setSeqPitches([...info.pitches]);
+    if (info?.kind === 'pitch_seq' || info?.kind === 'batter_edit') {
+      setSeqPitches([...(info.pitches ?? [])]);
       setSeqError(null);
+      setBatterTab('count');
+      setPhSelIdx(null);
+      setPhQuery('');
+      setPhMidPitchIdx(null);
+      setPhUseMid(false);
+    }
+    if (info?.kind === 'pitcher_edit') {
+      setPitcherQuery('');
+      setPitcherSelIdx(null);
+      setPitcherMidCount(info.currentPitchCount);
+      setPitcherUseMid(false);
     }
   }, [info]);
 
@@ -515,6 +554,556 @@ export default function EditRowModal({
               저장
             </button>
           </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ── pitcher_edit ──────────────────────────────────────────────────────────
+  if (info.kind === 'pitcher_edit') {
+    const bench = getBench?.(info.pitchingSide) ?? [];
+    const q = pitcherQuery.trim();
+    const filtered = bench.filter((p) => !q || p.name.includes(q) || p.num.includes(q));
+    const canConfirm = pitcherSelIdx !== null;
+    const handleConfirm = () => {
+      if (pitcherSelIdx === null) return;
+      const player = bench[pitcherSelIdx];
+      onPitcherChange?.(
+        info.pitchingSide,
+        info.inning,
+        info.half,
+        info.order,
+        player,
+        pitcherUseMid ? { balls: 0, strikes: 0, pitches: pitcherMidCount } : undefined
+      );
+      onClose();
+    };
+    return (
+      <div style={overlay} onClick={onClose}>
+        <div style={{ ...dialog, minWidth: 300 }} onClick={(e) => e.stopPropagation()}>
+          <div style={{ fontWeight: 700, marginBottom: 10, fontSize: 14 }}>
+            투수 교체 — {info.inning}회{info.half === 'top' ? '초' : '말'} {info.order}번 타자
+          </div>
+          <input
+            type="text"
+            placeholder="이름/번호 검색"
+            value={pitcherQuery}
+            onChange={(e) => setPitcherQuery(e.target.value)}
+            style={{
+              width: '100%',
+              marginBottom: 6,
+              boxSizing: 'border-box',
+              padding: '4px 6px',
+              border: '1px solid #cbd5e1',
+              borderRadius: 4,
+              fontSize: 13,
+            }}
+          />
+          <div
+            style={{
+              maxHeight: 200,
+              overflowY: 'auto',
+              border: '1px solid #e2e8f0',
+              borderRadius: 4,
+              marginBottom: 10,
+            }}
+          >
+            {filtered.length === 0 && (
+              <div style={{ padding: 8, color: '#94a3b8', fontSize: 12 }}>벤치 선수 없음</div>
+            )}
+            {filtered.map((p, fi) => {
+              const origIdx = bench.indexOf(p);
+              return (
+                <div
+                  key={fi}
+                  onClick={() => setPitcherSelIdx(origIdx)}
+                  style={{
+                    padding: '5px 10px',
+                    cursor: 'pointer',
+                    background: pitcherSelIdx === origIdx ? '#dce8ff' : 'transparent',
+                    fontSize: 13,
+                  }}
+                >
+                  {p.num} {p.name}
+                </div>
+              );
+            })}
+          </div>
+          <label
+            style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, marginBottom: 8 }}
+          >
+            <input
+              type="checkbox"
+              checked={pitcherUseMid}
+              onChange={(e) => setPitcherUseMid(e.target.checked)}
+            />
+            타석 도중 교체 (몇 구째 후)
+          </label>
+          {pitcherUseMid && (
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+                marginBottom: 8,
+                fontSize: 13,
+              }}
+            >
+              <span>투구 수:</span>
+              <input
+                type="number"
+                min={0}
+                max={info.currentPitchCount}
+                value={pitcherMidCount}
+                onChange={(e) =>
+                  setPitcherMidCount(
+                    Math.max(0, Math.min(info.currentPitchCount, Number(e.target.value)))
+                  )
+                }
+                style={{
+                  width: 56,
+                  textAlign: 'center',
+                  padding: '3px 6px',
+                  border: '1px solid #cbd5e1',
+                  borderRadius: 4,
+                }}
+              />
+              <span style={{ color: '#94a3b8', fontSize: 11 }}>/ {info.currentPitchCount}구</span>
+            </div>
+          )}
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6 }}>
+            <button
+              onClick={onClose}
+              style={{
+                padding: '4px 12px',
+                fontSize: 12,
+                border: '1px solid #cbd5e1',
+                background: '#fff',
+                borderRadius: 4,
+                cursor: 'pointer',
+              }}
+            >
+              취소
+            </button>
+            <button
+              onClick={handleConfirm}
+              disabled={!canConfirm}
+              style={{
+                padding: '4px 12px',
+                fontSize: 12,
+                border: '1px solid #059669',
+                background: canConfirm ? '#059669' : '#a7f3d0',
+                color: '#fff',
+                borderRadius: 4,
+                cursor: canConfirm ? 'pointer' : 'not-allowed',
+              }}
+            >
+              확인
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ── batter_edit ───────────────────────────────────────────────────────────
+  if (info.kind === 'batter_edit') {
+    const bench = getBench?.(info.battingSide) ?? [];
+    const q = phQuery.trim();
+    const filteredBench = bench.filter((p) => !q || p.name.includes(q) || p.num.includes(q));
+
+    const FOUL_TYPES: PitchType[] = ['F', 'BF', 'FE'];
+    const changeType = (i: number, p: PitchType) => {
+      const next = [...seqPitches];
+      next[i] = p;
+      setSeqPitches(next);
+      setSeqError(null);
+    };
+    const remove = (i: number) => {
+      setSeqPitches(seqPitches.filter((_, idx) => idx !== i));
+      setSeqError(null);
+    };
+    const addFoul = (p: PitchType) => {
+      setSeqPitches([...seqPitches, p]);
+      setSeqError(null);
+    };
+    const handleSaveSeq = () => {
+      const err = validateSeq(seqPitches, info.result);
+      if (err) {
+        setSeqError(err);
+        return;
+      }
+      onSavePitchSeq(info.cellKey, seqPitches);
+      onClose();
+    };
+    const handleSavePinch = () => {
+      if (phSelIdx === null) return;
+      const player = bench[phSelIdx];
+      let mid: { balls: number; strikes: number } | undefined;
+      if (phUseMid && phMidPitchIdx !== null) {
+        mid = { balls: counts[phMidPitchIdx].b, strikes: counts[phMidPitchIdx].s };
+      }
+      onPinchHitter?.(info.cellKey, player, mid);
+      onClose();
+    };
+
+    const counts: { b: number; s: number }[] = [];
+    let rb = 0,
+      rs = 0;
+    for (const p of seqPitches) {
+      switch (p) {
+        case 'S':
+        case 'SW':
+        case 'BS':
+        case 'PC3':
+          rs = Math.min(rs + 1, 3);
+          break;
+        case 'F':
+        case 'FE':
+          if (rs < 2) rs++;
+          break;
+        case 'BF':
+          rs = Math.min(rs + 1, 3);
+          break;
+        case 'B':
+        case 'PC1':
+        case 'PC2':
+          rb = Math.min(rb + 1, 4);
+          break;
+      }
+      counts.push({ b: rb, s: rs });
+    }
+
+    const tabStyle = (active: boolean): React.CSSProperties => ({
+      padding: '5px 14px',
+      fontSize: 12,
+      cursor: 'pointer',
+      border: 'none',
+      borderBottom: active ? '2px solid #1e40af' : '2px solid transparent',
+      background: 'transparent',
+      fontWeight: active ? 700 : 400,
+      color: active ? '#1e40af' : '#64748b',
+    });
+
+    return (
+      <div style={overlay} onClick={onClose}>
+        <div
+          style={{ ...dialog, minWidth: 340, maxWidth: 480 }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div style={{ display: 'flex', borderBottom: '1px solid #e2e8f0', marginBottom: 12 }}>
+            <button style={tabStyle(batterTab === 'count')} onClick={() => setBatterTab('count')}>
+              볼카운트 수정
+            </button>
+            <button style={tabStyle(batterTab === 'pinch')} onClick={() => setBatterTab('pinch')}>
+              대타 교체
+            </button>
+          </div>
+
+          {batterTab === 'count' && (
+            <>
+              <div style={{ fontWeight: 700, marginBottom: 10, fontSize: 14 }}>
+                볼카운트 순서 수정
+              </div>
+              <div style={{ maxHeight: 280, overflowY: 'auto', marginBottom: 8 }}>
+                {seqPitches.map((p, i) => (
+                  <div
+                    key={i}
+                    draggable
+                    onDragStart={() => {
+                      seqDragFromRef.current = i;
+                    }}
+                    onDragOver={(e) => {
+                      e.preventDefault();
+                      if (seqDragOver !== i) setSeqDragOver(i);
+                    }}
+                    onDragLeave={() => setSeqDragOver(null)}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      const from = seqDragFromRef.current;
+                      if (from !== null && from !== i) {
+                        const next = [...seqPitches];
+                        const [item] = next.splice(from, 1);
+                        next.splice(i, 0, item);
+                        setSeqPitches(next);
+                      }
+                      setSeqDragOver(null);
+                    }}
+                    onDragEnd={() => {
+                      seqDragFromRef.current = null;
+                      setSeqDragOver(null);
+                    }}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 4,
+                      marginBottom: 4,
+                      padding: '3px 4px',
+                      background: seqDragOver === i ? '#dbeafe' : '#f8fafc',
+                      borderRadius: 4,
+                      border: seqDragOver === i ? '1px solid #3b82f6' : '1px solid transparent',
+                      cursor: 'grab',
+                    }}
+                  >
+                    <span style={{ color: '#94a3b8', fontSize: 13, userSelect: 'none' }}>⠿</span>
+                    <span style={{ width: 20, color: '#94a3b8', fontSize: 11 }}>{i + 1}</span>
+                    <select
+                      value={p}
+                      onChange={(e) => changeType(i, e.target.value as PitchType)}
+                      onClick={(e) => e.stopPropagation()}
+                      style={{
+                        fontSize: 12,
+                        flex: 1,
+                        padding: '2px 4px',
+                        borderRadius: 3,
+                        border: '1px solid #cbd5e1',
+                        cursor: 'auto',
+                      }}
+                    >
+                      {PITCH_OPTIONS.map((o) => (
+                        <option key={o.code} value={o.code}>
+                          {o.label}
+                        </option>
+                      ))}
+                    </select>
+                    <span style={{ fontSize: 11, color: '#64748b', width: 36, textAlign: 'right' }}>
+                      {counts[i].b}B {counts[i].s}S
+                    </span>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        remove(i);
+                      }}
+                      style={{
+                        padding: '1px 5px',
+                        fontSize: 11,
+                        border: '1px solid #cbd5e1',
+                        background: '#fff',
+                        borderRadius: 3,
+                        cursor: 'pointer',
+                        color: '#ef4444',
+                      }}
+                    >
+                      ✕
+                    </button>
+                  </div>
+                ))}
+              </div>
+              <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
+                {FOUL_TYPES.map((ft) => (
+                  <button
+                    key={ft}
+                    onClick={() => addFoul(ft)}
+                    style={{
+                      fontSize: 11,
+                      padding: '3px 8px',
+                      border: '1px solid #92400e',
+                      color: '#92400e',
+                      background: '#fff',
+                      borderRadius: 4,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    + {PITCH_OPTIONS.find((o) => o.code === ft)?.label}
+                  </button>
+                ))}
+              </div>
+              {seqError && (
+                <div style={{ fontSize: 11, color: '#ef4444', marginBottom: 6 }}>{seqError}</div>
+              )}
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6 }}>
+                <button
+                  onClick={onClose}
+                  style={{
+                    padding: '4px 12px',
+                    fontSize: 12,
+                    border: '1px solid #cbd5e1',
+                    background: '#fff',
+                    borderRadius: 4,
+                    cursor: 'pointer',
+                  }}
+                >
+                  취소
+                </button>
+                <button
+                  onClick={handleSaveSeq}
+                  style={{
+                    padding: '4px 12px',
+                    fontSize: 12,
+                    border: '1px solid #1e40af',
+                    background: '#1e40af',
+                    color: '#fff',
+                    borderRadius: 4,
+                    cursor: 'pointer',
+                  }}
+                >
+                  저장
+                </button>
+              </div>
+            </>
+          )}
+
+          {batterTab === 'pinch' && (
+            <>
+              <div style={{ fontWeight: 700, marginBottom: 10, fontSize: 14 }}>대타 교체</div>
+              <input
+                type="text"
+                placeholder="이름/번호 검색"
+                value={phQuery}
+                onChange={(e) => setPhQuery(e.target.value)}
+                style={{
+                  width: '100%',
+                  marginBottom: 6,
+                  boxSizing: 'border-box',
+                  padding: '4px 6px',
+                  border: '1px solid #cbd5e1',
+                  borderRadius: 4,
+                  fontSize: 13,
+                }}
+              />
+              <div
+                style={{
+                  maxHeight: 180,
+                  overflowY: 'auto',
+                  border: '1px solid #e2e8f0',
+                  borderRadius: 4,
+                  marginBottom: 8,
+                }}
+              >
+                {filteredBench.length === 0 && (
+                  <div style={{ padding: 8, color: '#94a3b8', fontSize: 12 }}>벤치 선수 없음</div>
+                )}
+                {filteredBench.map((p, fi) => {
+                  const origIdx = bench.indexOf(p);
+                  return (
+                    <div
+                      key={fi}
+                      onClick={() => setPhSelIdx(origIdx)}
+                      style={{
+                        padding: '5px 10px',
+                        cursor: 'pointer',
+                        background: phSelIdx === origIdx ? '#fef9c3' : 'transparent',
+                        fontSize: 13,
+                      }}
+                    >
+                      {p.num} {p.name}
+                    </div>
+                  );
+                })}
+              </div>
+              {seqPitches.length > 0 && (
+                <label
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 6,
+                    fontSize: 13,
+                    marginBottom: 8,
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={phUseMid}
+                    onChange={(e) => {
+                      setPhUseMid(e.target.checked);
+                      setPhMidPitchIdx(null);
+                    }}
+                  />
+                  볼카운트 도중 교체
+                </label>
+              )}
+              {phUseMid && seqPitches.length > 0 && (
+                <div
+                  style={{
+                    maxHeight: 160,
+                    overflowY: 'auto',
+                    border: '1px solid #e2e8f0',
+                    borderRadius: 4,
+                    marginBottom: 8,
+                    fontSize: 12,
+                  }}
+                >
+                  <div
+                    style={{
+                      padding: '4px 8px',
+                      color: '#64748b',
+                      fontSize: 11,
+                      borderBottom: '1px solid #e2e8f0',
+                    }}
+                  >
+                    몇 구째 후 교체? (클릭 선택)
+                  </div>
+                  {seqPitches.map((p, i) => {
+                    const pitchLabel = PITCH_OPTIONS.find((o) => o.code === p)?.label ?? p;
+                    const cnt = counts[i];
+                    const selected = phMidPitchIdx === i;
+                    return (
+                      <div
+                        key={i}
+                        onClick={() => setPhMidPitchIdx(selected ? null : i)}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 8,
+                          padding: '4px 8px',
+                          cursor: 'pointer',
+                          background: selected ? '#dce8ff' : 'transparent',
+                          borderBottom: '1px solid #f1f5f9',
+                        }}
+                      >
+                        <span style={{ color: '#94a3b8', minWidth: 22 }}>{i + 1}구</span>
+                        <span style={{ flex: 1 }}>{pitchLabel}</span>
+                        <span style={{ color: '#64748b', fontSize: 11 }}>
+                          → {cnt.b}B {cnt.s}S
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6 }}>
+                <button
+                  onClick={onClose}
+                  style={{
+                    padding: '4px 12px',
+                    fontSize: 12,
+                    border: '1px solid #cbd5e1',
+                    background: '#fff',
+                    borderRadius: 4,
+                    cursor: 'pointer',
+                  }}
+                >
+                  취소
+                </button>
+                <button
+                  onClick={handleSavePinch}
+                  disabled={
+                    phSelIdx === null ||
+                    (phUseMid && seqPitches.length > 0 && phMidPitchIdx === null)
+                  }
+                  style={{
+                    padding: '4px 12px',
+                    fontSize: 12,
+                    border: '1px solid #dc2626',
+                    background:
+                      phSelIdx !== null &&
+                      !(phUseMid && seqPitches.length > 0 && phMidPitchIdx === null)
+                        ? '#dc2626'
+                        : '#fca5a5',
+                    color: '#fff',
+                    borderRadius: 4,
+                    cursor:
+                      phSelIdx !== null &&
+                      !(phUseMid && seqPitches.length > 0 && phMidPitchIdx === null)
+                        ? 'pointer'
+                        : 'not-allowed',
+                  }}
+                >
+                  확인
+                </button>
+              </div>
+            </>
+          )}
         </div>
       </div>
     );

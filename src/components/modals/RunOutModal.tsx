@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import type { Base, DeflectionInfo, Player } from '../../types';
+import type { Base, DeflectionInfo, DefRole, Player } from '../../types';
 import DeflectionPicker from './DeflectionPicker';
 
 interface Props {
@@ -9,7 +9,7 @@ interface Props {
   selected: string | null;
   defLU: Player[];
   onSelect: (v: string) => void;
-  onConfirm: (seq: number[], deflection?: DeflectionInfo) => void;
+  onConfirm: (seq: number[], deflection?: DeflectionInfo, defRoles?: DefRole[]) => void;
   onClose: () => void;
 }
 
@@ -89,7 +89,10 @@ export default function RunOutModal({
     onClose();
   };
   const handleConfirm = () => {
-    onConfirm(seq, deflection ?? undefined);
+    const roles: DefRole[] = defSeq
+      .filter((r) => r.assist || r.putout || r.error)
+      .map((r) => ({ pos: r.pos, assist: r.assist, putout: r.putout, error: r.error }));
+    onConfirm(seq, deflection ?? undefined, roles.length ? roles : undefined);
     reset();
   };
 

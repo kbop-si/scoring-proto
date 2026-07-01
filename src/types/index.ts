@@ -68,6 +68,13 @@ export interface DeflectionInfo {
   ballType: '땅' | '뜬' | '라';
 }
 
+export interface DefRole {
+  pos: number;
+  assist: boolean;
+  putout: boolean;
+  error: boolean;
+}
+
 export interface CellData {
   half: Half;
   inning: number;
@@ -96,6 +103,8 @@ export interface CellData {
   sideNotes?: string[]; // 마운드방문/타자타임/투수판이탈 등 투구 영역에 표시
   hitData?: HitData; // 구조화된 타구 데이터
   deflection?: DeflectionInfo; // 디플렉션 — 셀 좌측 작은 번호 표시
+  defRoles?: DefRole[]; // 타자 아웃 시 수비수별 보살/자살/실책 체크
+  runOutDefRoles?: DefRole[]; // 주자 아웃 시 수비수별 보살/자살/실책 체크
   eventLog?: CellEventEntry[]; // 투구·이벤트 FIFO 순서 기록
   timestamp?: number; // 결과 기록 시점 (ms epoch) — 홈런 등 시각 표시용
   pinchHitter?: PinchInfo; // 이 셀의 타자가 대타로 들어왔다면 (전임 타자 정보 — 전임에 표기)
@@ -219,7 +228,7 @@ export interface PitcherChange {
   num?: string;
   oldName?: string;
   oldNum?: string;
-  mid?: { balls: number; strikes: number }; // 교체 시점 볼카운트 (PA 도중 교체)
+  mid?: { balls: number; strikes: number; pitches?: number }; // 교체 시점 볼카운트 + 총투구수
   // PA 도중 교체 후 BB 발생 시 전임 투수 책임 — 첫 BAT_ADV(BB)에서 소비됨
   pendingBBChargeTo?: string; // 전임 투수 이름
 }
@@ -312,8 +321,14 @@ export interface GameState {
   umpire3B?: string;
   umpireLeft?: string;
   umpireRight?: string;
+  umpireStandby?: string;
   recorder1?: string;
   recorder2?: string;
+  temperature?: string;
+  humidity?: string;
+  windDir?: string;
+  windSpeed?: string;
+  weatherLog?: string;
   // 경기 종료 시 산정된 양팀 투수 판정 (W/L/S/H/BS). 종료 모달 확인 시 set.
   gameDecisions?: GameDecisions;
 }
@@ -344,6 +359,13 @@ export interface HistorySnapshot {
   homeER: number;
   awayInn: (number | null)[];
   homeInn: (number | null)[];
+  // RETRO 액션(교체·투수교체) undo에 필요한 필드
+  substitutions: SubstitutionLog[];
+  homeLineup: Player[];
+  awayLineup: Player[];
+  homeBench: Player[];
+  awayBench: Player[];
+  pitcherChanges: PitcherChange[];
 }
 
 export interface UIState {
@@ -452,6 +474,7 @@ export type GameAction =
       tp?: boolean;
       ballType?: '땅' | '뜬' | '라';
       deflection?: DeflectionInfo;
+      defRoles?: DefRole[];
     }
   | { type: 'STRIKEOUT'; result: string; pitchType: PitchType }
   | {
@@ -468,7 +491,13 @@ export type GameAction =
       chain?: boolean;
       deflection?: DeflectionInfo;
     }
-  | { type: 'RUN_OUT'; base: Base; result: string; deflection?: DeflectionInfo }
+  | {
+      type: 'RUN_OUT';
+      base: Base;
+      result: string;
+      deflection?: DeflectionInfo;
+      defRoles?: DefRole[];
+    }
   | { type: 'NEXT_BATTER' }
   | { type: 'NEXT_INNING' }
   | { type: 'CLEAR_CELL' }
@@ -531,6 +560,31 @@ export type GameAction =
       player: Player;
       mid?: { balls: number; strikes: number };
     }
+  | {
+      type: 'RETRO_SUBST';
+      side: 'away' | 'home';
+      order: number; // 배팅 타순 (1-9)
+      inning: number; // 소급 교체 이닝
+      pos: number; // 수비 포지션
+      newName: string;
+      newNum: string;
+    }
+  | {
+      type: 'RETRO_SUBST_BATTER';
+      side: 'away' | 'home';
+      cellKey: string; // 대상 타석 키
+      player: Player; // 새 타자(대타)
+      mid?: { balls: number; strikes: number };
+    }
+  | {
+      type: 'RETRO_PITCHER_CHANGE';
+      side: 'away' | 'home';
+      inning: number;
+      half: Half;
+      order: number; // 교체 발생 타자 타순
+      player: Player; // 새 투수
+      mid?: { balls: number; strikes: number };
+    }
   | { type: 'CHANGE_LU_POS'; team: 'away' | 'home'; idx: number; pos: number }
   | { type: 'CHANGE_LU_ORDER'; team: 'away' | 'home'; idx: number; order: number }
   | { type: 'ADD_BENCH_TO_LU'; team: 'away' | 'home'; benchIdx: number; luIdx: number | null }
@@ -545,6 +599,10 @@ export type GameAction =
       homeBench: Player[];
     }
   | { type: 'SET_GAME_INFO'; awayTeam: string; homeTeam: string; date: string; league: string }
+  | {
+      type: 'UPDATE_GAME_INFO';
+      info: Partial<Omit<GameSetup, 'awayLineup' | 'homeLineup' | 'awayBench' | 'homeBench'>>;
+    }
   | { type: 'INIT_GAME'; setup: GameSetup }
   | { type: 'LOAD_GAME'; state: GameState }
   | {

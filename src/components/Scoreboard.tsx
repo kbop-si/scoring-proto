@@ -9,6 +9,7 @@ interface Props {
   onOpenScoreReview?: () => void;
   onLocalSave?: () => void;
   onLocalLoad?: () => void;
+  onEditGameInfo?: () => void;
 }
 
 const MAX_INN = 15;
@@ -19,6 +20,7 @@ export default function Scoreboard({
   onOpenScoreReview,
   onLocalSave,
   onLocalLoad,
+  onEditGameInfo,
 }: Props) {
   const inns = Array.from({ length: MAX_INN }, (_, i) => i + 1);
 
@@ -156,6 +158,16 @@ export default function Scoreboard({
       {onOpenSheetWindow && (
         <button className="sb-sheet-btn" onClick={onOpenSheetWindow} title="새 창으로 열기">
           <span>기록지 보기</span>
+        </button>
+      )}
+      {onEditGameInfo && (
+        <button
+          className="sb-sheet-btn"
+          onClick={onEditGameInfo}
+          title="경기 정보 수정"
+          style={{ marginLeft: 4 }}
+        >
+          <span>경기정보수정</span>
         </button>
       )}
       {onOpenScoreReview && (

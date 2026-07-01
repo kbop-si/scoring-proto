@@ -21,7 +21,6 @@ import type {
   UIState,
   Base,
   BaseTargetState,
-  ContextMenuState,
   PitchType,
   Player,
   Runner,
@@ -29,6 +28,7 @@ import type {
 import { gameReducer, initialGameState } from '../store/gameReducer';
 import { POS_NAME } from '../data/constants';
 import Scoreboard from '../components/Scoreboard';
+import GameInfoScreen from './GameInfoScreen';
 import ScoreSheet from '../components/ScoreSheet';
 import InputPanel from '../components/InputPanel';
 import Diamond from '../components/Diamond';
@@ -36,7 +36,6 @@ import PitcherLogPanel from '../components/PitcherLogPanel';
 import type { EditRowInfo } from '../components/PitcherLogPanel';
 import EditRowModal from '../components/modals/EditRowModal';
 import Toast from '../components/Toast';
-import ContextMenu from '../components/ContextMenu';
 import BatAdvModal from '../components/modals/BatAdvModal';
 import BatOutModal from '../components/modals/BatOutModal';
 import RunAdvModal from '../components/modals/RunAdvModal';
@@ -383,7 +382,6 @@ export default function GameScreen({ setup, onEnd }: Props) {
         const hd = cell?.hitData;
         const lockBases: 0 | 1 | 2 | 3 | 4 = hd?.bases ?? 1;
         setBatAdvEditMode({ cellKey: info.cellKey, lockBases });
-        // BatAdvModal 내부 state 채우기 위해 UI prefill
         setUI((p) => ({
           ...p,
           batAdvOpen: true,
@@ -391,6 +389,8 @@ export default function GameScreen({ setup, onEnd }: Props) {
           batAdvBallType: hd?.ballType ?? null,
           batAdvHitData: hd ?? null,
         }));
+      } else if (info.kind === 'batter_edit' || info.kind === 'pitcher_edit') {
+        setEditRowInfo(info);
       } else {
         setEditRowInfo(info);
       }
@@ -404,8 +404,8 @@ export default function GameScreen({ setup, onEnd }: Props) {
     fromBase: '',
     onSelect: null,
   });
-  const [ctx, setCtx] = useState<ContextMenuState>({ open: false, x: 0, y: 0, pos: 0, title: '' });
 
+  const [gameInfoEditOpen, setGameInfoEditOpen] = useState(false);
   const fielderCbRef = useRef<(() => void) | null>(null);
   const playerCbRef = useRef<((p: Player) => void) | null>(null);
   const toastTimerRef = useRef<ReturnType<typeof setTimeout>>();
@@ -495,6 +495,14 @@ export default function GameScreen({ setup, onEnd }: Props) {
     },
     [G.awayLineup, G.homeLineup, G.awayBench, G.homeBench, G.pitcherChanges]
   );
+
+  // 현재 수비팀 투수 이름(number) — RunAdv 자책점 기본값용
+  const currentDefPitcherStr = useMemo(() => {
+    const side = G.half === 'top' ? 'home' : 'away';
+    const lu = side === 'home' ? G.homeLineup : G.awayLineup;
+    const p = lu.find((x) => x.pos === 1);
+    return p ? `${p.name}(${p.num})` : '';
+  }, [G.half, G.homeLineup, G.awayLineup]);
 
   // 3아웃 상태에서 일반 입력 차단용 게이트 — 다음이닝/되돌리기/타석지우기/게임종료 외 핸들러는 진입부에서 호출
   const guardThreeOut = useCallback((): boolean => {
@@ -721,13 +729,13 @@ export default function GameScreen({ setup, onEnd }: Props) {
       dp?: boolean,
       tp?: boolean,
       ballType?: '땅' | '뜬' | '라',
-      deflection?: import('../types').DeflectionInfo
+      deflection?: import('../types').DeflectionInfo,
+      defRoles?: import('../types').DefRole[]
     ) => {
       // SF 등 아웃 결과 입력 시점에 현재 타자를 chainCausedBy로 갱신 (주자 있을 때)
       const hasRunners = Object.values(G.runners).some(Boolean);
       if (hasRunners) setChainCausedBy(G.curBatterOrder);
-      dispatch({ type: 'BAT_OUT', result, dp, tp, ballType, deflection });
-      // 수비 리스트는 BatOutModal 내에서 처리
+      dispatch({ type: 'BAT_OUT', result, dp, tp, ballType, deflection, defRoles });
     },
     [G, dispatch, showToast]
   );
@@ -750,9 +758,9 @@ export default function GameScreen({ setup, onEnd }: Props) {
       runAdvEarned: true as boolean | 'half',
       runAdvFielder: null,
       runAdvRbi: false,
-      runAdvPitcher: '',
+      runAdvPitcher: currentDefPitcherStr,
     }));
-  }, [UI.selRunnerBase, G.runners, showToast, guardThreeOut]);
+  }, [UI.selRunnerBase, G.runners, showToast, guardThreeOut, currentDefPitcherStr]);
 
   // ── Chain-pending 타자 클릭 (blocked 상태에서 chain 타자 먼저 전진) ────────
   const handleChainPendingClick = useCallback(() => {
@@ -766,9 +774,9 @@ export default function GameScreen({ setup, onEnd }: Props) {
       runAdvDest: null,
       runAdvEarned: true as boolean | 'half',
       runAdvRbi: false,
-      runAdvPitcher: '',
+      runAdvPitcher: currentDefPitcherStr,
     }));
-  }, [chainPendingBase, G.pendingBatter, chainTransit]);
+  }, [chainPendingBase, G.pendingBatter, chainTransit, currentDefPitcherStr]);
 
   const confirmRunAdvChain = useCallback(
     (
@@ -856,10 +864,10 @@ export default function GameScreen({ setup, onEnd }: Props) {
         runAdvEarned: true as boolean | 'half',
         runAdvFielder: null,
         runAdvRbi: false,
-        runAdvPitcher: '',
+        runAdvPitcher: currentDefPitcherStr,
       }));
     },
-    [UI.selRunnerBase, G.runners]
+    [UI.selRunnerBase, G.runners, currentDefPitcherStr]
   );
 
   const confirmRunAdv = useCallback(
@@ -1002,7 +1010,11 @@ export default function GameScreen({ setup, onEnd }: Props) {
   }, [UI.selRunnerBase, G.runners, showToast, guardThreeOut]);
 
   const confirmRunOut = useCallback(
-    (fielderSeq: number[], deflection?: import('../types').DeflectionInfo) => {
+    (
+      fielderSeq: number[],
+      deflection?: import('../types').DeflectionInfo,
+      defRoles?: import('../types').DefRole[]
+    ) => {
       if (!UI.runOutResult) {
         showToast('아웃 사유 선택');
         return;
@@ -1025,7 +1037,7 @@ export default function GameScreen({ setup, onEnd }: Props) {
         const code = t.split(' ')[0];
         return seq ? seq + code : code;
       })();
-      dispatch({ type: 'RUN_OUT', base, result: outCode, deflection });
+      dispatch({ type: 'RUN_OUT', base, result: outCode, deflection, defRoles });
       const newOuts = G.outs + 1;
       showToast(`${r.name} 아웃 (${outCode})  ${newOuts}아웃`);
       if (newOuts >= 3)
@@ -1054,21 +1066,6 @@ export default function GameScreen({ setup, onEnd }: Props) {
   }, [UI, showToast]);
 
   // ── Substitution ─────────────────────────────────────────────────────────
-  const handleFielderClick = useCallback(
-    (e: React.MouseEvent, pos: number) => {
-      e.stopPropagation();
-      const p = defLU.find((x) => x.pos === pos);
-      setCtx({
-        open: true,
-        x: e.clientX,
-        y: e.clientY,
-        pos,
-        title: `${POS_NAME[pos]} ${p?.name || '(없음)'}`,
-      });
-    },
-    [defLU]
-  );
-
   const openSubst = useCallback(
     (pos: number) => {
       const side: 'away' | 'home' = G.half === 'top' ? 'home' : 'away';
@@ -1106,6 +1103,18 @@ export default function GameScreen({ setup, onEnd }: Props) {
       playerSelIdx: null,
     }));
   }, [G, dispatch, showToast, availableBench, guardThreeOut]);
+
+  const handleFielderClick = useCallback(
+    (e: React.MouseEvent, pos: number) => {
+      e.stopPropagation();
+      if (pos === 1) {
+        openPitcherChange();
+      } else {
+        openSubst(pos);
+      }
+    },
+    [openSubst, openPitcherChange]
+  );
 
   const confirmPlayerSel = useCallback(() => {
     if (UI.playerSelIdx === null) {
@@ -1414,6 +1423,7 @@ export default function GameScreen({ setup, onEnd }: Props) {
           onOpenScoreReview={() => setScoreReviewTarget({ inning: G.inning, half: G.half })}
           onLocalSave={handleLocalSave}
           onLocalLoad={handleLocalLoad}
+          onEditGameInfo={() => setGameInfoEditOpen(true)}
         />
 
         {showSheet ? (
@@ -1727,6 +1737,17 @@ export default function GameScreen({ setup, onEnd }: Props) {
         onSavePitchSeq={(cellKey, pitches) =>
           dispatch({ type: 'EDIT_PITCH_SEQ', cellKey, pitches })
         }
+        onPinchHitter={(cellKey, player, mid) => {
+          const [half] = cellKey.split('-') as ['top' | 'bottom', ...string[]];
+          const side: 'away' | 'home' = half === 'top' ? 'away' : 'home';
+          dispatch({ type: 'RETRO_SUBST_BATTER', side, cellKey, player, mid });
+          setEditRowInfo(null);
+        }}
+        onPitcherChange={(side, inning, half, order, player, mid) => {
+          dispatch({ type: 'RETRO_PITCHER_CHANGE', side, inning, half, order, player, mid });
+          setEditRowInfo(null);
+        }}
+        getBench={(side) => (side === 'away' ? G.awayBench : G.homeBench)}
       />
       <BatAdvModal
         open={UI.batAdvOpen}
@@ -1750,9 +1771,9 @@ export default function GameScreen({ setup, onEnd }: Props) {
       <BatOutModal
         open={UI.batOutOpen}
         defLU={defLU}
-        onResult={(result, dp, tp, ballType, deflection) => {
+        onResult={(result, dp, tp, ballType, deflection, defRoles) => {
           setUI((p) => ({ ...p, batOutOpen: false }));
-          applyBatOutResult(result, dp, tp, ballType, deflection);
+          applyBatOutResult(result, dp, tp, ballType, deflection, defRoles);
         }}
         onClose={() => setUI((p) => ({ ...p, batOutOpen: false }))}
       />
@@ -2064,13 +2085,58 @@ export default function GameScreen({ setup, onEnd }: Props) {
         onClose={() => setUI((p) => ({ ...p, playersOpen: false }))}
       />
 
-      <ContextMenu
-        ctx={ctx}
-        hasFielder={true}
-        onClose={() => setCtx((c) => ({ ...c, open: false }))}
-        onSubst={openSubst}
-        onPitcherChange={openPitcherChange}
-      />
+      {gameInfoEditOpen && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0,0,0,0.5)',
+            zIndex: 2000,
+            overflowY: 'auto',
+          }}
+          onClick={() => setGameInfoEditOpen(false)}
+        >
+          <div onClick={(e) => e.stopPropagation()}>
+            <GameInfoScreen
+              setup={{
+                league: G.league,
+                awayTeam: G.awayTeam,
+                homeTeam: G.homeTeam,
+                date: G.date,
+                awayLineup: G.awayLineup,
+                homeLineup: G.homeLineup,
+                awayBench: G.awayBench,
+                homeBench: G.homeBench,
+                stadium: G.stadium,
+                gameNum: G.gameNum,
+                startTime: G.startTime,
+                endTime: G.endTime,
+                attendance: G.attendance,
+                umpireHome: G.umpireHome,
+                umpire1B: G.umpire1B,
+                umpire2B: G.umpire2B,
+                umpire3B: G.umpire3B,
+                umpireLeft: G.umpireLeft,
+                umpireRight: G.umpireRight,
+                umpireStandby: G.umpireStandby,
+                recorder1: G.recorder1,
+                recorder2: G.recorder2,
+                temperature: G.temperature,
+                humidity: G.humidity,
+                windDir: G.windDir,
+                windSpeed: G.windSpeed,
+                weatherLog: G.weatherLog,
+              }}
+              onConfirm={(info) => {
+                dispatch({ type: 'UPDATE_GAME_INFO', info });
+                setGameInfoEditOpen(false);
+                showToast('경기 정보를 수정했습니다');
+              }}
+              onBack={() => setGameInfoEditOpen(false)}
+            />
+          </div>
+        </div>
+      )}
 
       <Toast message={toastMsg} visible={toastVisible} />
     </div>

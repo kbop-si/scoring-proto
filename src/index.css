@@ -697,7 +697,7 @@ button {
 .ss-tbl {
   border-collapse: collapse;
   font-size: 11px;
-  table-layout: fixed; /* 모든 컬럼 너비를 헤더 td/th 의 width 로 고정 — 그리드 정렬 균일하게 */
+  table-layout: fixed;
 }
 .ss-tbl th {
   background: #e8e8e8;
@@ -724,6 +724,9 @@ button {
 .ss-row-overflow td {
   border-top: 1px dashed #b0b5bd !important;
   background: #fafafa;
+}
+.ss-row-sublayer td {
+  border-top: 1px dashed #b0b5bd !important;
 }
 .cur-inn-col {
   background: rgba(37, 99, 235, 0.03);
@@ -1647,22 +1650,18 @@ button {
     overflow: visible !important;
     display: block !important;
   }
-  /* ScoreSheet 영역 — 스크롤 풀고 A4 한 장에 맞도록 축소
-     18개 stat 컬럼 추가로 너비 증가 (~2010px). scale 0.48 * width 215% ≈ 페이지의 103% 확보 후 안쪽으로 마진. */
+  /* ScoreSheet 영역 — 내부 zoom으로 A4 너비에 맞춤 */
   .ss-area {
     height: auto !important;
     max-height: none !important;
     overflow: visible !important;
-    transform: scale(0.48);
-    transform-origin: top left;
-    width: 200% !important; /* 컨테이너 충분히 넓게 — 내부 컨텐츠 안 짤리게 */
   }
   .ss-area > div[style*='overflow'] {
     overflow: visible !important;
     height: auto !important;
   }
-  /* 인쇄 시엔 inner zoom 초기화 (위 transform 만으로 축소) */
+  /* beforeprint 이벤트에서 --print-zoom 을 실측 계산해 주입, 없으면 0.61 fallback */
   .ss-area > div > div[style*='zoom'] {
-    zoom: 1 !important;
+    zoom: var(--print-zoom, 0.61) !important;
   }
 }

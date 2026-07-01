@@ -13,6 +13,7 @@ import type {
   RunnerNote,
   PitcherStats,
   SubstitutionLog,
+  PitcherChange,
 } from '../types';
 import { SAMPLE } from '../data/constants';
 
@@ -159,6 +160,12 @@ function snapshot(s: GameState): HistorySnapshot {
     homeER: s.homeER,
     awayInn: [...s.awayInn],
     homeInn: [...s.homeInn],
+    substitutions: JSON.parse(JSON.stringify(s.substitutions)),
+    homeLineup: JSON.parse(JSON.stringify(s.homeLineup)),
+    awayLineup: JSON.parse(JSON.stringify(s.awayLineup)),
+    homeBench: JSON.parse(JSON.stringify(s.homeBench)),
+    awayBench: JSON.parse(JSON.stringify(s.awayBench)),
+    pitcherChanges: JSON.parse(JSON.stringify(s.pitcherChanges)),
   };
 }
 
@@ -482,6 +489,11 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
         umpireRight: setup.umpireRight,
         recorder1: setup.recorder1,
         recorder2: setup.recorder2,
+        temperature: setup.temperature,
+        humidity: setup.humidity,
+        windDir: setup.windDir,
+        windSpeed: setup.windSpeed,
+        weatherLog: setup.weatherLog,
       };
     }
 
@@ -500,6 +512,37 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
         homeTeam: action.homeTeam,
         date: action.date,
         league: action.league,
+      };
+    }
+
+    // ── UPDATE_GAME_INFO ─────────────────────────────────────────────────────
+    case 'UPDATE_GAME_INFO': {
+      const { info } = action;
+      return {
+        ...state,
+        ...(info.league !== undefined && { league: info.league }),
+        ...(info.awayTeam !== undefined && { awayTeam: info.awayTeam }),
+        ...(info.homeTeam !== undefined && { homeTeam: info.homeTeam }),
+        ...(info.date !== undefined && { date: info.date }),
+        ...(info.stadium !== undefined && { stadium: info.stadium }),
+        ...(info.gameNum !== undefined && { gameNum: info.gameNum }),
+        ...(info.startTime !== undefined && { startTime: info.startTime }),
+        ...(info.endTime !== undefined && { endTime: info.endTime }),
+        ...(info.attendance !== undefined && { attendance: info.attendance }),
+        ...(info.umpireHome !== undefined && { umpireHome: info.umpireHome }),
+        ...(info.umpire1B !== undefined && { umpire1B: info.umpire1B }),
+        ...(info.umpire2B !== undefined && { umpire2B: info.umpire2B }),
+        ...(info.umpire3B !== undefined && { umpire3B: info.umpire3B }),
+        ...(info.umpireLeft !== undefined && { umpireLeft: info.umpireLeft }),
+        ...(info.umpireRight !== undefined && { umpireRight: info.umpireRight }),
+        ...(info.umpireStandby !== undefined && { umpireStandby: info.umpireStandby }),
+        ...(info.recorder1 !== undefined && { recorder1: info.recorder1 }),
+        ...(info.recorder2 !== undefined && { recorder2: info.recorder2 }),
+        ...(info.temperature !== undefined && { temperature: info.temperature }),
+        ...(info.humidity !== undefined && { humidity: info.humidity }),
+        ...(info.windDir !== undefined && { windDir: info.windDir }),
+        ...(info.windSpeed !== undefined && { windSpeed: info.windSpeed }),
+        ...(info.weatherLog !== undefined && { weatherLog: info.weatherLog }),
       };
     }
 
@@ -1218,6 +1261,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
           ...(isTP ? { isTriplePlay: true } : {}),
           ...(ballType ? { ballType } : {}),
           ...(action.deflection ? { deflection: action.deflection } : {}),
+          ...(action.defRoles?.length ? { defRoles: action.defRoles } : {}),
         },
       };
 
@@ -1578,6 +1622,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
 
         const runOutNum = outs; // 이 주자 아웃이 몇 번째 아웃인지
         const deflPatch = action.deflection ? { deflection: action.deflection } : {};
+        const rolePatch = action.defRoles?.length ? { runOutDefRoles: action.defRoles } : {};
         for (let app = 0; app <= 5; app++) {
           const rk = cellKey(runner.inning, runner.order, app, runner.half);
           if (cells[rk]) {
@@ -1590,6 +1635,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
                 runOutNum,
                 runOutInning: state.inning,
                 ...deflPatch,
+                ...rolePatch,
               },
             };
             found = true;
@@ -1611,6 +1657,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
                   runOutNum,
                   runOutInning: state.inning,
                   ...deflPatch,
+                  ...rolePatch,
                 },
               };
               found = true;
@@ -1634,6 +1681,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
             runOutNum,
             runOutInning: state.inning,
             ...deflPatch,
+            ...rolePatch,
           };
           cells = { ...cells, [rk]: newCell };
         }
@@ -2396,6 +2444,161 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
             pendingBBChargeTo: inheritsBB ? prevPitcherName : undefined,
           },
         ],
+      };
+    }
+
+    // ── RETRO_SUBST ──────────────────────────────────────────────────────────
+    case 'RETRO_SUBST': {
+      const { side, order, inning, pos, newName, newNum } = action;
+      const luKey = side === 'away' ? 'awayLineup' : 'homeLineup';
+      const benchKey = side === 'away' ? 'awayBench' : 'homeBench';
+      const lu = [...state[luKey]];
+      const bench = [...state[benchKey]];
+
+      // 해당 타순의 현재 선수 (oldPlayer)
+      const targetIdx = lu.findIndex((p) => p.order === order);
+      const oldPlayer = targetIdx >= 0 ? lu[targetIdx] : null;
+
+      // 벤치에서 새 선수 찾기
+      const benchIdx = bench.findIndex((p) => p.num === newNum && p.name === newName);
+      if (benchIdx >= 0 && targetIdx >= 0) {
+        const newPlayer = bench[benchIdx];
+        lu[targetIdx] = { ...newPlayer, order, pos };
+        bench.splice(benchIdx, 1);
+        if (oldPlayer) bench.push({ ...oldPlayer });
+      }
+
+      // 소급 교체 — 해당 이닝 이후 기록이 자동으로 새 선수에게 귀속되도록
+      // substitutions 배열에 이닝 오름차순으로 삽입
+      const fieldHalf: 'top' | 'bottom' = side === 'home' ? 'top' : 'bottom';
+      const newSubEntry: SubstitutionLog = {
+        inning,
+        half: fieldHalf,
+        side,
+        kind: 'D',
+        pos,
+        newName,
+        newNum,
+        oldName: oldPlayer?.name ?? '',
+        oldNum: oldPlayer?.num ?? '',
+        order,
+      };
+      const subs = [...state.substitutions];
+      const insertAt = subs.findIndex(
+        (s) => s.side === side && s.order === order && s.inning > inning
+      );
+      if (insertAt >= 0) {
+        subs.splice(insertAt, 0, newSubEntry);
+      } else {
+        subs.push(newSubEntry);
+      }
+
+      return {
+        ...state,
+        [luKey]: lu,
+        [benchKey]: bench,
+        substitutions: subs,
+      };
+    }
+
+    // ── RETRO_SUBST_BATTER ───────────────────────────────────────────────────
+    case 'RETRO_SUBST_BATTER': {
+      const { side, cellKey: ck, player, mid } = action;
+      const [half, inning, order] = parseKey(ck);
+      const luKey = side === 'away' ? 'awayLineup' : 'homeLineup';
+      const benchKey = side === 'away' ? 'awayBench' : 'homeBench';
+      const lu = [...state[luKey]];
+      const bench = [...state[benchKey]];
+      const idx = lu.findIndex((x) => x.order === order);
+      let oldPlayer: Player | null = null;
+      if (idx >= 0) {
+        oldPlayer = lu[idx];
+        lu[idx] = { ...player, order: oldPlayer.order, pos: oldPlayer.pos, needsPosReview: true };
+        bench.push({ ...oldPlayer });
+        const pi = bench.findIndex((x) => x.num === player.num && x.name === player.name);
+        if (pi >= 0) bench.splice(pi, 1);
+      }
+      const cells = { ...state.cells };
+      if (cells[ck] && !cells[ck].result) {
+        cells[ck] = {
+          ...cells[ck],
+          pinchHitter: oldPlayer ? { num: oldPlayer.num, name: oldPlayer.name, mid } : undefined,
+        };
+      } else if (!cells[ck] && oldPlayer) {
+        cells[ck] = {
+          half,
+          inning,
+          order,
+          appearance: 0,
+          pitches: [],
+          result: null,
+          runnerNotes: [],
+          pinchHitter: { num: oldPlayer.num, name: oldPlayer.name, mid },
+        };
+      }
+      const subEntry: SubstitutionLog = {
+        inning,
+        half,
+        side,
+        kind: 'H',
+        pos: 0,
+        newName: player.name,
+        newNum: player.num,
+        oldName: oldPlayer?.name ?? '',
+        oldNum: oldPlayer?.num ?? '',
+        order,
+        atOrder: order,
+        mid,
+      };
+      return {
+        ...state,
+        [luKey]: lu,
+        [benchKey]: bench,
+        cells,
+        substitutions: [...state.substitutions, subEntry],
+        history: saveHist(state),
+      };
+    }
+
+    // ── RETRO_PITCHER_CHANGE ─────────────────────────────────────────────────
+    case 'RETRO_PITCHER_CHANGE': {
+      const { side, inning, half, order, player, mid } = action;
+      const luKey = side === 'away' ? 'awayLineup' : 'homeLineup';
+      const benchKey = side === 'away' ? 'awayBench' : 'homeBench';
+      const lu = [...state[luKey]];
+      const bench = [...state[benchKey]];
+      const idx = lu.findIndex((x) => x.pos === 1);
+      let oldPitcher: { name: string; num?: string } | null = null;
+      if (idx >= 0) {
+        const old = lu[idx];
+        oldPitcher = { name: old.name, num: old.num };
+        lu[idx] = { ...player, order: old.order, pos: 1, needsPosReview: false };
+        bench.push({ ...old });
+        const pi = bench.findIndex((x) => x.num === player.num && x.name === player.name);
+        if (pi >= 0) bench.splice(pi, 1);
+      }
+      const newChange: PitcherChange = {
+        inning,
+        half,
+        order,
+        name: player.name,
+        num: player.num,
+        oldName: oldPitcher?.name,
+        oldNum: oldPitcher?.num,
+        mid,
+      };
+      const changes = [...state.pitcherChanges];
+      const insertAt = changes.findIndex(
+        (c) => c.half === half && (c.inning > inning || (c.inning === inning && c.order > order))
+      );
+      if (insertAt >= 0) changes.splice(insertAt, 0, newChange);
+      else changes.push(newChange);
+      return {
+        ...state,
+        [luKey]: lu,
+        [benchKey]: bench,
+        pitcherChanges: changes,
+        history: saveHist(state),
       };
     }
 

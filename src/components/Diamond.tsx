@@ -248,7 +248,11 @@ export default function Diamond({
                     posDragFromRef.current = null;
                     setPosDragOver(null);
                   }}
-                  title={`${p.num} ${p.name} (수비 ${p.pos}) — 드래그로 위치 교환`}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onFielderClick(e, p.pos);
+                  }}
+                  title={`${p.num} ${p.name} (수비 ${p.pos}) — 클릭: 교체 / 드래그: 위치 교환`}
                   style={{
                     position: 'absolute',
                     left: `calc(${pct(fp.x)} - ${sizePct / 2}%)`,

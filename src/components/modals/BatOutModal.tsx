@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import type { DeflectionInfo, Player } from '../../types';
+import type { DeflectionInfo, DefRole, Player } from '../../types';
 import DeflectionPicker from './DeflectionPicker';
 
 interface Props {
@@ -10,7 +10,8 @@ interface Props {
     dp?: boolean,
     tp?: boolean,
     ballType?: '땅' | '뜬' | '라',
-    deflection?: DeflectionInfo
+    deflection?: DeflectionInfo,
+    defRoles?: DefRole[]
   ) => void;
   onClose: () => void;
 }
@@ -68,13 +69,14 @@ function buildResult(
   tp: boolean,
   dpMode: DpMode,
   dpBunt: boolean,
-  fSac: boolean
+  fSac: boolean,
+  fBunt: boolean
 ): string | null {
   if (!seq.length) return null;
   const s = seq.join('-');
-  if (type === 'F') return (fSac ? 'SF' : 'F') + s;
-  if (type === 'f') return 'f' + s;
-  if (type === 'L') return 'L' + s;
+  if (type === 'F') return fBunt ? (fSac ? 'SH' : 'BU') + s : (fSac ? 'SF' : 'F') + s;
+  if (type === 'f') return fBunt ? (fSac ? 'SH' : 'BU') + s : 'f' + s;
+  if (type === 'L') return fBunt ? (fSac ? 'SH' : 'BU') + s : 'L' + s;
   if (type === 'IF') return 'IF' + s;
   // 땅볼 계열
   const prefix =
@@ -90,7 +92,7 @@ function buildResult(
             ? ''
             : ''; // 삼중살: TP 접두사 제거
   const suffix =
-    type === '땅' && !dp && !tp
+    (type === '땅' || type === 'BU' || type === 'SH') && !dp && !tp
       ? gMode === '태그'
         ? 'T'
         : gMode === '루터치'
@@ -280,13 +282,20 @@ export default function BatOutModal({ open, defLU, onResult, onClose }: Props) {
     onClose();
   };
   const handleResult = (r: string, isDp: boolean, isTp: boolean) => {
-    // type → ballType 매핑 (땅볼 계열만 — F/L은 result 코드에 이미 표기됨)
+    // type → ballType 매핑
     const bt: '땅' | '뜬' | '라' | undefined =
-      type === '땅' || type === 'BU' || type === 'SH' ? '땅' : undefined;
+      type === '땅' || type === 'BU' || type === 'SH'
+        ? '땅'
+        : fBunt && (type === 'F' || type === 'f' || type === 'L')
+          ? '뜬'
+          : undefined;
     // 디플렉션은 플라이아웃(F/f/L/IF) 제외
     const isFly = type === 'F' || type === 'f' || type === 'L' || type === 'IF';
     const defl = !isFly ? (deflection ?? undefined) : undefined;
-    onResult(r, isDp, isTp, bt, defl);
+    const roles: DefRole[] = defSeq
+      .filter((row) => !row.defl && (row.assist || row.putout || row.error))
+      .map((row) => ({ pos: row.pos, assist: row.assist, putout: row.putout, error: row.error }));
+    onResult(r, isDp, isTp, bt, defl, roles.length ? roles : undefined);
     reset();
     onClose();
   };
@@ -339,7 +348,7 @@ export default function BatOutModal({ open, defLU, onResult, onClose }: Props) {
       ];
     });
 
-  const code = buildResult(seq, type, gMode, dp, tp, dpMode, dpBunt, fSac);
+  const code = buildResult(seq, type, gMode, dp, tp, dpMode, dpBunt, fSac, fBunt);
   const activeCode = otherType ? buildOtherCode() : code;
   const isGround = type === '땅' || type === 'BU' || type === 'SH';
 
@@ -804,7 +813,7 @@ export default function BatOutModal({ open, defLU, onResult, onClose }: Props) {
 
             {/* 옵션 열 (우측) */}
             <div style={{ width: 90, padding: '10px 8px' }}>
-              {isGround && !dp && !tp && type === '땅' && (
+              {isGround && !dp && !tp && (
                 <>
                   <div
                     style={{
