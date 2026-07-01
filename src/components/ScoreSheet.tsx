@@ -3170,8 +3170,26 @@ export default function ScoreSheet({ G, onSelCell }: Props) {
                                   }`;
 
                                   const hasMid = !!pcThis?.mid;
-                                  const isCase3 = hasMid && !!c?.bbChargedTo;
-                                  const isCase2 = hasMid && !isCase3;
+                                  // 전임 BB 책임 카운트: 2B0S/2B1S/3B0S/3B1S/3B2S
+                                  const PREV_BB_COUNTS = new Set([
+                                    '2-0',
+                                    '2-1',
+                                    '3-0',
+                                    '3-1',
+                                    '3-2',
+                                  ]);
+                                  // 볼넷 결과 코드: B(볼넷)/IB(고의사구)/IB2
+                                  const BB_RESULTS = new Set(['B', 'IB', 'IB2']);
+                                  const isPrevResp =
+                                    hasMid &&
+                                    BB_RESULTS.has(c?.result ?? '') &&
+                                    PREV_BB_COUNTS.has(
+                                      `${pcThis!.mid!.balls}-${pcThis!.mid!.strikes}`
+                                    );
+                                  const resultKnown = !!c?.result;
+                                  // 내려서(전임BB책임) vs 올려서(후임책임) — 결과 확정 후에만 경로 표시
+                                  const isDown = hasMid && isPrevResp;
+                                  const isUp = hasMid && !isPrevResp && resultKnown;
                                   // 이닝 시작 첫 타석 교체 (같은 이닝에 (一) 없음 = ord-1 셀에 PA 없음)
                                   const prevCellSameInn =
                                     pcThis && pcThis.order > 1
@@ -3187,9 +3205,6 @@ export default function ScoreSheet({ G, onSelCell }: Props) {
                                     ? (pcThis!.mid!.balls ?? 0) + (pcThis!.mid!.strikes ?? 0)
                                     : 0;
                                   const internalArmY = Math.min(50, 2 + midPitches * 9);
-
-                                  // 부분폭 (이미지 기준 — 약 60-70%)
-                                  const partialArmX = 40;
 
                                   return (
                                     <>
@@ -3269,9 +3284,9 @@ export default function ScoreSheet({ G, onSelCell }: Props) {
                                         </svg>
                                       )}
 
-                                      {/* 경우 2: 볼카운트 우측을 타고 위로 + 셀 상단 우측으로
-                                          path: (internalArmX, internalArmY) → (internalArmX, 0) → (60, 0) */}
-                                      {isCase2 && (
+                                      {/* 올려서(후임 책임): 볼카운트 왼쪽벽 타고 위로 + 상단 물결
+                                          path: x=0 (left wall) from changeY → top, then wave at top */}
+                                      {isUp && (
                                         <svg
                                           width="100%"
                                           height="100%"
@@ -3287,8 +3302,17 @@ export default function ScoreSheet({ G, onSelCell }: Props) {
                                           }}
                                         >
                                           <title>{tip}</title>
+                                          {/* 왼쪽벽 세로: top(0) → changeY at x=1 */}
                                           <path
-                                            d={`${buildVWave(0, internalArmY, internalArmX)} ${buildHWave(internalArmX, 60, 0)}`}
+                                            d={buildVWave(0, internalArmY, 1)}
+                                            stroke="#dc2626"
+                                            strokeWidth="1.2"
+                                            fill="none"
+                                            strokeLinecap="round"
+                                          />
+                                          {/* 상단 가로 물결: x=0 → x=60 at y=0 */}
+                                          <path
+                                            d={buildHWave(0, 60, 0)}
                                             stroke="#dc2626"
                                             strokeWidth="1.2"
                                             fill="none"
@@ -3297,36 +3321,38 @@ export default function ScoreSheet({ G, onSelCell }: Props) {
                                         </svg>
                                       )}
 
-                                      {/* 경우 3: (二) 셀 외곽 ㄴ — 좌측 벽 세로 + 하단 가로
-                                          (BB 책임 전임 투수) */}
-                                      {isCase3 && (
+                                      {/* 내려서(전임 BB 책임): 볼카운트 오른쪽벽 타고 아래로 + 하단 물결 */}
+                                      {isDown && (
                                         <>
                                           <svg
-                                            width="10"
+                                            width="100%"
                                             height="100%"
-                                            viewBox="0 0 10 60"
+                                            viewBox="0 0 60 60"
                                             preserveAspectRatio="none"
                                             style={{
                                               position: 'absolute',
                                               top: 0,
-                                              left: -5,
+                                              left: 0,
                                               pointerEvents: 'none',
                                               zIndex: 10,
+                                              overflow: 'visible',
                                             }}
                                           >
                                             <title>{tip}</title>
+                                            {/* 오른쪽벽 세로: changeY → bottom(60) at x=internalArmX */}
                                             <path
-                                              d={buildVWave(0, 60, 5)}
+                                              d={buildVWave(internalArmY, 60, internalArmX)}
                                               stroke="#dc2626"
                                               strokeWidth="1.2"
                                               fill="none"
                                               strokeLinecap="round"
                                             />
                                           </svg>
+                                          {/* 하단 가로 물결 — 셀 끝까지 */}
                                           <svg
-                                            width={`${(partialArmX / 60) * 100}%`}
+                                            width="100%"
                                             height="8"
-                                            viewBox={`0 0 ${partialArmX} 6`}
+                                            viewBox="0 0 60 6"
                                             preserveAspectRatio="none"
                                             style={{
                                               position: 'absolute',
@@ -3338,7 +3364,7 @@ export default function ScoreSheet({ G, onSelCell }: Props) {
                                           >
                                             <title>{tip}</title>
                                             <path
-                                              d={buildHWave(0, partialArmX, 3)}
+                                              d={buildHWave(0, 60, 3)}
                                               stroke="#dc2626"
                                               strokeWidth="1.2"
                                               fill="none"
