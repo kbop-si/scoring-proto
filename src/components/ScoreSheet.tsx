@@ -614,7 +614,7 @@ function ScoreCell({
     >
       <svg width="14" height="5" viewBox="0 0 14 5">
         <path
-          d="M0 2.5 Q3.5 0 7 2.5 T14 2.5"
+          d="M0 2.5 Q1.75 0.5 3.5 2.5 Q5.25 4.5 7 2.5 Q8.75 0.5 10.5 2.5 Q12.25 4.5 14 2.5"
           stroke="#dc2626"
           strokeWidth="1.2"
           fill="none"
@@ -3129,13 +3129,14 @@ export default function ScoreSheet({ G, onSelCell }: Props) {
                                     toY: number,
                                     cxPos: number
                                   ) => {
-                                    const step = 8;
+                                    const step = 4;
+                                    const amp = 2;
                                     let d = `M ${cxPos} ${fromY}`;
                                     let y = fromY;
                                     let t = 0;
                                     while (y < toY) {
                                       const next = Math.min(y + step, toY);
-                                      const cx = t % 2 === 0 ? cxPos + 4 : cxPos - 4;
+                                      const cx = t % 2 === 0 ? cxPos + amp : cxPos - amp;
                                       const cy = (y + next) / 2;
                                       d += ` Q ${cx} ${cy} ${cxPos} ${next}`;
                                       y = next;
@@ -3148,14 +3149,15 @@ export default function ScoreSheet({ G, onSelCell }: Props) {
                                     toX: number,
                                     cyPos: number
                                   ) => {
-                                    const step = 6;
+                                    const step = 3;
+                                    const amp = 2;
                                     let d = `M ${fromX} ${cyPos}`;
                                     let x = fromX;
                                     let t = 0;
                                     while (x < toX) {
                                       const next = Math.min(x + step, toX);
                                       const cx = (x + next) / 2;
-                                      const cy = t % 2 === 0 ? cyPos + 4 : cyPos - 4;
+                                      const cy = t % 2 === 0 ? cyPos + amp : cyPos - amp;
                                       d += ` Q ${cx} ${cy} ${next} ${cyPos}`;
                                       x = next;
                                       t++;
