@@ -3190,12 +3190,6 @@ export default function ScoreSheet({ G, onSelCell }: Props) {
                                   // 내려서(전임BB책임) vs 올려서(후임책임) — 결과 확정 후에만 경로 표시
                                   const isDown = hasMid && isPrevResp;
                                   const isUp = hasMid && !isPrevResp && resultKnown;
-                                  // 이닝 시작 첫 타석 교체 (같은 이닝에 (一) 없음 = ord-1 셀에 PA 없음)
-                                  const prevCellSameInn =
-                                    pcThis && pcThis.order > 1
-                                      ? G.cells[cellKey(inn, pcThis.order - 1, 0, half)]
-                                      : null;
-                                  const isCase1Start = pcThis && !pcThis.mid && !prevCellSameInn;
 
                                   // 볼카운트 컬럼은 셀 좌측 18px 세로 strip — 우측 벽 x≈12 viewBox
                                   // 셀(.sc) 92px wide × 88px tall, viewBox 60×60 매핑
@@ -3209,57 +3203,8 @@ export default function ScoreSheet({ G, onSelCell }: Props) {
                                   return (
                                     <>
                                       {/* 경우 1 일반: (二) 셀 상단 가로(타석칸 끝까지) + 좌측 벽 세로(아래로) */}
-                                      {pcThis && !pcThis.mid && !isCase1Start && (
-                                        <>
-                                          <svg
-                                            width="100%"
-                                            height="8"
-                                            viewBox="0 0 60 6"
-                                            preserveAspectRatio="none"
-                                            style={{
-                                              position: 'absolute',
-                                              top: -4,
-                                              left: 0,
-                                              pointerEvents: 'none',
-                                              zIndex: 10,
-                                            }}
-                                          >
-                                            <title>{tip}</title>
-                                            <path
-                                              d={buildHWave(0, 60, 3)}
-                                              stroke="#dc2626"
-                                              strokeWidth="1.2"
-                                              fill="none"
-                                              strokeLinecap="round"
-                                            />
-                                          </svg>
-                                          <svg
-                                            width="10"
-                                            height="100%"
-                                            viewBox="0 0 10 60"
-                                            preserveAspectRatio="none"
-                                            style={{
-                                              position: 'absolute',
-                                              top: 0,
-                                              left: -5,
-                                              pointerEvents: 'none',
-                                              zIndex: 10,
-                                            }}
-                                          >
-                                            <title>{tip}</title>
-                                            <path
-                                              d={buildVWave(0, 60, 5)}
-                                              stroke="#dc2626"
-                                              strokeWidth="1.2"
-                                              fill="none"
-                                              strokeLinecap="round"
-                                            />
-                                          </svg>
-                                        </>
-                                      )}
-
-                                      {/* 경우 1 이닝 시작 fallback: (二) 셀 상단 가로만 (벽 없이) */}
-                                      {isCase1Start && (
+                                      {/* Case 1: 이닝/타석 사이 교체 — 항상 상단 ~~~~ */}
+                                      {pcThis && !pcThis.mid && (
                                         <svg
                                           width="100%"
                                           height="8"
@@ -3283,9 +3228,34 @@ export default function ScoreSheet({ G, onSelCell }: Props) {
                                           />
                                         </svg>
                                       )}
+                                      {/* Case 1: 결과 확정 후 pitch column 왼쪽벽 | */}
+                                      {pcThis && !pcThis.mid && resultKnown && (
+                                        <svg
+                                          width="100%"
+                                          height="100%"
+                                          viewBox="0 0 60 60"
+                                          preserveAspectRatio="none"
+                                          style={{
+                                            position: 'absolute',
+                                            top: 0,
+                                            left: 0,
+                                            pointerEvents: 'none',
+                                            zIndex: 10,
+                                          }}
+                                        >
+                                          <title>{tip}</title>
+                                          <path
+                                            d={buildVWave(0, 60, 1)}
+                                            stroke="#dc2626"
+                                            strokeWidth="1.2"
+                                            fill="none"
+                                            strokeLinecap="round"
+                                          />
+                                        </svg>
+                                      )}
 
-                                      {/* 올려서(후임 책임): 볼카운트 왼쪽벽 타고 위로 + 상단 물결
-                                          path: x=0 (left wall) from changeY → top, then wave at top */}
+                                      {/* 올려서(후임 책임):
+                                          왼쪽벽 bottom→changeY + (separator~) + 오른쪽벽 changeY→top + 상단물결 */}
                                       {isUp && (
                                         <svg
                                           width="100%"
@@ -3302,15 +3272,23 @@ export default function ScoreSheet({ G, onSelCell }: Props) {
                                           }}
                                         >
                                           <title>{tip}</title>
-                                          {/* 왼쪽벽 세로: top(0) → changeY at x=1 */}
+                                          {/* 왼쪽벽: changeY → bottom at x=1 */}
                                           <path
-                                            d={buildVWave(0, internalArmY, 1)}
+                                            d={buildVWave(internalArmY, 60, 1)}
                                             stroke="#dc2626"
                                             strokeWidth="1.2"
                                             fill="none"
                                             strokeLinecap="round"
                                           />
-                                          {/* 상단 가로 물결: x=0 → x=60 at y=0 */}
+                                          {/* 오른쪽벽: top → changeY at x=internalArmX */}
+                                          <path
+                                            d={buildVWave(0, internalArmY, internalArmX)}
+                                            stroke="#dc2626"
+                                            strokeWidth="1.2"
+                                            fill="none"
+                                            strokeLinecap="round"
+                                          />
+                                          {/* 상단 물결: x=0 → x=60 at y=0 */}
                                           <path
                                             d={buildHWave(0, 60, 0)}
                                             stroke="#dc2626"
