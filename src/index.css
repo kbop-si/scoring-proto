@@ -1743,4 +1743,23 @@ button {
     width: max-content !important;
     min-width: 0 !important;
   }
+  /* 현재 셀/선택 셀 강조 표시 — 인쇄(PDF)에서는 전부 제거 */
+  .sc.sel {
+    background: transparent !important;
+    outline: none !important;
+  }
+  .sc.cur-bat {
+    animation: none !important;
+    outline: none !important;
+  }
+  .cur-cell-cursor {
+    display: none !important;
+  }
+  .ss-tbl th.cur-inn-h {
+    background: #e8e8e8 !important;
+    color: #111 !important;
+  }
+  .cur-inn-col {
+    background: transparent !important;
+  }
 }

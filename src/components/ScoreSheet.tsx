@@ -1991,6 +1991,7 @@ function ScoreCell({
 
       {isCur && !result && (
         <div
+          className="cur-cell-cursor"
           style={{
             position: 'absolute',
             top: '50%',
