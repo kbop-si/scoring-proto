@@ -4,9 +4,24 @@
 
 /* ── 기존 CSS 원본 유지 ─────────────────────────────────────────────────── */
 :root {
-  --bg: #dde3ea;
-  --panel: #f0f2f5;
-  --panel2: #e4e8ed;
+  /* ── ui_개선 디자인 토큰 ─────────────────────────
+     네이비 한 계열(ink-900/800/700), radius 6px, 테두리 1px,
+     강조색 2개: amber(점수·현재), action(선택·진행) */
+  --bg: #eef1f5;
+  --panel: #ffffff;
+  --panel2: #f6f8fa;
+  --line: #dde3ea;
+  --line-soft: #ebeff3;
+  --ink-900: #0c1524;
+  --ink-800: #142138;
+  --ink-700: #1e3355;
+  --muted: #5c6b7f;
+  --faint: #97a3b4;
+  --on-dark-dim: #8fa0ba;
+  --amber: #f0ad1e;
+  --action: #2563eb;
+  --r: 6px;
+  /* legacy vars */
   --blue: #1a56db;
   --blue2: #1e40af;
   --red: #dc2626;
@@ -14,13 +29,14 @@
   --green: #15803d;
   --orange: #ea580c;
   --purple: #7c3aed;
-  --border: #9aa5b4;
-  --border2: #d1d5db;
-  --text: #111;
+  --border: #c9d2dd;
+  --border2: #dde3ea;
+  --text: #1b2534;
   --text2: #374151;
   --text3: #6b7280;
   --shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
   font-family: 'Noto Sans KR', sans-serif;
+  font-feature-settings: 'tnum';
 }
 *,
 *::before,
@@ -386,80 +402,87 @@ button {
 
 /* Scoreboard */
 .scoreboard {
-  background: #1a1a2e;
+  background: var(--ink-900);
   color: #fff;
   display: flex;
   align-items: stretch;
-  height: 68px;
-  border-bottom: 2px solid #000;
+  height: 64px;
   flex-shrink: 0;
 }
 .sb-flag {
-  width: 66px;
+  width: 54px;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 24px;
-  background: #1e2a3a;
+  font-size: 22px;
+  background: transparent;
   flex-shrink: 0;
 }
 .sb-team {
   display: flex;
   flex-direction: column;
   justify-content: center;
-  padding: 5px 12px;
-  min-width: 85px;
-  border-right: 1px solid rgba(255, 255, 255, 0.1);
+  gap: 1px;
+  padding: 5px 12px 5px 0;
+  min-width: 72px;
+  border-right: 1px solid rgba(255, 255, 255, 0.08);
 }
 .sb-team-name {
   font-size: 11px;
-  color: #94a3b8;
+  color: var(--on-dark-dim);
   font-weight: 700;
+  letter-spacing: 0.06em;
 }
 .sb-team-score {
-  font-size: 26px;
-  font-weight: 900;
-  color: #fbbf24;
+  font-size: 24px;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--amber);
   font-family: 'IBM Plex Mono', monospace;
 }
 .sb-innings {
   flex: 1;
   display: flex;
   align-items: center;
-  padding: 0 6px;
+  padding: 0 10px;
   overflow: hidden;
 }
 .sb-inn-group {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 0;
 }
 .sb-inn-row {
   display: flex;
   gap: 0;
 }
 .sb-inn-cell {
-  width: 32px;
+  width: 30px;
   text-align: center;
-  font-size: 13px;
+  font-size: 12px;
   font-family: 'IBM Plex Mono', monospace;
-  color: #94a3b8;
-  border-right: 1px solid rgba(255, 255, 255, 0.06);
+  color: var(--on-dark-dim);
   padding: 2px 0;
 }
 .sb-inn-cell.cur {
-  color: #fbbf24;
-  background: rgba(251, 191, 36, 0.13);
+  color: var(--amber);
+  background: rgba(240, 173, 30, 0.1);
   font-weight: 700;
 }
 .sb-inn-cell.hd {
-  color: #c0cfe0;
-  font-size: 13px;
+  color: #5d6e8a;
+  font-size: 11px;
   font-weight: 700;
 }
 .sb-inn-cell.score {
   color: #fff;
   font-weight: 700;
+}
+.sb-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 12px;
 }
 .sb-rheb {
   display: flex;
@@ -493,6 +516,8 @@ button {
 }
 .game-body.view-main {
   grid-template-columns: 38fr 32fr 30fr;
+  gap: 1px;
+  background: var(--line);
 }
 .game-body.view-sheet {
   grid-template-columns: 1fr 260px;
@@ -506,19 +531,24 @@ button {
 
 /* Left panel (main view: field + lineup) */
 .left-panel {
-  background: #f1f5f9;
-  border-right: 1px solid var(--border);
+  background: var(--bg);
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  padding: 10px;
+  gap: 10px;
 }
 .field-wrap {
   flex: 0 0 auto;
   overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  background: var(--panel);
 }
 .lineup-section {
-  background: #fff;
-  border-top: 2px solid #102c57;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--r);
   flex: 1;
   overflow: hidden;
   display: flex;
@@ -530,15 +560,19 @@ button {
   grid-template-columns: 1fr 1fr;
 }
 .lineup-team-hd {
-  background: #102c57;
-  color: #fff;
+  background: var(--panel2);
+  color: #3e6bd6;
   text-align: center;
   font-weight: 700;
-  font-size: 13px;
-  padding: 6px 2px;
+  font-size: 12px;
+  padding: 7px 2px;
+  border-bottom: 1px solid var(--line);
 }
 .lineup-team-hd:first-child {
-  border-right: 1px solid rgba(255, 255, 255, 0.2);
+  border-right: 1px solid var(--line);
+}
+.lineup-team-hd:last-child {
+  color: #2e9e6b;
 }
 .lineup-scroll {
   overflow-y: auto;
@@ -557,21 +591,29 @@ button {
 }
 /* 선수명 컬럼 — 남은 공간 균등 분배 */
 .lineup-tbl th {
-  background: #e8f0f8;
+  background: var(--panel2);
   font-weight: 700;
-  padding: 4px 4px;
-  border: 1px solid #cbd5e1;
+  padding: 5px 4px;
+  border: none;
+  border-bottom: 1px solid var(--line);
+  color: var(--muted);
   text-align: center;
-  font-size: 11px;
+  font-size: 10px;
+  letter-spacing: 0.04em;
 }
 .lineup-tbl td {
-  padding: 5px 4px;
-  border: 1px solid #e2e8f0;
+  padding: 6px 4px;
+  border: none;
+  border-bottom: 1px solid var(--line-soft);
   text-align: center;
   font-size: 12px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.lineup-tbl th:nth-child(4),
+.lineup-tbl td:nth-child(4) {
+  border-left: 1px solid var(--line);
 }
 .lineup-tbl td[draggable='true'] {
   cursor: grab;
@@ -580,43 +622,59 @@ button {
   cursor: grabbing;
 }
 .lineup-tbl tr.bat-pit td {
-  background: #f0f4f8;
-  color: #64748b;
+  background: var(--panel2);
+  color: var(--muted);
 }
 .lineup-tbl tr.bat-cur-away td:nth-child(-n + 3) {
-  background: #3b82f6;
-  color: #fff;
+  background: #ebf1fe;
   font-weight: 700;
+}
+.lineup-tbl tr.bat-cur-away td:nth-child(1) {
+  box-shadow: inset 3px 0 0 var(--action);
+}
+.lineup-tbl tr.bat-cur-away td:nth-child(3) {
+  color: var(--action);
 }
 .lineup-tbl tr.bat-cur-home td:nth-child(n + 4) {
-  background: #3b82f6;
-  color: #fff;
+  background: #ebf1fe;
   font-weight: 700;
 }
+.lineup-tbl tr.bat-cur-home td:nth-child(4) {
+  box-shadow: inset 3px 0 0 var(--action);
+}
+.lineup-tbl tr.bat-cur-home td:nth-child(6) {
+  color: var(--action);
+}
 
-/* Scoreboard sheet toggle button */
+/* Scoreboard action buttons */
 .sb-sheet-btn {
-  background: none;
-  border: none;
-  color: #94a3b8;
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  color: #b9c6d9;
   font-size: 11px;
-  padding: 0 14px;
+  padding: 6px 12px;
+  border-radius: var(--r);
   cursor: pointer;
   white-space: nowrap;
-  border-left: 1px solid rgba(255, 255, 255, 0.1);
   display: flex;
-  flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 2px;
   flex-shrink: 0;
+  transition: all 0.12s;
 }
 .sb-sheet-btn:hover {
   color: #fff;
   background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.28);
 }
-.sb-sheet-btn.active {
-  color: #fbbf24;
+.sb-sheet-btn.active,
+.sb-sheet-btn.primary {
+  color: var(--amber);
+  background: rgba(240, 173, 30, 0.12);
+  border-color: rgba(240, 173, 30, 0.4);
+}
+.sb-sheet-btn.primary:hover {
+  background: rgba(240, 173, 30, 0.2);
 }
 
 /* ── SCORESHEET ── */
@@ -630,10 +688,16 @@ button {
   display: flex;
   flex-direction: column;
   background: var(--panel);
-  border-right: 1px solid var(--border);
   overflow: hidden;
   min-height: 0;
   height: 100%;
+}
+/* 메인 화면에서는 카드로 */
+.game-body.view-main .plp {
+  margin: 10px;
+  height: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--r);
 }
 .plp-head {
   flex-shrink: 0;
@@ -647,19 +711,20 @@ button {
 .plp-row {
   display: grid;
   grid-template-columns: 28px 42px 70px 36px 70px minmax(60px, 1fr);
-  border-bottom: 1px solid #e2e8f0;
+  border-bottom: 1px solid var(--line-soft);
   height: 24px;
 }
 .plp-hdr {
-  background: #102c57 !important;
-  color: #fff;
+  background: var(--panel2) !important;
+  color: var(--muted);
   font-weight: 700;
+  border-bottom: 1px solid var(--line);
 }
 .plp-cell {
   padding: 0 4px;
   font-size: 12px;
   text-align: center;
-  border-right: 1px solid #e2e8f0;
+  border-right: 1px solid var(--line-soft);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -681,8 +746,10 @@ button {
   font-size: 11px;
 }
 .plp-hdr .plp-cell {
-  border-right-color: rgba(255, 255, 255, 0.2);
-  color: #fff;
+  border-right-color: var(--line);
+  color: var(--muted);
+  font-size: 10px;
+  letter-spacing: 0.04em;
 }
 .ss-top {
   background: #e8f0fe;
@@ -887,20 +954,21 @@ button {
 .ip {
   display: flex;
   flex-direction: column;
-  background: #d9dde2;
+  background: var(--bg);
   overflow: hidden;
-  border-right: 1px solid var(--border);
   min-width: 0;
   flex: 1;
   min-height: 0;
   overflow-y: auto;
+  padding: 10px;
+  gap: 10px;
 }
 .ip-pitcher {
-  background: #d9dde2;
+  background: transparent;
   color: #fff;
-  padding: 10px 0 10px;
+  padding: 0;
   display: grid;
-  grid-template-columns: 165px 3fr 1fr;
+  grid-template-columns: 1fr 190px;
   gap: 10px;
   align-items: stretch;
   flex-shrink: 0;
@@ -936,15 +1004,14 @@ button {
   color: #c6d4ea;
 }
 .ip-info-card {
-  margin-right: 0;
-  margin-left: 10px;
-  background: #21324a;
-  border-radius: 5px;
+  margin: 0;
+  background: var(--ink-800);
+  border-radius: var(--r);
   display: flex;
   flex-direction: column;
   justify-content: center;
-  gap: 14px;
-  padding: 16px 18px;
+  gap: 10px;
+  padding: 14px 16px;
   color: #fff;
 }
 .info-row {
@@ -955,79 +1022,76 @@ button {
   flex-wrap: wrap;
 }
 .info-lbl {
-  font-size: 16px;
-  font-weight: bold;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--on-dark-dim);
+  letter-spacing: 0.08em;
 }
 .info-val {
-  font-size: 18px;
-  font-weight: bold;
-  text-decoration: underline;
-  text-underline-offset: 3px;
+  font-size: 19px;
+  font-weight: 900;
+  text-decoration: none;
 }
 .ip-bso-card {
-  margin-right: 10px;
-  background: linear-gradient(180deg, #0a0a0a 0%, #15253d 100%);
-  border-radius: 5px;
+  margin: 0;
+  background: var(--ink-800);
+  border-radius: var(--r);
   display: flex;
   flex-direction: column;
   justify-content: center;
-  gap: 0;
-  padding: 16px 18px;
+  gap: 8px;
+  padding: 12px 14px;
 }
 .bso-line {
   display: grid;
-  grid-template-columns: 35px auto;
+  grid-template-columns: 26px auto;
   align-items: center;
-  min-height: 48px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.2);
-}
-.bso-line:last-child {
+  min-height: 26px;
   border-bottom: none;
 }
 .bso-big-lbl {
-  font-size: 28px;
-  font-weight: 800;
-  color: #fff;
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--on-dark-dim);
   font-family: 'IBM Plex Mono', monospace;
   line-height: 1;
 }
 .bso-big-dots {
   display: flex;
-  gap: 10px;
+  gap: 8px;
   align-items: center;
 }
 .dot {
-  width: 14px;
-  height: 14px;
+  width: 13px;
+  height: 13px;
   border-radius: 50%;
-  border: 1.5px solid #475569;
+  border: none;
+  background: #25334c;
   transition: all 0.15s;
   display: inline-block;
 }
 .dot.b {
   background: #3b82f6;
-  border-color: #3b82f6;
-  box-shadow: 0 0 5px #3b82f6;
 }
 .dot.s {
-  background: #f59e0b;
-  border-color: #f59e0b;
-  box-shadow: 0 0 5px #f59e0b;
+  background: var(--amber);
 }
 .dot.o {
-  background: #ef4444;
-  border-color: #ef4444;
-  box-shadow: 0 0 5px #ef4444;
+  background: #e14545;
 }
 .ip-sec {
-  padding: 8px 10px;
-  border-bottom: 1px solid var(--border2);
+  padding: 10px 12px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  flex-shrink: 0;
 }
 .ip-sec-t {
-  font-size: 12px;
+  font-size: 10px;
   font-weight: 700;
-  color: #6b7280;
-  margin-bottom: 5px;
+  color: var(--faint);
+  letter-spacing: 0.1em;
+  margin-bottom: 6px;
 }
 .ip-g2 {
   display: grid;
@@ -1045,24 +1109,26 @@ button {
   gap: 4px;
 }
 .ip-btn {
-  border: 1.5px solid var(--border);
-  background: #fff;
-  border-radius: 4px;
-  padding: 7px 5px;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  color: var(--text);
+  border-radius: var(--r);
+  padding: 8px 4px;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 2px;
+  gap: 1px;
   cursor: pointer;
   transition: all 0.1s;
+  line-height: 1.25;
 }
 .ip-btn:hover {
-  filter: brightness(1.08);
-  transform: translateY(-1px);
+  border-color: var(--ink-700);
+  color: var(--ink-700);
+  background: var(--panel2);
 }
 .ip-btn:active {
-  transform: none;
   filter: brightness(0.95);
 }
 .ip-icon {
@@ -1070,14 +1136,14 @@ button {
   line-height: 1;
 }
 .ip-lbl {
-  font-size: 14px;
-  color: #fff;
-  font-weight: bold;
+  font-size: 13px;
+  color: inherit;
+  font-weight: 700;
 }
 .ip-sub {
-  font-size: 11px;
-  color: #fff;
-  font-weight: bold;
+  font-size: 10px;
+  color: inherit;
+  font-weight: 500;
 }
 .ip-g2-special .ip-btn {
   min-height: 28px;
@@ -1085,54 +1151,54 @@ button {
 .ip-g2-special .ip-lbl {
   font-size: 12px;
 }
-.b-S {
-  background: #102c57;
-  color: #fff;
-}
-.b-SW {
-  background: #102c57;
-  color: #fff;
-}
-.b-B {
-  background: #102c57;
-  color: #fff;
-}
+.b-S,
+.b-SW,
+.b-B,
 .b-F {
-  background: #102c57;
+  background: var(--ink-700);
+  border-color: var(--ink-700);
+  color: #fff;
+}
+.b-S:hover,
+.b-SW:hover,
+.b-B:hover,
+.b-F:hover {
+  background: #274069;
+  border-color: #274069;
   color: #fff;
 }
 .ta-lbl {
-  font-size: 12px;
-  color: var(--text3);
+  font-size: 10px;
+  color: var(--faint);
   font-weight: 700;
-  margin-bottom: 3px;
+  letter-spacing: 0.06em;
+  margin-bottom: 4px;
 }
 .ta-row {
   display: flex;
-  gap: 5px;
+  gap: 6px;
 }
 .ta-btn {
-  border: 1.5px solid var(--border);
-  background: #fff;
-  border-radius: 4px;
-  padding: 8px 6px;
-  font-size: 12px;
+  border: 1px solid var(--ink-700);
+  background: var(--ink-700);
+  color: #fff;
+  border-radius: var(--r);
+  padding: 10px 6px;
+  font-size: 13px;
   font-weight: 700;
   cursor: pointer;
   text-align: center;
   transition: all 0.1s;
   flex: 1;
 }
-.ta-btn.adv {
-  background: #102c57;
-  color: #fff;
-  border-color: #102c57;
-  font-size: 14px;
+.ta-btn:hover {
+  filter: brightness(1.08);
 }
+.ta-btn.adv,
 .ta-btn.out {
-  background: #102c57;
+  background: var(--ink-700);
   color: #fff;
-  border-color: #102c57;
+  border-color: var(--ink-700);
   font-size: 14px;
 }
 .sp-row {
@@ -1158,24 +1224,25 @@ button {
 .act-row {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px;
+  gap: 6px;
 }
 .act-btn {
   font-weight: 700;
-  border: 1.5px solid #102c57;
-  border-radius: 2px;
-  padding: 7px 11px;
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  padding: 8px 13px;
   font-size: 12px;
   cursor: pointer;
   transition: all 0.1s;
   display: flex;
   align-items: center;
   gap: 4px;
-  background: #102c57;
-  color: #fff;
+  background: var(--panel);
+  color: var(--text);
 }
 .act-btn:hover {
-  filter: brightness(1.15);
+  border-color: var(--ink-700);
+  color: var(--ink-700);
 }
 .a-next {
   font-weight: 700;
@@ -1192,15 +1259,16 @@ button {
   overflow: hidden;
 }
 .dp-title {
-  background: #1e293b;
-  color: #fff;
-  padding: 6px 10px;
+  background: var(--panel);
+  color: var(--text);
+  padding: 8px 12px;
   font-size: 12px;
   font-weight: 700;
   flex-shrink: 0;
   display: flex;
   align-items: center;
   justify-content: space-between;
+  border-bottom: 1px solid var(--line-soft);
 }
 .dp-field {
   flex-shrink: 0;
@@ -1660,8 +1728,19 @@ button {
     overflow: visible !important;
     height: auto !important;
   }
-  /* beforeprint 이벤트에서 --print-zoom 을 실측 계산해 주입, 없으면 0.61 fallback */
+  /* 화면 zoom 해제 후 ss-wrap(메인 표+하단 표)을 단일 transform 으로 통째 축소.
+     zoom 은 요소별 반올림 편차로 상/하단 끝이 어긋나므로 사용 금지.
+     배율/보정 치수는 beforeprint(ScoreSheet.tsx)에서 실측 주입. */
   .ss-area > div > div[style*='zoom'] {
-    zoom: var(--print-zoom, 0.61) !important;
+    zoom: 1 !important;
+    width: var(--print-w, auto) !important;
+    height: var(--print-h, auto) !important;
+    overflow: hidden !important;
+  }
+  #ss-wrap {
+    transform: scale(var(--print-zoom, 1));
+    transform-origin: top left;
+    width: max-content !important;
+    min-width: 0 !important;
   }
 }

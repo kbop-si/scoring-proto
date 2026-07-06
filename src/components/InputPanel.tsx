@@ -161,25 +161,25 @@ export default function InputPanel({
           </button>
         </div>
         <div className="ip-g3" style={{ marginTop: 4 }}>
-          <button className="ip-btn b-S" onClick={() => onPitch('FE')}>
+          <button className="ip-btn" onClick={() => onPitch('FE')}>
             <span className="ip-lbl">파울실책</span>
           </button>
-          <button className="ip-btn b-S" onClick={() => onPitch('BS')}>
+          <button className="ip-btn" onClick={() => onPitch('BS')}>
             <span className="ip-lbl">번트헛스윙</span>
           </button>
-          <button className="ip-btn b-S" onClick={() => onPitch('BF')}>
+          <button className="ip-btn" onClick={() => onPitch('BF')}>
             <span className="ip-lbl">번트파울</span>
           </button>
         </div>
         <div style={{ borderTop: '1px solid var(--border2)', paddingTop: 4, marginTop: 4 }}>
           <div className="ip-g3">
-            <button className="ip-btn b-S" onClick={onPitcherLeave}>
+            <button className="ip-btn" onClick={onPitcherLeave}>
               <span className="ip-lbl">투수판이탈</span>
             </button>
-            <button className="ip-btn b-S" onClick={onMoundVisit}>
+            <button className="ip-btn" onClick={onMoundVisit}>
               <span className="ip-lbl">마운드방문</span>
             </button>
-            <button className="ip-btn b-S" onClick={onBatterTimeout}>
+            <button className="ip-btn" onClick={onBatterTimeout}>
               <span className="ip-lbl">타자타임</span>
             </button>
           </div>
@@ -189,13 +189,13 @@ export default function InputPanel({
             피치클락
           </div>
           <div className="ip-g3">
-            <button className="ip-btn b-S" onClick={() => onPitch('PC1')}>
+            <button className="ip-btn" onClick={() => onPitch('PC1')}>
               <span className="ip-lbl">투수위반 볼</span>
             </button>
-            <button className="ip-btn b-S" onClick={() => onPitch('PC2')}>
+            <button className="ip-btn" onClick={() => onPitch('PC2')}>
               <span className="ip-lbl">포수위반 볼</span>
             </button>
-            <button className="ip-btn b-S" onClick={() => onPitch('PC3')}>
+            <button className="ip-btn" onClick={() => onPitch('PC3')}>
               <span className="ip-lbl">타자위반</span>
               <span className="ip-sub">스트라이크</span>
             </button>
@@ -243,28 +243,28 @@ export default function InputPanel({
       <div className="ip-sec">
         <div className="ip-sec-t">기타</div>
         <div className="ip-g3" style={{ marginTop: 2 }}>
-          <button className="ip-btn b-S" onClick={onVideoReview}>
+          <button className="ip-btn" onClick={onVideoReview}>
             <span className="ip-lbl">비디오판독</span>
           </button>
-          <button className="ip-btn b-S" onClick={onCheckSwing}>
+          <button className="ip-btn" onClick={onCheckSwing}>
             <span className="ip-lbl">체크스윙</span>
           </button>
-          <button className="ip-btn b-S" onClick={onMemoInput}>
+          <button className="ip-btn" onClick={onMemoInput}>
             <span className="ip-lbl">기타입력</span>
           </button>
         </div>
         <div style={{ borderTop: '1px solid var(--border2)', marginTop: 5, paddingTop: 5 }}>
           <div className="ip-g4" style={{ marginTop: 0 }}>
-            <button className="ip-btn b-S" onClick={onGameDelay}>
+            <button className="ip-btn" onClick={onGameDelay}>
               <span className="ip-lbl">경기지연/중단</span>
             </button>
-            <button className="ip-btn b-S" onClick={onWarningEjection}>
+            <button className="ip-btn" onClick={onWarningEjection}>
               <span className="ip-lbl">경고·퇴장</span>
             </button>
-            <button className="ip-btn b-S" onClick={onUmpireChange}>
+            <button className="ip-btn" onClick={onUmpireChange}>
               <span className="ip-lbl">심판교체</span>
             </button>
-            <button className="ip-btn b-S" onClick={onMemoList}>
+            <button className="ip-btn" onClick={onMemoList}>
               <span className="ip-lbl">목록보기</span>
             </button>
           </div>
@@ -290,11 +290,7 @@ export default function InputPanel({
           <button className="act-btn a-clear" onClick={onClearInning}>
             이닝지우기
           </button>
-          <button
-            className="act-btn"
-            style={{ background: 'var(--red)', borderColor: 'var(--red)' }}
-            onClick={onEnd}
-          >
+          <button className="act-btn" onClick={onEnd}>
             게임종료
           </button>
         </div>

@@ -97,6 +97,8 @@ export interface CellData {
   lobCell?: boolean; // 잔루 — 이닝 종료 시 홈에 못 들어온 주자 셀에 표기 (ℓ)
   isDoublePlay?: boolean; // 병살타 여부 (result 문자열에 포함 안 됨)
   isTriplePlay?: boolean; // 삼중살 여부 (result 문자열에 포함 안 됨)
+  dpType?: 'force' | 'reverse' | 'tag'; // 병살 유형 — 포스/리버스 포스/태그 (공식기록 항목10)
+  outGroup?: string; // 동일 플레이 다중 아웃 묶음 id — 같은 값의 셀들을 { 브레이스로 묶음 (기록법 p.17 ⑪)
   chainSkip?: Base; // 연속플레이 2베이스 이상 이동 시 최초 건너뛴 베이스 ('2B' | '3B')
   defFielders?: number[]; // 수비수 번호 내부 기록 — FC/INT/Ob 등 result에 직접 안 붙는 경우
   isDPRunner?: boolean; // 병살/삼중살에서 아웃된 주자 셀 (outMap pre-population 구분용)
@@ -472,6 +474,7 @@ export type GameAction =
       result: string;
       dp?: boolean;
       tp?: boolean;
+      dpType?: 'force' | 'reverse' | 'tag'; // 병살/삼중살 유형 (공식기록 항목10)
       ballType?: '땅' | '뜬' | '라';
       deflection?: DeflectionInfo;
       defRoles?: DefRole[];
@@ -497,6 +500,7 @@ export type GameAction =
       result: string;
       deflection?: DeflectionInfo;
       defRoles?: DefRole[];
+      samePlay?: boolean; // 직전 아웃과 동일 플레이 — 두 아웃 셀을 { 브레이스로 묶음
     }
   | { type: 'NEXT_BATTER' }
   | { type: 'NEXT_INNING' }
@@ -533,6 +537,8 @@ export type GameAction =
   | { type: 'DELETE_INNING'; inning: number }
   | { type: 'DELETE_CELL'; cellKey: string }
   | { type: 'EDIT_PITCH_SEQ'; cellKey: string; pitches: PitchType[] }
+  // 볼카운트 순서 수정 (도루 '/' 등 주자 이벤트 포함) — entries = result 이전 구간의 eventLog 전체
+  | { type: 'EDIT_PITCH_EVENT_SEQ'; cellKey: string; entries: CellEventEntry[] }
   | { type: 'SEL_CELL'; key: string }
   | {
       type: 'SUBST';

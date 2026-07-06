@@ -128,35 +128,44 @@ export default function GameInfoScreen({
   onConfirm: (extra: Partial<GameSetup>) => void;
   onBack: () => void;
 }) {
-  const [gameNum, setGameNum] = useState('1');
-  const [stadium, setStadium] = useState('');
-  const [spectators, setSpectators] = useState('');
-  const [startH, setStartH] = useState('');
-  const [startM, setStartM] = useState('');
+  // 경기 중 재진입 시 기존 입력값(setup)으로 초기화 — 그대로 보이고 바로 수정 가능
+  const initTime = (t?: string): [string, string] => {
+    if (!t || !t.includes(':')) return ['', ''];
+    const [h, m] = t.split(':');
+    return [h || '', m || ''];
+  };
+  const [initStartH, initStartM] = initTime(setup.startTime);
+  const [initEndH, initEndM] = initTime(setup.endTime);
+
+  const [gameNum, setGameNum] = useState(setup.gameNum || '1');
+  const [stadium, setStadium] = useState(setup.stadium ?? '');
+  const [spectators, setSpectators] = useState(setup.attendance ?? '');
+  const [startH, setStartH] = useState(initStartH);
+  const [startM, setStartM] = useState(initStartM);
   const [regEndH, setRegEndH] = useState('');
   const [regEndM, setRegEndM] = useState('');
-  const [endH, setEndH] = useState('');
-  const [endM, setEndM] = useState('');
+  const [endH, setEndH] = useState(initEndH);
+  const [endM, setEndM] = useState(initEndM);
   const [isExtra, setIsExtra] = useState(false);
   const [delayRegManual, setDelayRegManual] = useState('0');
   const [delayExt, setDelayExt] = useState('0');
-  const [temp, setTemp] = useState('');
-  const [hum, setHum] = useState('');
-  const [weatherLog, setWeatherLog] = useState('');
-  const [windDir, setWindDir] = useState('');
-  const [windSpeed, setWindSpeed] = useState('');
+  const [temp, setTemp] = useState(setup.temperature ?? '');
+  const [hum, setHum] = useState(setup.humidity ?? '');
+  const [weatherLog, setWeatherLog] = useState(setup.weatherLog ?? '');
+  const [windDir, setWindDir] = useState(setup.windDir ?? '');
+  const [windSpeed, setWindSpeed] = useState(setup.windSpeed ?? '');
   const [indoorEnabled, setIndoorEnabled] = useState(false);
   const [indoorTemp, setIndoorTemp] = useState('');
 
-  const [uHome, setUHome] = useState('');
-  const [u1B, setU1B] = useState('');
-  const [u2B, setU2B] = useState('');
-  const [u3B, setU3B] = useState('');
-  const [uLeft, setULeft] = useState('');
-  const [uRight, setURight] = useState('');
-  const [uWait, setUWait] = useState('');
-  const [rec1, setRec1] = useState('');
-  const [rec2, setRec2] = useState('');
+  const [uHome, setUHome] = useState(setup.umpireHome ?? '');
+  const [u1B, setU1B] = useState(setup.umpire1B ?? '');
+  const [u2B, setU2B] = useState(setup.umpire2B ?? '');
+  const [u3B, setU3B] = useState(setup.umpire3B ?? '');
+  const [uLeft, setULeft] = useState(setup.umpireLeft ?? '');
+  const [uRight, setURight] = useState(setup.umpireRight ?? '');
+  const [uWait, setUWait] = useState(setup.umpireStandby ?? '');
+  const [rec1, setRec1] = useState(setup.recorder1 ?? '');
+  const [rec2, setRec2] = useState(setup.recorder2 ?? '');
 
   const officialList = useMemo(
     () =>

@@ -744,12 +744,13 @@ export default function GameScreen({ setup, onEnd }: Props) {
       tp?: boolean,
       ballType?: '땅' | '뜬' | '라',
       deflection?: import('../types').DeflectionInfo,
-      defRoles?: import('../types').DefRole[]
+      defRoles?: import('../types').DefRole[],
+      dpType?: 'force' | 'reverse' | 'tag'
     ) => {
       // SF 등 아웃 결과 입력 시점에 현재 타자를 chainCausedBy로 갱신 (주자 있을 때)
       const hasRunners = Object.values(G.runners).some(Boolean);
       if (hasRunners) setChainCausedBy(G.curBatterOrder);
-      dispatch({ type: 'BAT_OUT', result, dp, tp, ballType, deflection, defRoles });
+      dispatch({ type: 'BAT_OUT', result, dp, tp, ballType, deflection, defRoles, dpType });
     },
     [G, dispatch, showToast]
   );
@@ -1027,7 +1028,8 @@ export default function GameScreen({ setup, onEnd }: Props) {
     (
       fielderSeq: number[],
       deflection?: import('../types').DeflectionInfo,
-      defRoles?: import('../types').DefRole[]
+      defRoles?: import('../types').DefRole[],
+      samePlay?: boolean
     ) => {
       if (!UI.runOutResult) {
         showToast('아웃 사유 선택');
@@ -1051,7 +1053,7 @@ export default function GameScreen({ setup, onEnd }: Props) {
         const code = t.split(' ')[0];
         return seq ? seq + code : code;
       })();
-      dispatch({ type: 'RUN_OUT', base, result: outCode, deflection, defRoles });
+      dispatch({ type: 'RUN_OUT', base, result: outCode, deflection, defRoles, samePlay });
       const newOuts = G.outs + 1;
       showToast(`${r.name} 아웃 (${outCode})  ${newOuts}아웃`);
       if (newOuts >= 3)
@@ -1751,6 +1753,9 @@ export default function GameScreen({ setup, onEnd }: Props) {
         onSavePitchSeq={(cellKey, pitches) =>
           dispatch({ type: 'EDIT_PITCH_SEQ', cellKey, pitches })
         }
+        onSavePitchEventSeq={(cellKey, entries) =>
+          dispatch({ type: 'EDIT_PITCH_EVENT_SEQ', cellKey, entries })
+        }
         onPinchHitter={(cellKey, player, mid) => {
           const [half] = cellKey.split('-') as ['top' | 'bottom', ...string[]];
           const side: 'away' | 'home' = half === 'top' ? 'away' : 'home';
@@ -1785,9 +1790,9 @@ export default function GameScreen({ setup, onEnd }: Props) {
       <BatOutModal
         open={UI.batOutOpen}
         defLU={defLU}
-        onResult={(result, dp, tp, ballType, deflection, defRoles) => {
+        onResult={(result, dp, tp, ballType, deflection, defRoles, dpType) => {
           setUI((p) => ({ ...p, batOutOpen: false }));
-          applyBatOutResult(result, dp, tp, ballType, deflection, defRoles);
+          applyBatOutResult(result, dp, tp, ballType, deflection, defRoles, dpType);
         }}
         onClose={() => setUI((p) => ({ ...p, batOutOpen: false }))}
       />

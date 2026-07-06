@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import type { DeflectionInfo, DefRole, Player } from '../../types';
+import { markErrorSeq } from '../../store/gameReducer';
 import DeflectionPicker from './DeflectionPicker';
 
 interface Props {
@@ -11,7 +12,8 @@ interface Props {
     tp?: boolean,
     ballType?: '땅' | '뜬' | '라',
     deflection?: DeflectionInfo,
-    defRoles?: DefRole[]
+    defRoles?: DefRole[],
+    dpType?: 'force' | 'reverse' | 'tag'
   ) => void;
   onClose: () => void;
 }
@@ -295,7 +297,16 @@ export default function BatOutModal({ open, defLU, onResult, onClose }: Props) {
     const roles: DefRole[] = defSeq
       .filter((row) => !row.defl && (row.assist || row.putout || row.error))
       .map((row) => ({ pos: row.pos, assist: row.assist, putout: row.putout, error: row.error }));
-    onResult(r, isDp, isTp, bt, defl, roles.length ? roles : undefined);
+    // 병살/삼중살 유형 — dpMode(송구/태그/리버스) → 구조화 값 (공식기록 항목10)
+    const dpType: 'force' | 'reverse' | 'tag' | undefined =
+      isDp || isTp
+        ? dpMode === '리버스'
+          ? 'reverse'
+          : dpMode === '태그'
+            ? 'tag'
+            : 'force'
+        : undefined;
+    onResult(r, isDp, isTp, bt, defl, roles.length ? roles : undefined, dpType);
     reset();
     onClose();
   };
@@ -329,27 +340,51 @@ export default function BatOutModal({ open, defLU, onResult, onClose }: Props) {
     return null;
   };
 
-  const addPos = (pos: number) =>
-    setDefSeq((prev) => {
-      // 디플렉션 행은 보살/자살 자동 갱신 대상에서 제외
-      const updated = prev.map((r) => (r.defl ? r : { ...r, putout: false, assist: true }));
-      return [
-        ...updated,
-        {
-          pos,
-          assist: false,
-          putout: true,
-          error: false,
-          throwDir: '중앙',
-          recvDir: '중앙',
-          shift: false,
-          defl: false,
-        },
-      ];
+  // 보살(A)/자살(PO) 자동 계산 — outsCnt: 병살=2, 삼중살=3, 일반=1
+  // 수비 수열 앞쪽 (n - outsCnt)명 = 보살만, 이후 아웃 기록자들은 자살(+마지막 제외 보살)
+  // 예: 5-4-3 병살 → 5:A, 4:A+PO, 3:PO / 4-6-3 병살 → 4:A, 6:A+PO, 3:PO
+  const recomputeRoles = (rows: DefRow[], outsCnt: number): DefRow[] => {
+    const idxs = rows.map((r, i) => (r.defl ? -1 : i)).filter((i) => i >= 0);
+    const n = idxs.length;
+    if (n === 0) return rows;
+    const firstOutPos = Math.max(0, n - Math.min(outsCnt, n));
+    return rows.map((r, i) => {
+      if (r.defl) return r;
+      const j = idxs.indexOf(i);
+      return { ...r, assist: j < n - 1, putout: j >= firstOutPos };
     });
+  };
+  const curOutsCnt = tp ? 3 : dp ? 2 : 1;
+
+  const addPos = (pos: number) =>
+    setDefSeq((prev) =>
+      recomputeRoles(
+        [
+          ...prev,
+          {
+            pos,
+            assist: false,
+            putout: true,
+            error: false,
+            throwDir: '중앙',
+            recvDir: '중앙',
+            shift: false,
+            defl: false,
+          },
+        ],
+        curOutsCnt
+      )
+    );
 
   const code = buildResult(seq, type, gMode, dp, tp, dpMode, dpBunt, fSac, fBunt);
   const activeCode = otherType ? buildOtherCode() : code;
+  // 실책 체크 시 미리보기에 E 표시 (기록지 표시와 동일 규칙, 저장 코드는 defRoles로 전달)
+  const displayCode = activeCode
+    ? markErrorSeq(
+        activeCode,
+        defSeq.filter((r) => !r.defl)
+      )
+    : activeCode;
   const isGround = type === '땅' || type === 'BU' || type === 'SH';
 
   return (
@@ -654,7 +689,7 @@ export default function BatOutModal({ open, defLU, onResult, onClose }: Props) {
                   color: activeCode ? 'var(--blue)' : 'var(--text3)',
                 }}
               >
-                {activeCode ?? '—'}
+                {displayCode ?? '—'}
               </span>
               {!isFlat && (
                 <DeflectionPicker
@@ -740,8 +775,11 @@ export default function BatOutModal({ open, defLU, onResult, onClose }: Props) {
                   className={`r-btn${type === '땅' && dp ? ' sel' : ''}`}
                   onClick={() => {
                     selectType('땅');
-                    setDp((v) => !v);
+                    const next = !dp;
+                    setDp(next);
                     setTp(false);
+                    // 병살 토글 시 기존 수비 수열의 보살/자살 재계산
+                    setDefSeq((prev) => recomputeRoles(prev, next ? 2 : 1));
                   }}
                 >
                   병살타
@@ -750,8 +788,10 @@ export default function BatOutModal({ open, defLU, onResult, onClose }: Props) {
                   className={`r-btn${type === '땅' && tp ? ' sel' : ''}`}
                   onClick={() => {
                     selectType('땅');
-                    setTp((v) => !v);
+                    const next = !tp;
+                    setTp(next);
                     setDp(false);
+                    setDefSeq((prev) => recomputeRoles(prev, next ? 3 : 1));
                   }}
                 >
                   삼중살

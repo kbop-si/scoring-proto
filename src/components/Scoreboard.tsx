@@ -155,51 +155,41 @@ export default function Scoreboard({
           <span>{showSheet ? '돌아가기' : '기록지 보기'}</span>
         </button>
       )} */}
-      {onOpenSheetWindow && (
-        <button className="sb-sheet-btn" onClick={onOpenSheetWindow} title="새 창으로 열기">
-          <span>기록지 보기</span>
-        </button>
-      )}
-      {onEditGameInfo && (
-        <button
-          className="sb-sheet-btn"
-          onClick={onEditGameInfo}
-          title="경기 정보 수정"
-          style={{ marginLeft: 4 }}
-        >
-          <span>경기정보수정</span>
-        </button>
-      )}
-      {onOpenScoreReview && (
-        <button
-          className="sb-sheet-btn"
-          onClick={onOpenScoreReview}
-          title="자책점 검토"
-          style={{ marginLeft: 4 }}
-        >
-          <span>자책점 검토</span>
-        </button>
-      )}
-      {onLocalSave && (
-        <button
-          className="sb-sheet-btn"
-          onClick={onLocalSave}
-          title="현재 기록지를 브라우저에 저장"
-          style={{ marginLeft: 4 }}
-        >
-          <span>로컬저장</span>
-        </button>
-      )}
-      {onLocalLoad && (
-        <button
-          className="sb-sheet-btn"
-          onClick={onLocalLoad}
-          title="저장된 기록지 불러오기"
-          style={{ marginLeft: 4 }}
-        >
-          <span>로컬불러오기</span>
-        </button>
-      )}
+      <div className="sb-actions">
+        {onOpenSheetWindow && (
+          <button
+            className="sb-sheet-btn primary"
+            onClick={onOpenSheetWindow}
+            title="새 창으로 열기"
+          >
+            <span>기록지 보기</span>
+          </button>
+        )}
+        {onEditGameInfo && (
+          <button className="sb-sheet-btn" onClick={onEditGameInfo} title="경기 정보 수정">
+            <span>경기정보</span>
+          </button>
+        )}
+        {onOpenScoreReview && (
+          <button className="sb-sheet-btn" onClick={onOpenScoreReview} title="자책점 검토">
+            <span>자책점 검토</span>
+          </button>
+        )}
+        {onLocalSave && (
+          <button
+            className="sb-sheet-btn"
+            onClick={onLocalSave}
+            title="현재 기록지를 브라우저에 저장"
+          >
+            <span>저장</span>
+          </button>
+        )}
+        {onLocalLoad && (
+          <button className="sb-sheet-btn" onClick={onLocalLoad} title="저장된 기록지 불러오기">
+            <span>불러오기</span>
+          </button>
+        )}
+      </div>
     </div>
   );
 }

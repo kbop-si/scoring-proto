@@ -82,7 +82,7 @@ const NEEDS_HIT = new Set([
   '→선행주자아웃',
 ]);
 // 실책 수비수 번호가 필요한 결과 — 필드 클릭 한 번으로 바로 확정
-const NEEDS_FIELDER = new Set(['E', 'E번트', 'KE', '#', 'ob', 'FC', 'FC번트', 'E기록']);
+const NEEDS_FIELDER = new Set(['E', 'E번트', 'KE', '#', 'ob', 'FC', 'FC번트', 'E기록', 'DP_E']);
 // ballType 라디오를 사용하는 결과 (NEEDS_HIT 외 — FC류는 방향 없이 ballType만)
 const NEEDS_BALLTYPE = new Set(['FC', 'FC번트']);
 
@@ -320,7 +320,7 @@ export default function BatAdvModal({
       if (!defSeq.length) return;
       const seq = defSeq.map((r) => r.pos);
       const result =
-        pendingResult === 'E' || pendingResult === 'E번트'
+        pendingResult === 'E' || pendingResult === 'E번트' || pendingResult === 'DP_E'
           ? buildSeqWithError(defSeq)
           : pendingResult === 'E기록'
             ? `E기록${seq.join('-')}`

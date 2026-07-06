@@ -5,6 +5,7 @@ import type {
   Runner,
   Runners,
   CellData,
+  CellEventEntry,
   HistorySnapshot,
   Half,
   Base,
@@ -98,6 +99,36 @@ export function isOnBase(r: string | null): boolean {
     'H2',
     'H3',
   ].includes(r);
+}
+
+// 실책 체크박스(defRoles/runOutDefRoles) → 표시용 E 마크 삽입.
+// 저장된 result/runOut 코드는 불변(파서 호환 유지) — 표시 시점에만 호출.
+// 배치 규칙은 BatAdvModal.buildSeqWithError 와 동일: 단일 수비수 E4 / 마지막 수비수(포구) 4-3E / 그 외(송구) E4-3
+export function markErrorSeq(
+  code: string | null,
+  roles?: { pos: number; error: boolean }[] | null
+): string {
+  if (!code) return '';
+  if (!roles || !roles.some((r) => r.error)) return code;
+  const m = code.match(/^(.*?)(\d(?:[-→]\d)*)([A-Za-z]*)$/);
+  if (!m) return code;
+  const [, pre, seqStr, suf] = m;
+  const tokens = seqStr.split(/([-→])/);
+  const numIdxs = tokens.map((t, i) => (t === '-' || t === '→' ? -1 : i)).filter((i) => i >= 0);
+  const usedRoles = new Set<number>();
+  const hasErr = numIdxs.map((ti) => {
+    const pos = parseInt(tokens[ti]);
+    const ri = roles.findIndex((r, j) => !usedRoles.has(j) && r.pos === pos);
+    if (ri >= 0) usedRoles.add(ri);
+    return ri >= 0 && roles[ri].error;
+  });
+  const lastTokenIdx = numIdxs[numIdxs.length - 1];
+  const marked = tokens.map((t, i) => {
+    const k = numIdxs.indexOf(i);
+    if (k < 0 || !hasErr[k]) return t;
+    return i === lastTokenIdx && numIdxs.length > 1 ? `${t}E` : `E${t}`;
+  });
+  return pre + marked.join('') + suf;
 }
 
 export function findPitcher(lu: Player[]): { name: string; num: string; pitchCount: number } {
@@ -1158,7 +1189,8 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
       const homeH = hitTypes.has(result) && state.half === 'bottom' ? state.homeH + 1 : state.homeH;
 
       const isErrorResult =
-        /^E\d$/.test(result) ||
+        /^E[\d-]+$/.test(result) || // E4, E6-4, E4-3 등
+        /^\d[\d-]*E$/.test(result) || // 6-4E, 4-3E 등
         /^E번트\d$/.test(result) ||
         /^KE\d$/.test(result) ||
         result === 'DP_E' ||
@@ -1261,6 +1293,9 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
           eventLog: [...(cells[key].eventLog || []), { kind: 'result' as const, result }],
           ...(isDP ? { isDoublePlay: true } : {}),
           ...(isTP ? { isTriplePlay: true } : {}),
+          ...((isDP || isTP) && action.dpType ? { dpType: action.dpType } : {}),
+          // 병살/삼중살 = 동일 플레이 다중 아웃 → 타자+주자 셀을 { 브레이스로 묶음
+          ...(isDP || isTP ? { outGroup: key } : {}),
           ...(ballType ? { ballType } : {}),
           ...(action.deflection ? { deflection: action.deflection } : {}),
           ...(action.defRoles?.length ? { defRoles: action.defRoles } : {}),
@@ -1298,6 +1333,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
                     runOutNum,
                     runOutInning: state.inning,
                     isDPRunner: true,
+                    outGroup: key,
                   },
                 };
                 break;
@@ -1625,6 +1661,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
         const runOutNum = outs; // 이 주자 아웃이 몇 번째 아웃인지
         const deflPatch = action.deflection ? { deflection: action.deflection } : {};
         const rolePatch = action.defRoles?.length ? { runOutDefRoles: action.defRoles } : {};
+        let markedKey: string | null = null;
         for (let app = 0; app <= 5; app++) {
           const rk = cellKey(runner.inning, runner.order, app, runner.half);
           if (cells[rk]) {
@@ -1641,6 +1678,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
               },
             };
             found = true;
+            markedKey = rk;
             break;
           }
         }
@@ -1663,6 +1701,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
                 },
               };
               found = true;
+              markedKey = rk;
               break;
             }
           }
@@ -1686,12 +1725,47 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
             ...rolePatch,
           };
           cells = { ...cells, [rk]: newCell };
+          markedKey = rk;
+        }
+
+        // 동일 플레이 묶음 (samePlay): 직전 아웃 셀과 outGroup 공유 → { 브레이스 표기 (기록법 p.17 ⑪)
+        if (action.samePlay && state.outs > 0 && markedKey) {
+          const prevOutNum = state.outs; // 직전 아웃의 chronological 번호
+          const prevKey = Object.keys(cells).find((k) => {
+            if (k === markedKey) return false;
+            const c = cells[k];
+            if (c.half !== state.half) return false;
+            return (
+              (c.runOutNum === prevOutNum && c.runOutInning === state.inning) ||
+              (c.cellOutNum === prevOutNum && c.inning === state.inning)
+            );
+          });
+          if (prevKey) {
+            const gid = cells[prevKey].outGroup || prevKey;
+            cells = {
+              ...cells,
+              [prevKey]: { ...cells[prevKey], outGroup: gid },
+              [markedKey]: { ...cells[markedKey], outGroup: gid },
+            };
+          }
         }
       }
 
       // 3아웃 시 잔루: 남은 주자(runners = 이미 out 제거된 상태) 셀에 lobCell 표기
       // 타자일순 대비 — 가장 최근 PA (높은 app) 셀에 찍음
       if (outs === 3) {
+        // 아직 다이아몬드에 배치 전(pendingBatter)인 출루 타자도 잔루 대상
+        // (선행주자 아웃 + 타자 1루 세이프 후 3아웃 종료 케이스)
+        if (state.pendingBatter) {
+          const pb = state.pendingBatter.runner;
+          for (let app = 5; app >= 0; app--) {
+            const rk = cellKey(pb.inning, pb.order, app, pb.half || state.half);
+            if (cells[rk]) {
+              cells = { ...cells, [rk]: { ...cells[rk], lobCell: true } };
+              break;
+            }
+          }
+        }
         for (const rem of Object.values(runners).filter(Boolean)) {
           if (rem) {
             let found = false;
@@ -1717,8 +1791,9 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
         }
       }
 
-      // 모든 주자 아웃을 현재 타자 셀 eventLog에 runner_cs 항목으로 기록 (FIFO 보존)
-      if (runner && state.selCellKey) {
+      // 도루실패(CS) / 견제사(X) 만 현재 타자 셀 eventLog에 runner_cs 항목으로 기록
+      const isCSorPickoff = action.result.startsWith('CS') || action.result.startsWith('X');
+      if (isCSorPickoff && runner && state.selCellKey) {
         cells = ensureCell(cells, state.selCellKey);
         const sc = cells[state.selCellKey];
         cells = {
@@ -2242,12 +2317,48 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
       const cells = { ...state.cells };
       delete cells[ck];
 
+      // 이 타석(병살/삼중살)으로 아웃 처리된 주자 셀의 마크 제거
+      // (samePlay 로만 묶인 별도 RUN_OUT 아웃은 유지 — outGroup 링크만 해제)
+      for (const [k, c] of Object.entries(cells)) {
+        if (c.outGroup !== ck) continue;
+        if (c.isDPRunner) {
+          cells[k] = {
+            ...c,
+            runOut: undefined,
+            runOutBase: undefined,
+            runOutNum: undefined,
+            runOutInning: undefined,
+            isDPRunner: undefined,
+            outGroup: undefined,
+          };
+        } else {
+          cells[k] = { ...c, outGroup: undefined };
+        }
+      }
+
       // 해당 타석 출루자만 제거 — 나머지 주자는 유지
       const runners = { ...state.runners };
       for (const base of ['1B', '2B', '3B'] as const) {
         if (runners[base]?.order === cell.order) delete runners[base];
       }
-      const outs = state.outs;
+
+      // 아웃카운트 재계산 — 삭제된 셀이 만든 아웃(3아웃 포함)을 반영해야 재입력이 가능
+      let outs = 0;
+      for (const c of Object.values(cells)) {
+        if (c.half !== cell.half) continue;
+        if (c.result && c.cellOutNum && c.inning === cell.inning) outs++;
+        if (c.runOut && (c.runOutInning ?? c.inning) === cell.inning) outs++;
+      }
+      outs = Math.min(outs, 3);
+
+      // 3아웃이 풀렸으면 그 이닝의 잔루(lobCell) 표시도 해제
+      if (outs < 3) {
+        for (const [k, c] of Object.entries(cells)) {
+          if (c.lobCell && c.half === cell.half && c.inning === cell.inning) {
+            cells[k] = { ...c, lobCell: undefined };
+          }
+        }
+      }
 
       // 점수/안타/실책/자책 전체 재계산 (ScoreSheet 와 동일 공식)
       const HIT = new Set(['H1', 'H2', 'H3', 'HR', 'GHR', 'INT', 'BUNT', 'OBUNT']);
@@ -3086,6 +3197,66 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
       while (newPitchIdx < newPitchCount) {
         newEventLog.push({ kind: 'pitch', pitch: newPitches[newPitchIdx++] });
       }
+
+      // 현재 진행 중인 PA면 볼·스트라이크 카운트 재계산
+      const isCurrentPA = ck === state.selCellKey && !cell.result;
+      let balls = state.balls;
+      let strikes = state.strikes;
+      if (isCurrentPA) {
+        balls = 0;
+        strikes = 0;
+        for (const p of newPitches) {
+          const pb = p.startsWith('FE') && p.length > 2 ? 'FE' : p;
+          switch (pb) {
+            case 'S':
+            case 'SW':
+            case 'BS':
+            case 'PC3':
+              strikes++;
+              break;
+            case 'F':
+            case 'FE':
+              if (strikes < 2) strikes++;
+              break;
+            case 'BF':
+              strikes++;
+              break;
+            case 'B':
+            case 'PC1':
+            case 'PC2':
+              balls++;
+              break;
+          }
+        }
+        balls = Math.min(balls, 4);
+        strikes = Math.min(strikes, 3);
+      }
+
+      return {
+        ...state,
+        balls,
+        strikes,
+        cells: { ...state.cells, [ck]: { ...cell, pitches: newPitches, eventLog: newEventLog } },
+        history: saveHist(state),
+      };
+    }
+
+    // ── EDIT_PITCH_EVENT_SEQ — 투구+주자이벤트(도루 '/' 등) 순서 통합 수정 ────
+    // entries = result 이전 구간의 eventLog 재정렬본. result 및 그 이후 항목은 유지.
+    case 'EDIT_PITCH_EVENT_SEQ': {
+      const { cellKey: ck, entries } = action;
+      const cell = state.cells[ck];
+      if (!cell) return state;
+
+      const eventLog = cell.eventLog ?? [];
+      const firstResultIdx = eventLog.findIndex((e) => e.kind === 'result');
+      const post = firstResultIdx >= 0 ? eventLog.slice(firstResultIdx) : [];
+      // 방어: entries에 result가 섞여 오면 제거 (result 구간은 post에서 유지)
+      const pre = entries.filter((e) => e.kind !== 'result');
+      const newEventLog = [...pre, ...post];
+      const newPitches = newEventLog
+        .filter((e): e is Extract<CellEventEntry, { kind: 'pitch' }> => e.kind === 'pitch')
+        .map((e) => e.pitch);
 
       // 현재 진행 중인 PA면 볼·스트라이크 카운트 재계산
       const isCurrentPA = ck === state.selCellKey && !cell.result;

@@ -1,6 +1,19 @@
 import { useState } from 'react';
 import type { Player, GameSetup } from '../types';
-import { POS_NAME, SAMPLE, posGroupAbbr, getDuplicateNames, displayName } from '../data/constants';
+import { POS_NAME, posGroupAbbr, getDuplicateNames, displayName } from '../data/constants';
+import { KBO_ROSTER } from '../data/kboRoster';
+
+function buildLineupFromRoster(teamName: string): { lineup: Player[]; bench: Player[] } {
+  const roster = KBO_ROSTER[teamName] ?? [];
+  const pitcher = roster.find((p) => p.pos === 1);
+  const pitcherSlot = pitcher ? { ...pitcher, order: 0 } : null;
+  const starters = roster
+    .filter((p) => p.order > 0 && p.pos !== 1)
+    .sort((a, b) => a.order - b.order)
+    .map((p, i) => ({ ...p, order: i + 1 }));
+  const bench = roster.filter((p) => p !== pitcher && p.order === 0);
+  return { lineup: pitcherSlot ? [...starters, pitcherSlot] : starters, bench };
+}
 
 interface LineupState {
   awayLineup: Player[];
@@ -144,17 +157,13 @@ export default function LineupScreen({ setup, onUpdateLineups, onStart }: Props)
 
   const handleRestore = () => {
     if (!confirm('원래 라인업으로 복원?')) return;
+    const away = buildLineupFromRoster(setup.awayTeam);
+    const home = buildLineupFromRoster(setup.homeTeam);
     setLs({
-      awayLineup: [
-        ...SAMPLE.away.slice(0, 9).map((p, i) => ({ ...p, order: i + 1 })),
-        { ...SAMPLE.away[9], order: 0 },
-      ],
-      homeLineup: [
-        ...SAMPLE.home.slice(0, 9).map((p, i) => ({ ...p, order: i + 1 })),
-        { ...SAMPLE.home[9], order: 0 },
-      ],
-      awayBench: SAMPLE.away.slice(10),
-      homeBench: SAMPLE.home.slice(10),
+      awayLineup: away.lineup,
+      homeLineup: home.lineup,
+      awayBench: away.bench,
+      homeBench: home.bench,
     });
     setLuSelIdx(null);
     setBenchSelIdx(null);

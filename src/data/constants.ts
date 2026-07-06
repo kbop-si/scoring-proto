@@ -1,6 +1,10 @@
 import type { Player } from '../types';
 
 export const KBO_TEAMS = [
+  '드림',
+  '나눔',
+  '북부',
+  '남부',
   'KIA',
   '롯데',
   '삼성',
@@ -76,16 +80,20 @@ export const WEEK = ['일', '월', '화', '수', '목', '금', '토'];
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, '');
 export const TEAM_FLAG: Record<string, string> = {
-  KIA: `${BASE}/logos/kia.png`,
-  롯데: `${BASE}/logos/lotte.jpg`,
-  삼성: `${BASE}/logos/samsung.png`,
-  한화: `${BASE}/logos/hanwha.png`,
-  두산: `${BASE}/logos/doosan.png`,
-  LG: `${BASE}/logos/lg.png`,
-  SSG: `${BASE}/logos/ssg.png`,
-  NC: `${BASE}/logos/nc.png`,
-  KT: `${BASE}/logos/kt.png`,
-  키움: `${BASE}/logos/kiwoom.jpg`,
+  KIA: `${BASE}/logos/kia.svg`,
+  롯데: `${BASE}/logos/lotte.svg`,
+  삼성: `${BASE}/logos/samsung.svg`,
+  한화: `${BASE}/logos/hanhwa.svg`,
+  두산: `${BASE}/logos/doosan.svg`,
+  LG: `${BASE}/logos/lg.svg`,
+  SSG: `${BASE}/logos/ssg.svg`,
+  NC: `${BASE}/logos/nc.svg`,
+  KT: `${BASE}/logos/kt.svg`,
+  키움: `${BASE}/logos/kiwoom.svg`,
+  북부: `${BASE}/logos/bukbu.png`,
+  남부: `${BASE}/logos/nambu.png`,
+  드림: `${BASE}/logos/dream.png`,
+  나눔: `${BASE}/logos/nanum.png`,
   대한민국: '',
   도미니카: '',
 };
@@ -158,7 +166,6 @@ export const RESULT_COL: Record<string, string> = {
   FC번트: '#111',
   E번트: '#111',
   SH진루: '#111',
-  DP_E: '#111',
   TP_E: '#111',
   '4-3': '#111',
   '6-3': '#111',
@@ -241,13 +248,9 @@ export const BASE_LINES: Record<
   HP: S1,
   ...Object.fromEntries([1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => [`#${n}E`, S1])),
   ...Object.fromEntries([1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => [`Ob${n}E`, S1])),
-  E: S1,
-  // FC류 / 낫아웃 진루(KW/KP/KE)는 다이아몬드 S1 라인(/) 표시 안 함 — 셀 결과 코드만 표시
-  E번트: S1,
+  // 실책 출루(E류) / FC류 / 낫아웃 진루(KW/KP/KE)는 다이아몬드 S1 라인 표시 안 함 — 셀 결과 코드만 표시
   SH진루: S1,
-  DP_E: S1,
   TP_E: S1,
-  E기록: S1,
   K다른주자: S1,
   GCW: [
     { x1: 20, y1: 38, x2: 38, y2: 20, c: '#111', w: 2.5 },

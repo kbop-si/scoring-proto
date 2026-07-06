@@ -59,6 +59,24 @@ export default function Diamond({
   // Position percentages in the 200×200 field
   const pct = (v: number) => `${(v / 200) * 100}%`;
 
+  // 수비수 칩 지오메트리 — 가로 필 (번호 이름 한 줄), viewBox 200×200 단위
+  const CHIP_H = 13;
+  const chipGeom = (num: string, name: string, pos: number) => {
+    const fp = FPOS_XY[pos];
+    const label = `${num} ${name}`;
+    let w = 8;
+    for (const ch of label) w += /[0-9 .-]/.test(ch) ? 4.2 : 7.4;
+    w = Math.max(30, w);
+    // 포수: viewBox 하단 클리핑 방지 위해 위로
+    const cy = pos === 2 ? 190 : fp.y;
+    let cx = fp.x;
+    // 1루수/3루수: 베이스 사각형·주자 배지와 겹치지 않게 라인 바깥으로
+    if (pos === 3) cx = Math.max(fp.x, 154 + w / 2);
+    if (pos === 5) cx = Math.min(fp.x, 46 - w / 2);
+    cx = Math.min(198 - w / 2, Math.max(2 + w / 2, cx));
+    return { cx, cy, w, label };
+  };
+
   // 현재 이닝/half 에서 교체로 처음 들어온 선수만 강조 (대타 H, 대주자 R, 수비교체 D)
   // 후속 D 로그(이미 들어와 있는 선수의 포지션 변경 등) 는 무시 — 최초 등장 시점에만 강조
   const offendingSide: 'away' | 'home' = G.half === 'top' ? 'away' : 'home';
@@ -116,23 +134,123 @@ export default function Diamond({
           viewBox="0 0 200 200"
           preserveAspectRatio="none"
         >
+          <defs>
+            <radialGradient id="grassMain" cx="50%" cy="30%" r="80%">
+              <stop offset="0%" stopColor="#74b56d" />
+              <stop offset="55%" stopColor="#4f9450" />
+              <stop offset="100%" stopColor="#356b39" />
+            </radialGradient>
+            <radialGradient id="dirtMain" cx="45%" cy="35%" r="70%">
+              <stop offset="0%" stopColor="#e0bd8c" />
+              <stop offset="100%" stopColor="#ac7c50" />
+            </radialGradient>
+            <linearGradient id="infieldGrass" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stopColor="#6bab63" />
+              <stop offset="100%" stopColor="#4c8a4d" />
+            </linearGradient>
+          </defs>
+          {/* Outfield */}
           <path
             d="M100,195 L0,70 Q100,2 200,70 Z"
-            fill="#4a7c4a"
+            fill="url(#grassMain)"
             stroke="#2d5a2d"
             strokeWidth="1"
           />
-          <circle cx="100" cy="140" r="62" fill="#b8956a" opacity=".5" />
-          <polygon points="100,85 145,130 100,175 55,130" fill="#5a8f5a" />
-          <line x1="100" y1="85" x2="145" y2="130" stroke="#fff" strokeWidth="1.5" />
-          <line x1="145" y1="130" x2="100" y2="175" stroke="#fff" strokeWidth="1.5" />
-          <line x1="100" y1="175" x2="55" y2="130" stroke="#fff" strokeWidth="1.5" />
-          <line x1="55" y1="130" x2="100" y2="85" stroke="#fff" strokeWidth="1.5" />
-          <circle cx="100" cy="133" r="8" fill="#c4a06a" />
-          <rect x="93" y="168" width="14" height="14" rx="1" fill="#fff" />
-          <rect x="138" y="123" width="14" height="14" rx="1" fill="#fff" />
-          <rect x="93" y="78" width="14" height="14" rx="1" fill="#fff" />
-          <rect x="48" y="123" width="14" height="14" rx="1" fill="#fff" />
+          {/* Depth shadow overlays */}
+          <path d="M100,20 Q60,34 20,62 L45,72 Q75,45 100,36 Z" fill="#fff" opacity="0.05" />
+          <path d="M100,36 Q125,45 155,72 L180,62 Q140,34 100,20 Z" fill="#000" opacity="0.05" />
+          <path d="M45,72 Q20,95 12,128 L34,132 Q42,100 62,80 Z" fill="#000" opacity="0.04" />
+          <path d="M155,72 Q180,95 188,128 L166,132 Q158,100 138,80 Z" fill="#fff" opacity="0.04" />
+          {/* Infield dirt */}
+          <circle cx="100" cy="140" r="62" fill="url(#dirtMain)" />
+          {/* Infield grass */}
+          <polygon
+            points="100,85 145,130 100,175 55,130"
+            fill="url(#infieldGrass)"
+            stroke="#3c6b3c"
+            strokeWidth="0.6"
+          />
+          {/* Baselines */}
+          <line
+            x1="100"
+            y1="85"
+            x2="145"
+            y2="130"
+            stroke="#fdfaf3"
+            strokeWidth="1.6"
+            opacity="0.92"
+          />
+          <line
+            x1="145"
+            y1="130"
+            x2="100"
+            y2="175"
+            stroke="#fdfaf3"
+            strokeWidth="1.6"
+            opacity="0.92"
+          />
+          <line
+            x1="100"
+            y1="175"
+            x2="55"
+            y2="130"
+            stroke="#fdfaf3"
+            strokeWidth="1.6"
+            opacity="0.92"
+          />
+          <line
+            x1="55"
+            y1="130"
+            x2="100"
+            y2="85"
+            stroke="#fdfaf3"
+            strokeWidth="1.6"
+            opacity="0.92"
+          />
+          {/* Pitcher mound */}
+          <circle cx="100" cy="133" r="9" fill="#caa06e" stroke="#8a6238" strokeWidth="0.6" />
+          {/* Bases: home, 1B, 2B, 3B */}
+          <rect
+            x="92.5"
+            y="167.5"
+            width="15"
+            height="15"
+            rx="1.5"
+            fill="#fdfaf3"
+            stroke="#c9c2b4"
+            strokeWidth="0.5"
+          />
+          <rect
+            x="137.5"
+            y="122.5"
+            width="15"
+            height="15"
+            rx="1.5"
+            fill="#fdfaf3"
+            stroke="#c9c2b4"
+            strokeWidth="0.5"
+          />
+          <rect
+            x="92.5"
+            y="77.5"
+            width="15"
+            height="15"
+            rx="1.5"
+            fill="#fdfaf3"
+            stroke="#c9c2b4"
+            strokeWidth="0.5"
+          />
+          <rect
+            x="47.5"
+            y="122.5"
+            width="15"
+            height="15"
+            rx="1.5"
+            fill="#fdfaf3"
+            stroke="#c9c2b4"
+            strokeWidth="0.5"
+          />
+          {/* Foul lines */}
           <line
             x1="100"
             y1="175"
@@ -153,55 +271,42 @@ export default function Diamond({
             strokeDasharray="4,3"
             opacity=".5"
           />
-          {/* Fielder click zones */}
-          {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((pos) => {
-            const fp = FPOS_XY[pos];
-            return (
-              <circle
-                key={pos}
-                cx={fp.x}
-                cy={fp.y}
-                r={pos <= 2 ? 12 : 10}
-                fill="rgba(255,255,255,.07)"
-                style={{ cursor: 'pointer' }}
-                onClick={(e) => onFielderClick(e, pos)}
-                onContextMenu={(e) => {
-                  e.preventDefault();
-                  onFielderClick(e, pos);
-                }}
-              />
-            );
-          })}
-          {/* Fielder number + name labels — 현재 이닝/half 에서 교체된 수비수는 빨강으로 강조 */}
+          {/* 수비수 칩 — 가로 필(번호 이름), 클릭=교체. 교체 투입 직후엔 노랑 강조 */}
           {defLU.map((p) => {
             if (p.pos < 1 || p.pos > 9) return null;
             const fp = FPOS_XY[p.pos];
             if (!fp) return null;
+            const { cx, cy, w, label } = chipGeom(p.num, p.name, p.pos);
             const subbed = recentDefSubKeys.has(`${p.num}:${p.name}`);
-            const color = subbed ? SUB_COLOR : '#111';
             return (
-              <g key={p.pos} pointerEvents="none">
+              <g
+                key={p.pos}
+                style={{ cursor: 'pointer' }}
+                onClick={(e) => onFielderClick(e, p.pos)}
+                onContextMenu={(e) => {
+                  e.preventDefault();
+                  onFielderClick(e, p.pos);
+                }}
+              >
+                <rect
+                  x={cx - w / 2}
+                  y={cy - CHIP_H / 2}
+                  width={w}
+                  height={CHIP_H}
+                  rx={CHIP_H / 2}
+                  fill={subbed ? SUB_COLOR : '#0C1524'}
+                  opacity={subbed ? 0.95 : 0.82}
+                />
                 <text
-                  x={fp.x}
-                  y={fp.y > 180 ? fp.y - 10 : fp.y}
+                  x={cx}
+                  y={cy + 2.7}
                   textAnchor="middle"
-                  fontSize="9"
-                  fill={color}
+                  fontSize="7.2"
                   fontWeight="700"
-                  style={{ fontFamily: 'monospace' }}
+                  fill={subbed ? '#111' : '#fff'}
+                  style={{ fontFamily: "'Noto Sans KR', sans-serif" }}
                 >
-                  {p.num}
-                </text>
-                <text
-                  x={fp.x}
-                  y={fp.y > 180 ? fp.y : fp.y + 10}
-                  textAnchor="middle"
-                  fontSize="7"
-                  fill={color}
-                  fontWeight={subbed ? 700 : 400}
-                  style={{ fontFamily: 'sans-serif' }}
-                >
-                  {p.name}
+                  {label}
                 </text>
               </g>
             );
@@ -216,8 +321,10 @@ export default function Diamond({
               const fp = FPOS_XY[p.pos];
               if (!fp) return null;
               const isOver = posDragOver === p.pos;
-              // 텍스트 라벨(번호+이름) 영역에 맞춰 컨테이너 비례로
-              const sizePct = p.pos === 2 ? 22 : 18;
+              // 칩 영역에 맞춘 히트박스 (칩보다 약간 크게 — 터치 여유)
+              const { cx, cy, w } = chipGeom(p.num, p.name, p.pos);
+              const hitW = w + 4;
+              const hitH = CHIP_H + 6;
               return (
                 <div
                   key={`pos-drag-${p.pos}`}
@@ -255,11 +362,11 @@ export default function Diamond({
                   title={`${p.num} ${p.name} (수비 ${p.pos}) — 클릭: 교체 / 드래그: 위치 교환`}
                   style={{
                     position: 'absolute',
-                    left: `calc(${pct(fp.x)} - ${sizePct / 2}%)`,
-                    top: `calc(${pct(fp.y)} - ${sizePct / 2}%)`,
-                    width: `${sizePct}%`,
-                    height: `${sizePct}%`,
-                    borderRadius: '50%',
+                    left: pct(cx - hitW / 2),
+                    top: pct(cy - hitH / 2),
+                    width: pct(hitW),
+                    height: pct(hitH),
+                    borderRadius: 999,
                     cursor: 'grab',
                     border: isOver ? `2px solid ${SUB_COLOR}` : 'none',
                     background: isOver ? 'rgba(251, 191, 36, 0.35)' : 'transparent',
@@ -271,7 +378,7 @@ export default function Diamond({
               );
             })}
 
-        {/* Batter dot — hitType 1(우타)=왼쪽, 2(좌타)=오른쪽, 3(스위치)=좌/우 토글 가능
+        {/* Batter dot — hitType 1(좌타)=왼쪽, 2(우타)=오른쪽, 3(스위치)=좌/우 토글 가능
             현재 셀의 batterSide override 가 있으면 그 값으로, 없으면 hitType 기본값 */}
         {batter &&
           (() => {
@@ -289,13 +396,14 @@ export default function Diamond({
                     : `${batter.name} — 클릭: 대타 교체`
                 }
                 style={{
-                  left: pct(BASE_XY.HOME.x + (effectiveSide === 'R' ? 30 : -30)),
+                  // 포수 칩(중앙 하단)과 겹치지 않게 좌타는 더 왼쪽, 우타는 더 오른쪽으로
+                  left: pct(BASE_XY.HOME.x + (effectiveSide === 'R' ? 44 : -44)),
                   top: pct(BASE_XY.HOME.y + 16),
                   width: 'auto',
-                  minWidth: 32,
-                  padding: '0 4px',
-                  borderRadius: 4,
-                  fontSize: 10,
+                  minWidth: 46,
+                  padding: '0 7px',
+                  borderRadius: 5,
+                  fontSize: 12,
                   whiteSpace: 'nowrap',
                   ...(batterSubbed ? { color: SUB_COLOR, fontWeight: 700 } : {}),
                 }}
@@ -332,10 +440,10 @@ export default function Diamond({
                 left: pct(pos.x),
                 top: pct(pos.y),
                 width: 'auto',
-                minWidth: 32,
-                padding: '0 4px',
-                borderRadius: 4,
-                fontSize: 10,
+                minWidth: 46,
+                padding: '0 7px',
+                borderRadius: 5,
+                fontSize: 12,
                 whiteSpace: 'nowrap',
                 ...(runnerSubbed ? { color: SUB_COLOR, fontWeight: 700 } : {}),
               }}
@@ -378,10 +486,10 @@ export default function Diamond({
                   left: pct(pos.x),
                   top: hasExisting ? `calc(${pct(pos.y)} - 36px)` : pct(pos.y),
                   width: 'auto',
-                  minWidth: 32,
-                  padding: '0 4px',
-                  borderRadius: 4,
-                  fontSize: 10,
+                  minWidth: 46,
+                  padding: '0 7px',
+                  borderRadius: 5,
+                  fontSize: 12,
                   whiteSpace: 'nowrap',
                   cursor: 'pointer',
                 }}

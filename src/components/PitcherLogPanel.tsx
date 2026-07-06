@@ -1,6 +1,14 @@
 import { useState, useEffect, useRef } from 'react';
-import type { GameState, PitchType, HitData } from '../types';
+import type { GameState, PitchType, HitData, CellEventEntry } from '../types';
 import { cellKey as makeCellKey, parseKey } from '../store/gameReducer';
+
+// 볼카운트 수정용 — result 이전 구간의 eventLog (투구 + 도루 '/' 등 주자 이벤트)
+function preResultEvents(cell?: { eventLog?: CellEventEntry[] }): CellEventEntry[] | undefined {
+  const log = cell?.eventLog;
+  if (!log || log.length === 0) return undefined;
+  const ri = log.findIndex((e) => e.kind === 'result');
+  return ri >= 0 ? log.slice(0, ri) : [...log];
+}
 
 const PITCH_LABEL: Partial<Record<PitchType, string>> & Record<string, string> = {
   S: '스트라이크',
@@ -651,6 +659,8 @@ export type EditRowInfo =
       pitches: PitchType[];
       result: string | null;
       battingSide: 'away' | 'home';
+      // result 이전 eventLog 구간 — 있으면 도루 '/' 등 주자 이벤트 포함 재정렬 모드
+      events?: CellEventEntry[];
     }
   | {
       kind: 'pitcher_edit'; // 투수 교체
@@ -894,6 +904,7 @@ export default function PitcherLogPanel({
                               pitches: cell ? [...cell.pitches] : [],
                               result: cell?.result ?? null,
                               battingSide,
+                              events: preResultEvents(cell),
                             });
                           }
                         : undefined
@@ -1077,6 +1088,7 @@ export default function PitcherLogPanel({
                             pitches: cell ? [...cell.pitches] : [],
                             result: cell?.result ?? null,
                             battingSide,
+                            events: preResultEvents(cell),
                           });
                         }
                       : undefined

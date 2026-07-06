@@ -1,6 +1,33 @@
 import { useState, useEffect, useRef } from 'react';
-import type { Player, PitchType } from '../../types';
+import type { CellEventEntry, Player, PitchType } from '../../types';
 import type { EditRowInfo } from '../PitcherLogPanel';
+
+// 비-투구 이벤트 행 라벨 (볼카운트 순서 수정 리스트용)
+function eventEntryLabel(e: CellEventEntry): string {
+  if (e.kind === 'runner_steal') {
+    const ac = e.advCode ?? '';
+    const cause =
+      ac === 'W' || ac === '(W)'
+        ? '폭투'
+        : ac === 'P' || ac === '(P)'
+          ? '포일'
+          : ac.includes('BK')
+            ? '보크'
+            : '도루';
+    return `/ ${e.runnerName} ${cause} → ${e.dest}`;
+  }
+  if (e.kind === 'runner_cs') {
+    const cause = e.runOut.startsWith('X')
+      ? '견제사'
+      : e.runOut.startsWith('CS')
+        ? '도루아웃'
+        : '주자아웃';
+    return `/ ${e.runnerName} ${cause}`;
+  }
+  if (e.kind === 'runner_adv') return `${e.runnerName} 진루 → ${e.dest}`;
+  if (e.kind === 'note') return e.note;
+  return '';
+}
 
 const PITCH_OPTIONS: { code: PitchType; label: string; color: string }[] = [
   { code: 'S', label: '스트라이크', color: '#111' },
@@ -67,6 +94,8 @@ interface Props {
   onSaveBatResultCode: (cellKey: string, newResult: string) => void;
   onSaveBatOutCode: (cellKey: string, newResult: string, newBallType?: '땅' | '뜬' | '라') => void;
   onSavePitchSeq: (cellKey: string, pitches: PitchType[]) => void;
+  // 도루 '/' 등 주자 이벤트 포함 순서 수정 (eventLog result 이전 구간 통째 교체)
+  onSavePitchEventSeq?: (cellKey: string, entries: CellEventEntry[]) => void;
   onPinchHitter?: (
     cellKey: string,
     player: Player,
@@ -148,6 +177,7 @@ export default function EditRowModal({
   onSaveBatResultCode,
   onSaveBatOutCode,
   onSavePitchSeq,
+  onSavePitchEventSeq,
   onPinchHitter,
   onPitcherChange,
   getBench,
@@ -161,6 +191,8 @@ export default function EditRowModal({
   const [outFielders, setOutFielders] = useState(initialOut.fielders);
   // pitch_seq / batter_edit 편집 state
   const [seqPitches, setSeqPitches] = useState<PitchType[]>([]);
+  // batter_edit: 투구 + 주자 이벤트(도루 '/' 등) 통합 리스트 — eventLog result 이전 구간
+  const [seqEntries, setSeqEntries] = useState<CellEventEntry[]>([]);
   const [seqError, setSeqError] = useState<string | null>(null);
   const seqDragFromRef = useRef<number | null>(null);
   const [seqDragOver, setSeqDragOver] = useState<number | null>(null);
@@ -184,6 +216,13 @@ export default function EditRowModal({
     }
     if (info?.kind === 'pitch_seq' || info?.kind === 'batter_edit') {
       setSeqPitches([...(info.pitches ?? [])]);
+      // batter_edit: eventLog 있으면 도루 '/' 포함 통합 리스트, 없으면 pitches 폴백
+      const events = info.kind === 'batter_edit' ? info.events : undefined;
+      setSeqEntries(
+        events
+          ? [...events]
+          : (info.pitches ?? []).map((p) => ({ kind: 'pitch' as const, pitch: p }))
+      );
       setSeqError(null);
       setBatterTab('count');
       setPhSelIdx(null);
@@ -713,27 +752,36 @@ export default function EditRowModal({
     const filteredBench = bench.filter((p) => !q || p.name.includes(q) || p.num.includes(q));
 
     const FOUL_TYPES: PitchType[] = ['F', 'BF', 'FE'];
+    // 통합 리스트에서 파생된 투구 시퀀스 (검증·대타 mid 선택용)
+    const entryPitches: PitchType[] = seqEntries
+      .filter((e): e is Extract<CellEventEntry, { kind: 'pitch' }> => e.kind === 'pitch')
+      .map((e) => e.pitch);
     const changeType = (i: number, p: PitchType) => {
-      const next = [...seqPitches];
-      next[i] = p;
-      setSeqPitches(next);
+      setSeqEntries((prev) =>
+        prev.map((e, idx) => (idx === i && e.kind === 'pitch' ? { kind: 'pitch', pitch: p } : e))
+      );
       setSeqError(null);
     };
     const remove = (i: number) => {
-      setSeqPitches(seqPitches.filter((_, idx) => idx !== i));
+      setSeqEntries((prev) => prev.filter((_, idx) => idx !== i));
       setSeqError(null);
     };
     const addFoul = (p: PitchType) => {
-      setSeqPitches([...seqPitches, p]);
+      setSeqEntries((prev) => [...prev, { kind: 'pitch', pitch: p }]);
       setSeqError(null);
     };
     const handleSaveSeq = () => {
-      const err = validateSeq(seqPitches, info.result);
+      const err = validateSeq(entryPitches, info.result);
       if (err) {
         setSeqError(err);
         return;
       }
-      onSavePitchSeq(info.cellKey, seqPitches);
+      // eventLog 기반 셀이면 주자 이벤트 포함 통째 저장, 구형 데이터는 투구만 저장
+      if (info.events !== undefined && onSavePitchEventSeq) {
+        onSavePitchEventSeq(info.cellKey, seqEntries);
+      } else {
+        onSavePitchSeq(info.cellKey, entryPitches);
+      }
       onClose();
     };
     const handleSavePinch = () => {
@@ -741,37 +789,49 @@ export default function EditRowModal({
       const player = bench[phSelIdx];
       let mid: { balls: number; strikes: number } | undefined;
       if (phUseMid && phMidPitchIdx !== null) {
-        mid = { balls: counts[phMidPitchIdx].b, strikes: counts[phMidPitchIdx].s };
+        mid = { balls: pitchCounts[phMidPitchIdx].b, strikes: pitchCounts[phMidPitchIdx].s };
       }
       onPinchHitter?.(info.cellKey, player, mid);
       onClose();
     };
 
-    const counts: { b: number; s: number }[] = [];
-    let rb = 0,
-      rs = 0;
-    for (const p of seqPitches) {
-      switch (p) {
-        case 'S':
-        case 'SW':
-        case 'BS':
-        case 'PC3':
-          rs = Math.min(rs + 1, 3);
-          break;
-        case 'F':
-        case 'FE':
-          if (rs < 2) rs++;
-          break;
-        case 'BF':
-          rs = Math.min(rs + 1, 3);
-          break;
-        case 'B':
-        case 'PC1':
-        case 'PC2':
-          rb = Math.min(rb + 1, 4);
-          break;
+    // entryCounts: seqEntries 인덱스별 누적 카운트 / pitchCounts: 투구 순번별 누적 카운트
+    const entryCounts: { b: number; s: number }[] = [];
+    const pitchCounts: { b: number; s: number }[] = [];
+    // entryPitchNo: 투구 entry의 순번 (1-base), 비-투구는 0
+    const entryPitchNo: number[] = [];
+    {
+      let rb = 0,
+        rs = 0,
+        pn = 0;
+      for (const e of seqEntries) {
+        if (e.kind === 'pitch') {
+          pn++;
+          switch (e.pitch) {
+            case 'S':
+            case 'SW':
+            case 'BS':
+            case 'PC3':
+              rs = Math.min(rs + 1, 3);
+              break;
+            case 'F':
+            case 'FE':
+              if (rs < 2) rs++;
+              break;
+            case 'BF':
+              rs = Math.min(rs + 1, 3);
+              break;
+            case 'B':
+            case 'PC1':
+            case 'PC2':
+              rb = Math.min(rb + 1, 4);
+              break;
+          }
+          pitchCounts.push({ b: rb, s: rs });
+        }
+        entryCounts.push({ b: rb, s: rs });
+        entryPitchNo.push(e.kind === 'pitch' ? pn : 0);
       }
-      counts.push({ b: rb, s: rs });
     }
 
     const tabStyle = (active: boolean): React.CSSProperties => ({
@@ -805,8 +865,13 @@ export default function EditRowModal({
               <div style={{ fontWeight: 700, marginBottom: 10, fontSize: 14 }}>
                 볼카운트 순서 수정
               </div>
+              {seqEntries.some((e) => e.kind !== 'pitch') && (
+                <div style={{ fontSize: 11, color: '#64748b', marginBottom: 6 }}>
+                  ⓘ 도루(/) 등 주자 이벤트 행도 드래그로 순서를 옮길 수 있습니다
+                </div>
+              )}
               <div style={{ maxHeight: 280, overflowY: 'auto', marginBottom: 8 }}>
-                {seqPitches.map((p, i) => (
+                {seqEntries.map((entry, i) => (
                   <div
                     key={i}
                     draggable
@@ -822,10 +887,13 @@ export default function EditRowModal({
                       e.preventDefault();
                       const from = seqDragFromRef.current;
                       if (from !== null && from !== i) {
-                        const next = [...seqPitches];
-                        const [item] = next.splice(from, 1);
-                        next.splice(i, 0, item);
-                        setSeqPitches(next);
+                        setSeqEntries((prev) => {
+                          const next = [...prev];
+                          const [item] = next.splice(from, 1);
+                          next.splice(i, 0, item);
+                          return next;
+                        });
+                        setSeqError(null);
                       }
                       setSeqDragOver(null);
                     }}
@@ -839,53 +907,78 @@ export default function EditRowModal({
                       gap: 4,
                       marginBottom: 4,
                       padding: '3px 4px',
-                      background: seqDragOver === i ? '#dbeafe' : '#f8fafc',
+                      background:
+                        seqDragOver === i
+                          ? '#dbeafe'
+                          : entry.kind === 'pitch'
+                            ? '#f8fafc'
+                            : '#f0fdf4',
                       borderRadius: 4,
                       border: seqDragOver === i ? '1px solid #3b82f6' : '1px solid transparent',
                       cursor: 'grab',
                     }}
                   >
                     <span style={{ color: '#94a3b8', fontSize: 13, userSelect: 'none' }}>⠿</span>
-                    <span style={{ width: 20, color: '#94a3b8', fontSize: 11 }}>{i + 1}</span>
-                    <select
-                      value={p}
-                      onChange={(e) => changeType(i, e.target.value as PitchType)}
-                      onClick={(e) => e.stopPropagation()}
-                      style={{
-                        fontSize: 12,
-                        flex: 1,
-                        padding: '2px 4px',
-                        borderRadius: 3,
-                        border: '1px solid #cbd5e1',
-                        cursor: 'auto',
-                      }}
-                    >
-                      {PITCH_OPTIONS.map((o) => (
-                        <option key={o.code} value={o.code}>
-                          {o.label}
-                        </option>
-                      ))}
-                    </select>
-                    <span style={{ fontSize: 11, color: '#64748b', width: 36, textAlign: 'right' }}>
-                      {counts[i].b}B {counts[i].s}S
+                    <span style={{ width: 20, color: '#94a3b8', fontSize: 11 }}>
+                      {entry.kind === 'pitch' ? entryPitchNo[i] : ''}
                     </span>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        remove(i);
-                      }}
-                      style={{
-                        padding: '1px 5px',
-                        fontSize: 11,
-                        border: '1px solid #cbd5e1',
-                        background: '#fff',
-                        borderRadius: 3,
-                        cursor: 'pointer',
-                        color: '#ef4444',
-                      }}
-                    >
-                      ✕
-                    </button>
+                    {entry.kind === 'pitch' ? (
+                      <select
+                        value={entry.pitch}
+                        onChange={(e) => changeType(i, e.target.value as PitchType)}
+                        onClick={(e) => e.stopPropagation()}
+                        style={{
+                          fontSize: 12,
+                          flex: 1,
+                          padding: '2px 4px',
+                          borderRadius: 3,
+                          border: '1px solid #cbd5e1',
+                          cursor: 'auto',
+                        }}
+                      >
+                        {PITCH_OPTIONS.map((o) => (
+                          <option key={o.code} value={o.code}>
+                            {o.label}
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <span
+                        style={{
+                          fontSize: 12,
+                          flex: 1,
+                          padding: '2px 4px',
+                          fontWeight: 700,
+                          color: '#059669',
+                        }}
+                      >
+                        {eventEntryLabel(entry)}
+                      </span>
+                    )}
+                    <span style={{ fontSize: 11, color: '#64748b', width: 36, textAlign: 'right' }}>
+                      {entryCounts[i].b}B {entryCounts[i].s}S
+                    </span>
+                    {entry.kind === 'pitch' ? (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          remove(i);
+                        }}
+                        style={{
+                          padding: '1px 5px',
+                          fontSize: 11,
+                          border: '1px solid #cbd5e1',
+                          background: '#fff',
+                          borderRadius: 3,
+                          cursor: 'pointer',
+                          color: '#ef4444',
+                        }}
+                      >
+                        ✕
+                      </button>
+                    ) : (
+                      <span style={{ width: 23 }} />
+                    )}
                   </div>
                 ))}
               </div>
@@ -991,7 +1084,7 @@ export default function EditRowModal({
                   );
                 })}
               </div>
-              {seqPitches.length > 0 && (
+              {entryPitches.length > 0 && (
                 <label
                   style={{
                     display: 'flex',
@@ -1012,7 +1105,7 @@ export default function EditRowModal({
                   볼카운트 도중 교체
                 </label>
               )}
-              {phUseMid && seqPitches.length > 0 && (
+              {phUseMid && entryPitches.length > 0 && (
                 <div
                   style={{
                     maxHeight: 160,
@@ -1033,9 +1126,9 @@ export default function EditRowModal({
                   >
                     몇 구째 후 교체? (클릭 선택)
                   </div>
-                  {seqPitches.map((p, i) => {
+                  {entryPitches.map((p, i) => {
                     const pitchLabel = PITCH_OPTIONS.find((o) => o.code === p)?.label ?? p;
-                    const cnt = counts[i];
+                    const cnt = pitchCounts[i];
                     const selected = phMidPitchIdx === i;
                     return (
                       <div
@@ -1079,7 +1172,7 @@ export default function EditRowModal({
                   onClick={handleSavePinch}
                   disabled={
                     phSelIdx === null ||
-                    (phUseMid && seqPitches.length > 0 && phMidPitchIdx === null)
+                    (phUseMid && entryPitches.length > 0 && phMidPitchIdx === null)
                   }
                   style={{
                     padding: '4px 12px',
@@ -1087,14 +1180,14 @@ export default function EditRowModal({
                     border: '1px solid #dc2626',
                     background:
                       phSelIdx !== null &&
-                      !(phUseMid && seqPitches.length > 0 && phMidPitchIdx === null)
+                      !(phUseMid && entryPitches.length > 0 && phMidPitchIdx === null)
                         ? '#dc2626'
                         : '#fca5a5',
                     color: '#fff',
                     borderRadius: 4,
                     cursor:
                       phSelIdx !== null &&
-                      !(phUseMid && seqPitches.length > 0 && phMidPitchIdx === null)
+                      !(phUseMid && entryPitches.length > 0 && phMidPitchIdx === null)
                         ? 'pointer'
                         : 'not-allowed',
                   }}

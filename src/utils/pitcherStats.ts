@@ -34,6 +34,15 @@ const isHitR = (r: string) =>
   r === 'HR' ||
   r === 'GHR';
 
+// 타격(인플레이 접촉) 투구가 result로만 기록되는 결과인지 — c.pitches에 없는 마지막 1구
+// 삼진류(K/ꓘ, 낫아웃 포함)·볼넷·사구·타격방해는 이미 PITCH/STRIKEOUT에서 c.pitches에 포함됨
+export const hasBatContactPitch = (r: string): boolean => {
+  if (/^K|^ꓘ/.test(r)) return false;
+  if (['B', 'IB', 'IB2', 'HP'].includes(r)) return false;
+  if (/^#\dE$/.test(r) || /^Ob\dE$/.test(r)) return false;
+  return true;
+};
+
 const blank = (): Omit<PitcherRow, 'name' | 'entryInn' | 'entryOrd'> => ({
   bf: 0,
   np: 0,
@@ -95,23 +104,16 @@ export function computePitcherRows(
       const r = c.result || '';
       if (!r) return;
       // BAT_ADV/BAT_OUT이 접촉투구(타격)를 c.pitches 아닌 pitchCount로만 집계하는 결과들에 +1
-      // (B/HP/KW/KP/KE는 이미 PITCH or STRIKEOUT에서 처리됨)
-      const noBatContactPitch = new Set([
-        'B',
-        'IB',
-        'IB2',
-        'HP',
-        'K',
-        'K3B',
-        'KW',
-        'KP',
-        'KE',
-        ...[1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => `#${n}E`),
-        ...[1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => `Ob${n}E`),
-      ]);
-      if (!noBatContactPitch.has(r)) s.np += 1;
+      // (B/HP/삼진류는 이미 PITCH or STRIKEOUT에서 처리됨)
+      if (hasBatContactPitch(r)) s.np += 1;
       s.bf += 1;
-      const exclAB = ['B', 'IB', 'IB2', 'HP', 'INT', 'SF', 'SH'].includes(r);
+      // 타수 제외: 볼넷·고의4구·사구·희생번트(SH~)·희생플라이(SF~)·타격방해 출루
+      const exclAB =
+        ['B', 'IB', 'IB2', 'HP'].includes(r) ||
+        /^SF/.test(r) ||
+        /^SH/.test(r) ||
+        /^#\dE$/.test(r) ||
+        /^Ob\dE$/.test(r);
       if (!exclAB) s.ab += 1;
       if (isHitR(r)) s.h += 1;
       if (r === 'HR' || r === 'GHR') s.hr += 1;

@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import type { Base, DeflectionInfo, DefRole, Player } from '../../types';
+import { markErrorSeq } from '../../store/gameReducer';
 import DeflectionPicker from './DeflectionPicker';
 
 interface Props {
@@ -9,7 +10,12 @@ interface Props {
   selected: string | null;
   defLU: Player[];
   onSelect: (v: string) => void;
-  onConfirm: (seq: number[], deflection?: DeflectionInfo, defRoles?: DefRole[]) => void;
+  onConfirm: (
+    seq: number[],
+    deflection?: DeflectionInfo,
+    defRoles?: DefRole[],
+    samePlay?: boolean
+  ) => void;
   onClose: () => void;
 }
 
@@ -70,6 +76,7 @@ export default function RunOutModal({
   const [csRecord, setCsRecord] = useState(false);
   const [pickoffBase, setPickoffBase] = useState<PickoffBase>('1');
   const [deflection, setDeflection] = useState<DeflectionInfo | null>(null);
+  const [samePlay, setSamePlay] = useState(false);
 
   const reset = () => {
     setDefSeq([]);
@@ -78,6 +85,7 @@ export default function RunOutModal({
     setCsRecord(false);
     setPickoffBase('1');
     setDeflection(null);
+    setSamePlay(false);
   };
 
   // 모달이 열릴 때마다 초기화
@@ -92,7 +100,7 @@ export default function RunOutModal({
     const roles: DefRole[] = defSeq
       .filter((r) => r.assist || r.putout || r.error)
       .map((r) => ({ pos: r.pos, assist: r.assist, putout: r.putout, error: r.error }));
-    onConfirm(seq, deflection ?? undefined, roles.length ? roles : undefined);
+    onConfirm(seq, deflection ?? undefined, roles.length ? roles : undefined, samePlay);
     reset();
   };
 
@@ -472,13 +480,31 @@ export default function RunOutModal({
                   color: seq.length ? 'var(--blue)' : 'var(--text3)',
                 }}
               >
-                {seq.length ? seq.join('-') : '—'}
+                {seq.length ? markErrorSeq(seq.join('-'), defSeq) : '—'}
               </span>
               <DeflectionPicker
                 value={deflection}
                 defLU={defLU}
                 onChange={(v) => setDeflection(v)}
               />
+              {/* 직전 아웃과 동일 플레이 — 두 아웃을 { 로 묶어 표기 (기록법 p.17 ⑪) */}
+              <label
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 4,
+                  fontSize: 12,
+                  cursor: 'pointer',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                <input
+                  type="checkbox"
+                  checked={samePlay}
+                  onChange={(e) => setSamePlay(e.target.checked)}
+                />
+                직전 아웃과 동일 플레이 ({'{'} 묶음)
+              </label>
             </div>
             <div style={{ display: 'flex', gap: 8 }}>
               <button
