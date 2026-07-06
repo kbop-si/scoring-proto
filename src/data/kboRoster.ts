@@ -73,7 +73,7 @@ export const KBO_ROSTER: Record<string, Player[]> = {
     { name: '이승민', num: '28', pos: 1, order: 0, hitType: 1 },
     { name: '이영하', num: '50', pos: 1, order: 0, hitType: 1 },
     { name: '김건우', num: '39', pos: 1, order: 0, hitType: 1 },
-    { name: '장찬희', num: '60', pos: 1, order: 0, hitType: 1 },
+    { name: '양창섭', num: '42', pos: 1, order: 0, hitType: 1 },
     { name: '손동현', num: '41', pos: 1, order: 0, hitType: 1 },
     { name: '전용주', num: '29', pos: 1, order: 0, hitType: 1 },
     { name: '김진욱', num: '15', pos: 1, order: 0, hitType: 1 },
