@@ -47,6 +47,19 @@ jobs:
       pages: write
       id-token: write
     steps:
+      # Pages 백엔드가 간헐적으로 "Deployment failed, try again later"를 반환해서
+      # 1차 실패 시 자동으로 두 번까지 재시도
       - name: Deploy to GitHub Pages
         id: deployment
+        uses: actions/deploy-pages@v4
+        continue-on-error: true
+
+      - name: Retry deploy (1st)
+        id: deployment-retry
+        if: steps.deployment.outcome == 'failure'
+        uses: actions/deploy-pages@v4
+        continue-on-error: true
+
+      - name: Retry deploy (2nd)
+        if: steps.deployment.outcome == 'failure' && steps.deployment-retry.outcome == 'failure'
         uses: actions/deploy-pages@v4
