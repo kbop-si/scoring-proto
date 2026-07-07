@@ -155,8 +155,11 @@ function getAdvCode(reason: string, fielderSeq?: FielderEntry[]): string | undef
     return fielderSeq?.length ? `(${buildSeqWithError(fielderSeq)})` : '(E)';
   // 주루방해
   if (reason === 'ob 주루방해') return fstr ? `OB${fstr}` : 'OB';
-  // 다른주자수비 → 수비수 번호
-  if (reason === '다른주자수비') return fstr || undefined;
+  // 다른주자수비 → 괄호 안 수비수 번호 나열: (5), (4-3), (5-4-3)
+  if (reason === '다른주자수비') {
+    const posStr = fielderSeq?.map((f) => f.pos).join('-') ?? '';
+    return posStr ? `(${posStr})` : undefined;
+  }
   // 타자의도움 → advCode 없음
   return undefined;
 }
@@ -173,8 +176,10 @@ function DeleteConfirmModal({
   if (!pendingKey) return null;
   const isInning = pendingKey.startsWith('__inning__');
   const title = isInning ? '이닝 삭제' : '타석 삭제';
+  const [innPart, halfPart] = pendingKey.replace('__inning__', '').split('-');
+  const halfLabel = halfPart === 'top' ? '초' : halfPart === 'bottom' ? '말' : '';
   const msg = isInning
-    ? `${pendingKey.replace('__inning__', '')}회 이닝 전체가 삭제됩니다.`
+    ? `${innPart}회${halfLabel} 기록이 전부 삭제됩니다.`
     : '이 타석 이후의 모든 기록이 삭제됩니다.';
   return (
     <div
@@ -372,6 +377,18 @@ export default function GameScreen({ setup, onEnd }: Props) {
   const [memoListOpen, setMemoListOpen] = useState(false);
   // 3아웃 상태에서 일반 입력 시도하면 띄우는 알럿 모달
   const [threeOutAlertOpen, setThreeOutAlertOpen] = useState(false);
+  // 소급 수비 변경 — PitcherLog에서 이닝 선택 후 '수비변경' 클릭 시 (그 이닝 시점부터 적용)
+  const [retroSwapTarget, setRetroSwapTarget] = useState<{
+    inning: number;
+    half: 'top' | 'bottom';
+  } | null>(null);
+  const [retroSwapSel, setRetroSwapSel] = useState<number[]>([]);
+  // 소급 수비 변경 모드: swap=자리 교대(두 야수 pos 맞바꿈) / sub=선수 교체(벤치 투입)
+  const [retroSwapMode, setRetroSwapMode] = useState<'swap' | 'sub'>('swap');
+  const [retroSubTargetIdx, setRetroSubTargetIdx] = useState<number | null>(null);
+  const [retroSubBenchIdx, setRetroSubBenchIdx] = useState<number | null>(null);
+  // 교체 발생 시점 타자 타순 (null = 이닝 시작부터)
+  const [retroSwapAtOrder, setRetroSwapAtOrder] = useState<number | null>(null);
   // 다음이닝 클릭 시 자책점 검토 진행 중인지 (확정 시 NEXT_INNING dispatch)
   const [pendingNextInning, setPendingNextInning] = useState(false);
   // 이닝 교대 시 H/R로 들어와 포지션 미확정인 선수가 있으면 자동으로 띄우는 라인업 검토 모달
@@ -394,7 +411,11 @@ export default function GameScreen({ setup, onEnd }: Props) {
       if (info.kind === 'hit') {
         const cell = G.cells[info.cellKey];
         const hd = cell?.hitData;
-        const lockBases: 0 | 1 | 2 | 3 | 4 = hd?.bases ?? 1;
+        // hitData 없는 구형 기록 — result 코드로 베이스 잠금 유도 (홈런 방향 수정 지원)
+        const r = cell?.result;
+        const fallbackBases: 0 | 1 | 2 | 3 | 4 =
+          r === 'H2' ? 2 : r === 'H3' ? 3 : r === 'HR' || r === 'GHR' || r === 'GCW' ? 4 : 1;
+        const lockBases: 0 | 1 | 2 | 3 | 4 = hd?.bases ?? fallbackBases;
         setBatAdvEditMode({ cellKey: info.cellKey, lockBases });
         setUI((p) => ({
           ...p,
@@ -589,7 +610,7 @@ export default function GameScreen({ setup, onEnd }: Props) {
       const hd = UI.batAdvHitData;
       let editResult: string;
       if (hd) {
-        // 안타 계열: bases → H1/H2/H3/HR 로 변환
+        // 안타 계열: bases → H1/H2/H3/HR 로 변환 (홈런은 GHR/GCW 종류 보존)
         editResult =
           hd.hitType === '선행주자아웃' || hd.hitType === '→선행주자아웃'
             ? hd.hitType
@@ -599,7 +620,9 @@ export default function GameScreen({ setup, onEnd }: Props) {
                 ? 'H2'
                 : hd.bases === 3
                   ? 'H3'
-                  : 'HR';
+                  : hd.hitType === 'GHR' || hd.hitType === 'GCW'
+                    ? hd.hitType
+                    : 'HR';
       } else if (UI.batAdvResult) {
         // 비안타 (실책·내야안타·번트 등) — result 그대로
         editResult = UI.batAdvResult;
@@ -663,7 +686,9 @@ export default function GameScreen({ setup, onEnd }: Props) {
                   ? 'H2'
                   : hitData.bases === 3
                     ? 'H3'
-                    : 'HR';
+                    : hitData.hitType === 'GHR' || hitData.hitType === 'GCW'
+                      ? hitData.hitType
+                      : 'HR';
         } else {
           editResult = result;
         }
@@ -797,9 +822,11 @@ export default function GameScreen({ setup, onEnd }: Props) {
     (
       chain: boolean,
       fielderSeq: FielderEntry[] = [],
-      deflection?: import('../types').DeflectionInfo
+      deflection?: import('../types').DeflectionInfo,
+      pickoff?: 1 | 2 | 3
     ) => {
       if (!UI.runAdvResult || !UI.runAdvDest || !chainPendingBase) return;
+      if (pickoff) dispatch({ type: 'CELL_NOTE', note: `PK${pickoff}` });
       const toBase = UI.runAdvDest;
       const earned = UI.runAdvEarned;
       const rbi = UI.runAdvRbi;
@@ -889,7 +916,8 @@ export default function GameScreen({ setup, onEnd }: Props) {
     (
       chain = false,
       fielderSeq: FielderEntry[] = [],
-      deflection?: import('../types').DeflectionInfo
+      deflection?: import('../types').DeflectionInfo,
+      pickoff?: 1 | 2 | 3
     ) => {
       if (!UI.runAdvResult) {
         showToast('진루 사유 선택');
@@ -903,6 +931,9 @@ export default function GameScreen({ setup, onEnd }: Props) {
         showToast('주자가 없습니다');
         return;
       }
+
+      // 견제삽입 — 진루 기록 앞에 n루견제 시도 마크(/-, /--, /---) 를 볼카운트판에 삽입
+      if (pickoff) dispatch({ type: 'CELL_NOTE', note: `PK${pickoff}` });
 
       const base = UI.selRunnerBase;
       const runner: Runner = { ...G.runners[base]! };
@@ -1029,7 +1060,10 @@ export default function GameScreen({ setup, onEnd }: Props) {
       fielderSeq: number[],
       deflection?: import('../types').DeflectionInfo,
       defRoles?: import('../types').DefRole[],
-      samePlay?: boolean
+      samePlay?: boolean,
+      pickoff?: 1 | 2 | 3,
+      wpMark?: 'W' | 'P',
+      outBase?: Base | 'HOME'
     ) => {
       if (!UI.runOutResult) {
         showToast('아웃 사유 선택');
@@ -1039,6 +1073,8 @@ export default function GameScreen({ setup, onEnd }: Props) {
         showToast('주자가 없습니다');
         return;
       }
+      // 견제삽입 — 아웃 기록 앞에 n루견제 시도 마크(/-, /--, /---) 를 볼카운트판에 삽입
+      if (pickoff) dispatch({ type: 'CELL_NOTE', note: `PK${pickoff}` });
       const r = G.runners[UI.selRunnerBase]!;
       const base = UI.selRunnerBase;
       const seq = fielderSeq.join('-');
@@ -1053,7 +1089,16 @@ export default function GameScreen({ setup, onEnd }: Props) {
         const code = t.split(' ')[0];
         return seq ? seq + code : code;
       })();
-      dispatch({ type: 'RUN_OUT', base, result: outCode, deflection, defRoles, samePlay });
+      dispatch({
+        type: 'RUN_OUT',
+        base,
+        result: outCode,
+        outBase,
+        deflection,
+        defRoles,
+        samePlay,
+        wpMark,
+      });
       const newOuts = G.outs + 1;
       showToast(`${r.name} 아웃 (${outCode})  ${newOuts}아웃`);
       if (newOuts >= 3)
@@ -1364,19 +1409,19 @@ export default function GameScreen({ setup, onEnd }: Props) {
   );
 
   const handleClear = useCallback(() => {
-    // 현재 진행 중인 타석(결과 없음)만 클리어
-    if (G.cells[G.selCellKey]?.result) return;
+    // 진행 중 타석: 투구만 클리어 / 결과 있는 타석(3아웃 직후 포함): 그 PA 전체를 history에서 pop
     dispatch({ type: 'CLEAR_CELL' });
     resetChainUI();
-  }, [G.cells, G.selCellKey, dispatch, resetChainUI]);
+  }, [dispatch, resetChainUI]);
 
   const handleClearInning = useCallback(() => {
     if (!G.history.length) {
       showToast('되돌릴 내용 없음');
       return;
     }
-    setPendingRevertKey(`__inning__${G.inning}`);
-  }, [G.inning, G.history.length, showToast]);
+    // 현재 반이닝만 삭제 대상 (초 삭제 시 같은 이닝 말 기록 보존 문제 없음 — 말은 아직 없음)
+    setPendingRevertKey(`__inning__${G.inning}-${G.half}`);
+  }, [G.inning, G.half, G.history.length, showToast]);
 
   const handleOverflow = useCallback(() => {
     if (!guardThreeOut()) return;
@@ -1449,6 +1494,14 @@ export default function GameScreen({ setup, onEnd }: Props) {
               G={G}
               onEditRow={handleEditRow}
               onDeleteCell={(key) => dispatchDeleteCell(key)}
+              onRetroSwap={(inning, half) => {
+                setRetroSwapTarget({ inning, half });
+                setRetroSwapSel([]);
+                setRetroSwapMode('swap');
+                setRetroSubTargetIdx(null);
+                setRetroSubBenchIdx(null);
+                setRetroSwapAtOrder(null);
+              }}
             />
           </div>
         ) : (
@@ -1696,6 +1749,14 @@ export default function GameScreen({ setup, onEnd }: Props) {
               G={G}
               onEditRow={handleEditRow}
               onDeleteCell={(key) => dispatchDeleteCell(key)}
+              onRetroSwap={(inning, half) => {
+                setRetroSwapTarget({ inning, half });
+                setRetroSwapSel([]);
+                setRetroSwapMode('swap');
+                setRetroSubTargetIdx(null);
+                setRetroSubBenchIdx(null);
+                setRetroSwapAtOrder(null);
+              }}
             />
           </div>
         )}
@@ -1734,6 +1795,257 @@ export default function GameScreen({ setup, onEnd }: Props) {
           </div>
         </div>
       )}
+      {retroSwapTarget &&
+        (() => {
+          // 그 half에 수비하는 팀: 초(top)=홈 수비, 말(bottom)=원정 수비
+          const defSide: 'away' | 'home' = retroSwapTarget.half === 'top' ? 'home' : 'away';
+          const defLineup = defSide === 'home' ? G.homeLineup : G.awayLineup;
+          const defBench = availableBench(defSide === 'home' ? G.homeBench : G.awayBench);
+          // 자리 교대: 야수(2-9)만 / 선수 교체: 지타(DH, pos 0) 포함 — 투수 제외
+          const fielderIdxs = defLineup
+            .map((p, i) => ({ p, i }))
+            .filter(({ p }) => p.pos >= 2 && p.pos <= 9);
+          const subTargetIdxs = defLineup
+            .map((p, i) => ({ p, i }))
+            .filter(({ p }) => (p.pos >= 2 && p.pos <= 9) || (p.pos === 0 && p.order > 0));
+          const toggleSel = (i: number) =>
+            setRetroSwapSel((prev) =>
+              prev.includes(i) ? prev.filter((x) => x !== i) : [...prev, i].slice(-2)
+            );
+          const halfLabel = retroSwapTarget.half === 'top' ? '초' : '말';
+          // 교체 시점 타자 선택지 — 그 반이닝에 실제 타석에 선 타자들 (기록 순)
+          const batLU = retroSwapTarget.half === 'top' ? G.awayLineup : G.homeLineup;
+          const atBatOptions = Object.values(G.cells)
+            .filter((c) => c.inning === retroSwapTarget.inning && c.half === retroSwapTarget.half)
+            .sort((a, b) => (a.paSeq ?? 0) - (b.paSeq ?? 0))
+            .map((c) => ({
+              order: c.order,
+              name: batLU.find((p) => p.order === c.order)?.name ?? '',
+            }))
+            .filter((v, i, arr) => arr.findIndex((x) => x.order === v.order) === i);
+          const canConfirm =
+            retroSwapMode === 'swap'
+              ? retroSwapSel.length === 2
+              : retroSubTargetIdx !== null && retroSubBenchIdx !== null;
+          const tabStyle = (active: boolean): React.CSSProperties => ({
+            padding: '5px 14px',
+            fontSize: 12,
+            cursor: 'pointer',
+            border: 'none',
+            borderBottom: active ? '2px solid var(--blue)' : '2px solid transparent',
+            background: 'transparent',
+            fontWeight: active ? 700 : 400,
+            color: active ? 'var(--blue)' : 'var(--text2)',
+          });
+          const pickBtnStyle = (sel: boolean): React.CSSProperties => ({
+            padding: '6px 8px',
+            fontSize: 12,
+            borderRadius: 4,
+            cursor: 'pointer',
+            border: `1px solid ${sel ? 'var(--blue)' : 'var(--border)'}`,
+            background: sel ? '#dbeafe' : '#fff',
+            fontWeight: sel ? 700 : 400,
+          });
+          const handleApply = () => {
+            if (!canConfirm) return;
+            if (retroSwapMode === 'swap') {
+              dispatch({
+                type: 'SWAP_FIELD_POS',
+                team: defSide,
+                idx1: retroSwapSel[0],
+                idx2: retroSwapSel[1],
+                inning: retroSwapTarget.inning,
+                half: retroSwapTarget.half,
+                atOrder: retroSwapAtOrder ?? atBatOptions[0]?.order,
+              });
+              const n1 = defLineup[retroSwapSel[0]]?.name;
+              const n2 = defLineup[retroSwapSel[1]]?.name;
+              showToast(`${retroSwapTarget.inning}회${halfLabel}부터 ${n1} ↔ ${n2} 수비 교대 적용`);
+            } else {
+              const target = defLineup[retroSubTargetIdx!];
+              const benchP = defBench[retroSubBenchIdx!];
+              dispatch({
+                type: 'RETRO_SUBST',
+                side: defSide,
+                order: target.order,
+                inning: retroSwapTarget.inning,
+                pos: target.pos,
+                newName: benchP.name,
+                newNum: benchP.num,
+                atOrder: retroSwapAtOrder ?? atBatOptions[0]?.order,
+              });
+              showToast(
+                `${retroSwapTarget.inning}회${halfLabel}부터 ${target.name} → ${benchP.name} 교체 적용`
+              );
+            }
+            setRetroSwapTarget(null);
+          };
+          return (
+            <div
+              className="ov open"
+              onClick={(e) => {
+                if (e.target === e.currentTarget) setRetroSwapTarget(null);
+              }}
+            >
+              <div className="ov-card" style={{ minWidth: 360, maxWidth: 440, padding: 18 }}>
+                <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 8 }}>
+                  소급 수비 변경 — {retroSwapTarget.inning}회{halfLabel}
+                </div>
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 6,
+                    fontSize: 12,
+                    marginBottom: 8,
+                  }}
+                >
+                  <span style={{ color: 'var(--text2)' }}>교체 시점:</span>
+                  <select
+                    value={retroSwapAtOrder ?? ''}
+                    onChange={(e) =>
+                      setRetroSwapAtOrder(e.target.value === '' ? null : Number(e.target.value))
+                    }
+                    style={{
+                      fontSize: 12,
+                      padding: '2px 6px',
+                      borderRadius: 3,
+                      border: '1px solid var(--border)',
+                      cursor: 'pointer',
+                      flex: 1,
+                    }}
+                  >
+                    <option value="">이닝 시작부터</option>
+                    {atBatOptions.map((o) => (
+                      <option key={o.order} value={o.order}>
+                        {o.order}번 {o.name} 타석 때
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div
+                  style={{
+                    display: 'flex',
+                    borderBottom: '1px solid var(--border2)',
+                    marginBottom: 10,
+                  }}
+                >
+                  <button
+                    style={tabStyle(retroSwapMode === 'swap')}
+                    onClick={() => setRetroSwapMode('swap')}
+                  >
+                    자리 교대
+                  </button>
+                  <button
+                    style={tabStyle(retroSwapMode === 'sub')}
+                    onClick={() => setRetroSwapMode('sub')}
+                  >
+                    선수 교체
+                  </button>
+                </div>
+
+                {retroSwapMode === 'swap' && (
+                  <>
+                    <div style={{ fontSize: 11, color: 'var(--text2)', marginBottom: 8 }}>
+                      자리를 맞바꿀 수비수 2명을 선택하세요.
+                    </div>
+                    <div
+                      style={{
+                        display: 'grid',
+                        gridTemplateColumns: '1fr 1fr',
+                        gap: 6,
+                        marginBottom: 12,
+                      }}
+                    >
+                      {fielderIdxs.map(({ p, i }) => (
+                        <button
+                          key={i}
+                          onClick={() => toggleSel(i)}
+                          style={pickBtnStyle(retroSwapSel.includes(i))}
+                        >
+                          {POS_NAME[p.pos]} {p.name}
+                        </button>
+                      ))}
+                    </div>
+                  </>
+                )}
+
+                {retroSwapMode === 'sub' && (
+                  <>
+                    <div style={{ fontSize: 11, color: 'var(--text2)', marginBottom: 6 }}>
+                      빠질 선수를 선택하세요. 지타(DH) 포함 (포지션·타순 그대로 벤치 선수 투입)
+                    </div>
+                    <div
+                      style={{
+                        display: 'grid',
+                        gridTemplateColumns: '1fr 1fr',
+                        gap: 6,
+                        marginBottom: 10,
+                      }}
+                    >
+                      {subTargetIdxs.map(({ p, i }) => (
+                        <button
+                          key={i}
+                          onClick={() => setRetroSubTargetIdx(retroSubTargetIdx === i ? null : i)}
+                          style={pickBtnStyle(retroSubTargetIdx === i)}
+                        >
+                          {POS_NAME[p.pos]} {p.name}
+                        </button>
+                      ))}
+                    </div>
+                    <div style={{ fontSize: 11, color: 'var(--text2)', marginBottom: 6 }}>
+                      투입할 벤치 선수 (교체돼 빠진 선수는 재출전 불가라 제외됨)
+                    </div>
+                    <div
+                      style={{
+                        maxHeight: 150,
+                        overflowY: 'auto',
+                        border: '1px solid var(--border2)',
+                        borderRadius: 4,
+                        marginBottom: 12,
+                      }}
+                    >
+                      {defBench.length === 0 && (
+                        <div style={{ padding: 8, color: '#94a3b8', fontSize: 12 }}>
+                          투입 가능한 벤치 선수 없음
+                        </div>
+                      )}
+                      {defBench.map((p, bi) => (
+                        <div
+                          key={bi}
+                          onClick={() => setRetroSubBenchIdx(retroSubBenchIdx === bi ? null : bi)}
+                          style={{
+                            padding: '5px 10px',
+                            cursor: 'pointer',
+                            background: retroSubBenchIdx === bi ? '#dce8ff' : 'transparent',
+                            fontSize: 13,
+                          }}
+                        >
+                          {p.num} {p.name}
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                )}
+
+                <div className="modal-footer" style={{ justifyContent: 'flex-end', gap: 6 }}>
+                  <button className="btn-cancel" onClick={() => setRetroSwapTarget(null)}>
+                    취소
+                  </button>
+                  <button
+                    className="btn-ok"
+                    disabled={!canConfirm}
+                    style={{ opacity: canConfirm ? 1 : 0.4 }}
+                    onClick={handleApply}
+                  >
+                    적용
+                  </button>
+                </div>
+              </div>
+            </div>
+          );
+        })()}
+
       <EditRowModal
         info={editRowInfo}
         onClose={() => setEditRowInfo(null)}
@@ -1820,9 +2132,13 @@ export default function GameScreen({ setup, onEnd }: Props) {
         onConfirm={() => {
           if (!pendingRevertKey) return;
           if (pendingRevertKey.startsWith('__inning__')) {
+            // 키 형식: __inning__{inning}-{half} (구형: __inning__{inning})
+            const raw = pendingRevertKey.replace('__inning__', '');
+            const [innStr, halfStr] = raw.split('-');
             dispatch({
               type: 'DELETE_INNING',
-              inning: Number(pendingRevertKey.replace('__inning__', '')),
+              inning: Number(innStr),
+              half: halfStr === 'top' || halfStr === 'bottom' ? halfStr : undefined,
             });
           } else {
             dispatch({ type: 'REVERT_TO', cellKey: pendingRevertKey });

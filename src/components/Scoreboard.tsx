@@ -1,5 +1,6 @@
 import type { GameState } from '../types';
 import { TEAM_FLAG } from '../data/constants';
+import { countTeamErrors } from '../utils/errorStats';
 
 interface Props {
   G: GameState;
@@ -30,11 +31,8 @@ export default function Scoreboard({
   let awayBB = 0,
     homeBB = 0;
   Object.values(G.cells).forEach((c) => {
-    if (c.scored) {
-      if (c.half === 'top') awayInnRuns[c.inning - 1] = (awayInnRuns[c.inning - 1] || 0) + 1;
-      else homeInnRuns[c.inning - 1] = (homeInnRuns[c.inning - 1] || 0) + 1;
-    }
-    if (c.result === 'HR' || c.result === 'GHR') {
+    // 득점: 셀당 1회만 — HR 타자 셀은 scored=true이면서 result=HR이라 조건을 따로 세면 이중 집계
+    if (c.scored || c.result === 'HR' || c.result === 'GHR' || c.result === 'GCW') {
       if (c.half === 'top') awayInnRuns[c.inning - 1] = (awayInnRuns[c.inning - 1] || 0) + 1;
       else homeInnRuns[c.inning - 1] = (homeInnRuns[c.inning - 1] || 0) + 1;
     }
@@ -43,6 +41,9 @@ export default function Scoreboard({
       else homeBB++;
     }
   });
+  // 팀 실책 — 셀 기록에서 파생 (결과 문자열 + 수비 체크 + 주자 진루 실책)
+  const awayE = countTeamErrors(G, 'away');
+  const homeE = countTeamErrors(G, 'home');
 
   return (
     <div className="scoreboard">
@@ -99,7 +100,7 @@ export default function Scoreboard({
             })}
             <div className="sb-inn-cell score">{G.awayR}</div>
             <div className="sb-inn-cell score">{G.awayH}</div>
-            <div className="sb-inn-cell score">{G.awayE}</div>
+            <div className="sb-inn-cell score">{awayE}</div>
             <div className="sb-inn-cell score">{awayBB}</div>
           </div>
           {/* Home row */}
@@ -123,7 +124,7 @@ export default function Scoreboard({
             })}
             <div className="sb-inn-cell score">{G.homeR}</div>
             <div className="sb-inn-cell score">{G.homeH}</div>
-            <div className="sb-inn-cell score">{G.homeE}</div>
+            <div className="sb-inn-cell score">{homeE}</div>
             <div className="sb-inn-cell score">{homeBB}</div>
           </div>
         </div>

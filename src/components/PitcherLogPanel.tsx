@@ -85,7 +85,8 @@ function formatCellResult(
     result === 'H2' ||
     result === 'H3' ||
     result === 'HR' ||
-    result === 'GHR'
+    result === 'GHR' ||
+    result === 'GCW'
   ) {
     const dir = hitData ? (ZONE_DIR[hitData.zone] ?? String(hitData.zone)) : '';
     if (result === 'H1') return `${dir}안`;
@@ -166,6 +167,9 @@ function advLabel(advCode?: string): string {
 const SIDE_NOTE_LABEL: Record<string, string> = {
   PL: '투수판이탈',
   BT: '타자타임',
+  PK1: '1루견제',
+  PK2: '2루견제',
+  PK3: '3루견제',
   M_R: '마운드방문(코칭스태프)',
   M_B: '마운드방문(포수)',
   M_BD: '마운드방문(포수덕아웃)',
@@ -675,10 +679,13 @@ export default function PitcherLogPanel({
   G,
   onEditRow,
   onDeleteCell,
+  onRetroSwap,
 }: {
   G: GameState;
   onEditRow?: (info: EditRowInfo) => void;
   onDeleteCell?: (key: string) => void;
+  // 선택된 이닝 시점의 소급 수비 변경 (좌↔우익수 교대 뒤늦게 발견 등)
+  onRetroSwap?: (inning: number, half: 'top' | 'bottom') => void;
 }) {
   const [selInning, setSelInning] = useState<string | null>(null);
   const [collapsed, setCollapsed] = useState<Set<number>>(new Set());
@@ -738,7 +745,14 @@ export default function PitcherLogPanel({
     <div className="plp">
       <div className="plp-head">
         {inningKeys.length > 0 && (
-          <div style={{ padding: '4px 6px', borderBottom: '1px solid var(--border)' }}>
+          <div
+            style={{
+              padding: '4px 6px',
+              borderBottom: '1px solid var(--border)',
+              display: 'flex',
+              gap: 4,
+            }}
+          >
             <select
               value={selInning ?? ''}
               onChange={(e) => setSelInning(e.target.value || null)}
@@ -747,7 +761,7 @@ export default function PitcherLogPanel({
                 padding: '2px 4px',
                 borderRadius: 3,
                 border: '1px solid var(--border)',
-                width: '100%',
+                flex: 1,
                 cursor: 'pointer',
               }}
             >
@@ -758,6 +772,26 @@ export default function PitcherLogPanel({
                 </option>
               ))}
             </select>
+            {onRetroSwap && selInning && (
+              <button
+                onClick={() => {
+                  const [innStr, half] = selInning.split('-');
+                  onRetroSwap(Number(innStr), half as 'top' | 'bottom');
+                }}
+                title="이 이닝 시점부터 수비 위치 교대 소급 적용"
+                style={{
+                  fontSize: 10,
+                  padding: '2px 6px',
+                  borderRadius: 3,
+                  border: '1px solid var(--border)',
+                  background: '#fff',
+                  cursor: 'pointer',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                수비변경
+              </button>
+            )}
           </div>
         )}
         <div className="plp-row plp-hdr">
@@ -932,9 +966,18 @@ export default function PitcherLogPanel({
               !!pitchRow.pitchCode &&
               !!pitchRow.cellKey &&
               pitchRow.entryIdx !== undefined;
-            const isHitResult =
+            // 홈런 계열 — 방향(zone) 변경만 허용 (Shift 종류 변경 없음)
+            const isHRResult =
               !!resultRow &&
-              (resultRow.result === 'H1' || resultRow.result === 'H2' || resultRow.result === 'H3');
+              (resultRow.result === 'HR' ||
+                resultRow.result === 'GHR' ||
+                resultRow.result === 'GCW');
+            const isHitResult =
+              isHRResult ||
+              (!!resultRow &&
+                (resultRow.result === 'H1' ||
+                  resultRow.result === 'H2' ||
+                  resultRow.result === 'H3'));
             // 1B 도달 결과 (안타·실책·번트 등) — code 변경 가능 그룹
             const isOneBaseResult =
               !!resultRow &&
@@ -973,7 +1016,7 @@ export default function PitcherLogPanel({
                 // 안타류: 일반 클릭 = zone 변경 / Shift+클릭 = 결과 코드 변경
                 // 1B 도달 결과: 결과 코드 변경
                 // 아웃 결과: 결과/ballType 변경
-                if (isHitResult && !e.shiftKey) {
+                if (isHitResult && (!e.shiftKey || isHRResult)) {
                   onEditRow?.({
                     kind: 'hit',
                     cellKey: resultRow.cellKey!,

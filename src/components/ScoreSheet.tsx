@@ -11,6 +11,11 @@ import {
 } from '../data/constants';
 import { cellKey, isOut, isOnBase, markErrorSeq } from '../store/gameReducer';
 import { computePitcherRows, hasBatContactPitch, type PitcherRow } from '../utils/pitcherStats';
+import {
+  cellOwnErrors,
+  errorPositionsFromCode,
+  runnerAdvErrorCodesByInning,
+} from '../utils/errorStats';
 import { PitchMark } from './modals/PitchMark';
 
 interface Props {
@@ -222,24 +227,22 @@ function ScoreCell({
   const CHAIN_ARROW: Record<string, string> = { '2B': '↖', '3B': '↙', HOME: '↘' };
   if (result === 'GHR') noteAtBase['2B'] = 'GH'; // 구형 데이터
 
-  // 연속플레이 화살표는 마지막(가장 멀리 진루한) chain note 1개에만 표시
-  const CHAIN_RANK: Record<string, number> = { '1B': 1, '2B': 2, '3B': 3, HOME: 4 };
-  let lastChainBase: string | null = null;
-  let lastChainRank = 0;
+  // 연속플레이 화살표 — chain 체크된 진루 각각의 "도착 베이스"에 표시
+  // (1→2, 2→3 별개 체크면 ↖·↙ 둘 다 / 한 번에 1→3 스킵이면 마지막 3루에만 ↙)
+  const chainArrowBases = new Set<string>();
   notes.forEach((n) => {
     // 타자 본인의 chain 진루는 causedBy 없이 chain=true만 기록되므로 함께 인정
-    if (n.chain) {
-      const rk = CHAIN_RANK[n.base] || 0;
-      if (rk >= lastChainRank) {
-        lastChainRank = rk;
-        lastChainBase = n.base;
-      }
-    }
+    if (n.chain && CHAIN_ARROW[n.base]) chainArrowBases.add(n.base);
   });
+  const lastChainBase = chainArrowBases.size > 0;
 
   let noteIdx = 0;
   notes.forEach((n) => {
-    const rawCode = n.advCode || '';
+    const rawCode0 = n.advCode || '';
+    // 다른주자수비 표기: (수비수-수비수) — 구형 데이터(5자, 4보-3자)도 괄호로 정규화
+    const rawCode = /^\d[\d보자-]*$/.test(rawCode0)
+      ? `(${(rawCode0.match(/\d+/g) || []).join('-')})`
+      : rawCode0;
 
     const hasFielder = /\d/.test(rawCode);
     const sup =
@@ -281,12 +284,7 @@ function ScoreCell({
       }
     }
 
-    // 연속플레이 화살표: 마지막 chain note에만 표시
-    const arrow =
-      n.chain && n.causedBy && n.base === lastChainBase ? CHAIN_ARROW[n.base] || '' : '';
-
-    // 화살표는 별도 위치(아래 chain-arrow div)에서 그려지므로 텍스트와 합치지 않음
-    void arrow;
+    // 연속플레이 화살표는 별도 위치(아래 chain-arrow div)에서 chainArrowBases 기준으로 그림
     if (n.base === 'HOME') {
       if (advLbl) {
         homeNoteItems.push({ advLbl });
@@ -322,6 +320,23 @@ function ScoreCell({
 
   const runOutBase = cell?.runOutBase || null;
   const runOutNum = cell?.runOutNum;
+  const runOutWp = cell?.runOutWp || null; // 폭투/포일 중 아웃 — (W)/(P) 표기
+  // (W)/(P)는 진루 시도 목적지(runOutBase)의 진루 노트 자리에 표시 — W⁹ 표기와 동일 위치
+  if (runOutWp && runOutBase) {
+    if (runOutBase === 'HOME') {
+      homeNoteItems.push({ advLbl: `(${runOutWp})` });
+    } else {
+      const wpLbl = <span key="wp-note">({runOutWp})</span>;
+      noteAtBase[runOutBase] = noteAtBase[runOutBase] ? (
+        <>
+          {noteAtBase[runOutBase]}
+          {wpLbl}
+        </>
+      ) : (
+        wpLbl
+      );
+    }
+  }
   // 실책 체크박스 → 표시용 E 삽입 (저장 코드는 불변)
   const dispResult = cell?.defRoles?.length ? markErrorSeq(result, cell.defRoles) : result || '';
   const dispRunOut =
@@ -487,6 +502,50 @@ function ScoreCell({
 
   const renderNote = (note: string, key: string | number): React.ReactNode => {
     if (STAR_NOTES.has(note)) return null;
+    // 견제 시도 마크 — / 사선 위에 가로줄 교차 (가로줄 수 = 견제 루: 1루 1개, 2루 2개, 3루 3개)
+    if (note.startsWith('PK')) {
+      const n = Math.min(3, Math.max(1, parseInt(note.slice(2), 10) || 1));
+      return (
+        <span
+          key={key}
+          title={`${n}루견제`}
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            width: 12,
+            height: 12,
+          }}
+        >
+          <svg width="12" height="12" viewBox="0 0 12 12">
+            <line
+              x1="2.5"
+              y1="11"
+              x2="9.5"
+              y2="1"
+              stroke="#111"
+              strokeWidth="1.3"
+              strokeLinecap="round"
+            />
+            {Array.from({ length: n }, (_, j) => {
+              const y = n === 1 ? 6 : n === 2 ? 4.5 + j * 3 : 3.5 + j * 2.5;
+              return (
+                <line
+                  key={j}
+                  x1="2"
+                  y1={y}
+                  x2="10"
+                  y2={y}
+                  stroke="#111"
+                  strokeWidth="1.3"
+                  strokeLinecap="round"
+                />
+              );
+            })}
+          </svg>
+        </span>
+      );
+    }
     if (note === 'M_R') {
       return (
         <div key={key} style={{ fontSize: 10, fontWeight: 900, lineHeight: 1.2, color: '#fa0000' }}>
@@ -689,13 +748,13 @@ function ScoreCell({
             i++;
           }
         } else if (entry.kind === 'runner_cs') {
-          // 도루실패(CS): 도루 성공과 동일하게 "/"
-          // 견제사(X 시작): 세로선 + 가로줄 (1B:1개, 2B:2개, 3B:3개)
+          // 도루실패(CS)·폭투/포일 중 아웃 등: 발생 시점 "/"
+          // 견제사(X 시작)만: 세로선 + 가로줄 (1B:1개, 2B:2개, 3B:3개)
           const csBase = entry.base;
-          const isCS = entry.runOut.startsWith('CS');
-          if (isCS) {
+          const isPickoff = entry.runOut.startsWith('X');
+          if (!isPickoff) {
             items.push(
-              <span key={i} title={`도루실패(${csBase})`} style={stealMarkStyle}>
+              <span key={i} title={`주자아웃(${csBase})`} style={stealMarkStyle}>
                 /
               </span>
             );
@@ -1534,22 +1593,22 @@ function ScoreCell({
               })()}
           </svg>
 
-          {/* 연속플레이 작은 화살표 — 마지막 chain 베이스의 다이아몬드 꼭지점 근처에 표시 */}
+          {/* 연속플레이 작은 화살표 — chain 표시된 각 진루 구간의 다이아몬드 변 근처에 표시 */}
           {lastChainBase &&
-            (() => {
-              const arrowChar = CHAIN_ARROW[lastChainBase] || '';
+            [...chainArrowBases].map((cb) => {
+              const arrowChar = CHAIN_ARROW[cb] || '';
               if (!arrowChar) return null;
               const apos: React.CSSProperties =
-                lastChainBase === '2B'
+                cb === '2B'
                   ? { top: 16, left: 45 }
-                  : lastChainBase === '3B'
+                  : cb === '3B'
                     ? { top: -10, left: 15 }
-                    : lastChainBase === 'HOME'
+                    : cb === 'HOME'
                       ? { top: 22, left: -7 }
                       : { top: 18, left: 38 };
               return (
                 <div
-                  key="chain-arrow"
+                  key={`chain-arrow-${cb}`}
                   style={{
                     position: 'absolute',
                     pointerEvents: 'none',
@@ -1563,7 +1622,7 @@ function ScoreCell({
                   {arrowChar}
                 </div>
               );
-            })()}
+            })}
 
           {/* 대주자 Ⓡ — 대주자 기용된 베이스 꼭지점 위치에 표시 */}
           {cell?.pinchRunnerMark &&
@@ -2009,14 +2068,10 @@ function ScoreCell({
   );
 }
 
+// 삼진 계열 전부 — 낫아웃 출루(KW/KP/KE), 낫아웃 송구(ꓘ2-3), 태그(ꓘ2T),
+// 보/자 마커(ꓘ2보-3자), 실책 출루(ꓘE2…)도 모두 삼진으로 기록 (record.md §1-17)
 const isKResult = (r: string) =>
-  r === 'K' ||
-  r === 'K3B' ||
-  r === 'KT' ||
-  r === 'KW' ||
-  r === 'KP' ||
-  r === 'KE' ||
-  (/^ꓘ[\d-]+T?$/.test(r) && !/[보자E]/.test(r));
+  r === 'K' || r === 'K3B' || r === 'KT' || r === 'KW' || r === 'KP' || r === 'KE' || /^ꓘ/.test(r);
 
 function calcStats(
   G: GameState,
@@ -2098,16 +2153,19 @@ function calcStats(
     if (c.scored) run++;
     if (c.isDoublePlay) dp++;
 
-    // 도루/도루실패: runnerNotes에 'S' 포함 여부로 집계
+    // 도루: 진루 노트의 도루 코드 기준 — 무관심도루 (S)/(SD)는 도루로 기록하지 않음
     (c.runnerNotes || []).forEach((n) => {
-      if (n.base && String(n.base).startsWith('S')) sb++;
-      if (n.base && String(n.base).startsWith('CS')) caught++;
+      const code = n.advCode ?? (n.steal ? 'S' : '');
+      if (code === 'S' || code === 'SD') sb++;
     });
+    // 도루실패: 이 타자가 주자로 아웃된 기록이 CS 계열일 때
+    if (c.runOut && c.runOut.startsWith('CS')) caught++;
   });
 
-  // 타점(RBI) 자동 집계 — 이 타자의 플레이(causedBy=ord)로 홈인한 주자 수
+  // 타점(RBI) 자동 집계 — "이 타자의 플레이로 홈까지 들어간" 주자만 인정
+  // (타자가 1→2루로만 보낸 주자가 나중에 다른 사유로 득점하면 이 타자 타점 아님
+  //  → 홈인 기록이 이 타자 자신의 타석(eventLog)에서 발생한 것만 집계)
   // 제외: 자력 진루(도루·폭투·포일·보크), 실책 진루, 병살타 중 득점
-  // note.rbi === true (기록원 명시 체크)는 항상 포함
   const NO_RBI_ADV = new Set([
     'S',
     '(S)',
@@ -2123,26 +2181,41 @@ function calcStats(
     '✓(BK)',
     'E',
   ]);
+  const isErrAdv = (code?: string) => {
+    if (!code) return false;
+    const s = code.replace(/[()]/g, '');
+    return NO_RBI_ADV.has(code) || s === 'E' || /E\d/.test(s) || /\dE/.test(s);
+  };
   cs.forEach((c) => {
     // 본인 홈런 득점 = 타점 1
-    if (c.result === 'HR' || c.result === 'GHR' || c.result === 'GCW') rbi++;
+    const isHRCell = c.result === 'HR' || c.result === 'GHR' || c.result === 'GCW';
+    if (isHRCell) rbi++;
+    // 이 타자 타석 중 발생한 주자 홈인 (eventLog runner_adv dest=HOME)
+    (c.eventLog || []).forEach((e) => {
+      if (e.kind !== 'runner_adv' || e.dest !== 'HOME') return;
+      if (isErrAdv(e.advCode)) return; // 실책·폭투·포일·보크 등
+      if (c.isDoublePlay) return; // 병살타 중 득점은 타점 불인정
+      rbi++;
+    });
   });
+  // 홈런으로 홈인한 선행 주자 + 밀어내기(force) 득점 — eventLog에 없고 runnerNotes로만 기록됨
+  const hrInnings = new Set(
+    cs
+      .filter((c) => c.result === 'HR' || c.result === 'GHR' || c.result === 'GCW')
+      .map((c) => c.inning)
+  );
   Object.values(G.cells).forEach((rc) => {
     if (rc.half !== half) return;
     if (fromInn !== undefined && rc.inning < fromInn) return;
     if (toInn !== undefined && rc.inning >= toInn) return;
     (rc.runnerNotes || []).forEach((n) => {
       if (n.base !== 'HOME' || n.causedBy !== ord) return;
-      if (n.rbi === true) {
-        rbi++;
+      if (n.force) {
+        rbi++; // 밀어내기 (볼넷·사구 만루)
         return;
       }
-      if (n.steal) return;
-      if (n.advCode && NO_RBI_ADV.has(n.advCode)) return;
-      // 병살타로 인한 득점은 타점 불인정
-      const batterCell = cs.find((c) => c.inning === rc.inning);
-      if (batterCell?.isDoublePlay) return;
-      rbi++;
+      // 홈런 타점: HR 셀과 같은 이닝의 HOME 노트 (advCode·steal 없음)
+      if (hrInnings.has(rc.inning) && !n.advCode && !n.steal && !n.chain) rbi++;
     });
   });
 
@@ -2182,6 +2255,42 @@ function calcStats(
   };
 }
 
+// 삼진 수비 기록 (defRoles 없이 result 문자열로만 기록됨)
+// K/K3B = 포수 자살, ꓘ2T = 태그 자살, ꓘ2-3(낫아웃 송구) = 2 보살 + 3 자살, ꓘ2보-3자 = 명시 마커
+function strikeoutDefStats(r: string, defPos: number): { fo: number; pa: number } {
+  let fo = 0;
+  let pa = 0;
+  if (r === 'K' || r === 'K3B') {
+    if (defPos === 2) fo = 1; // 정규 삼진 = 포수 자살
+    return { fo, pa };
+  }
+  if (!r.startsWith('ꓘ')) return { fo, pa };
+  const body = r.slice(1);
+  const tagM = body.match(/^(\d)T$/);
+  if (tagM) {
+    if (Number(tagM[1]) === defPos) fo = 1;
+    return { fo, pa };
+  }
+  if (/^[\d-]+$/.test(body)) {
+    // 낫아웃 송구 아웃 (ꓘ2-3): 마지막 수비수 자살, 그 앞 전부 보살
+    const parts = body.split('-').map(Number);
+    parts.forEach((p, i) => {
+      if (p !== defPos) return;
+      if (i === parts.length - 1) fo++;
+      else pa++;
+    });
+    return { fo, pa };
+  }
+  // 보/자 마커 명시 문자열 (ꓘ2보-3자, ꓘE2-3자 등)
+  body.split('-').forEach((seg) => {
+    const m = seg.match(/^E?(\d)(보)?(자)?$/);
+    if (!m || Number(m[1]) !== defPos) return;
+    if (m[2]) pa++;
+    if (m[3]) fo++;
+  });
+  return { fo, pa };
+}
+
 function calcFieldingStats(
   G: GameState,
   scoreHalf: 'top' | 'bottom',
@@ -2206,6 +2315,16 @@ function calcFieldingStats(
       if (r.assist) pa++;
       if (r.error) err++;
     });
+    // 타격 결과 실책 (E6, #4E, Ob4E 등 — defRoles 없는 BAT_ADV 실책 출루)
+    if (c.result && !(c.defRoles || []).length) {
+      errorPositionsFromCode(c.result).forEach((pos) => {
+        if (pos === defPos) err++;
+      });
+      // 삼진(K/ꓘ) 수비 기록 — 포수 자살, 낫아웃 송구(ꓘ2-3) 보살·자살
+      const ks = strikeoutDefStats(c.result, defPos);
+      fo += ks.fo;
+      pa += ks.pa;
+    }
     if (c.isDoublePlay && (c.defRoles || []).some((r) => r.pos === defPos)) dp++;
     if (c.runOutDefRoles?.length) {
       const runInning = c.runOutInning ?? c.inning;
@@ -2221,6 +2340,16 @@ function calcFieldingStats(
         });
       }
     }
+  });
+  // 주자 진루 실책 (advCode E4/4-3E 등) — (이닝, 코드) dedupe 후 해당 수비수에게 귀속
+  runnerAdvErrorCodesByInning(G, fieldHalf).forEach((codes, inn) => {
+    if (fromInn !== undefined && inn < fromInn) return;
+    if (toInn !== undefined && inn >= toInn) return;
+    codes.forEach((code) => {
+      errorPositionsFromCode(code).forEach((pos) => {
+        if (pos === defPos) err++;
+      });
+    });
   });
   return { fo, pa, err, dp };
 }
@@ -2984,7 +3113,14 @@ export default function ScoreSheet({ G, onSelCell }: Props) {
                   const starterPos = p.pos === 0 ? 'D' : String(orderSubs[0] ? '' : p.pos || '');
                   layers.push({ left: starterPos || '', name: starterName, num: starterNum });
                   for (const s of orderSubs) {
-                    const left = s.kind === 'R' ? 'R' : s.kind === 'H' ? 'H' : String(s.pos);
+                    const left =
+                      s.kind === 'R'
+                        ? 'R'
+                        : s.kind === 'H'
+                          ? 'H'
+                          : s.pos === 0
+                            ? 'D' // 지타(DH) 교체
+                            : String(s.pos);
                     const lastIdx = layers.length - 1;
                     const last = layers[lastIdx];
                     // 직전 layer 가 같은 선수의 R/H 입장이고 이번이 D 면 → 새 행 추가하지 않고
@@ -3827,18 +3963,8 @@ export default function ScoreSheet({ G, onSelCell }: Props) {
                     r === '>>>hit' ||
                     r === 'HR' ||
                     r === 'GHR';
-                  const errCount = (c: (typeof G.cells)[string]) => {
-                    let n = 0;
-                    const r = c.result ?? '';
-                    // BAT_ADV E 타입: result 문자열에서 E 카운트
-                    n += (r.match(/E\d/g) || []).length; // E4, E4-3
-                    n += (r.match(/\d+E/g) || []).length; // 4-3E, #4E, Ob4E
-                    if (r === 'E') n += 1;
-                    // BAT_OUT / RUN_OUT: 실책 체크박스 기반
-                    n += (c.defRoles ?? []).filter((dr) => dr.error).length;
-                    n += (c.runOutDefRoles ?? []).filter((dr) => dr.error).length;
-                    return n;
-                  };
+                  // 실책: 결과 문자열 + 수비 체크 (주자 진루 실책은 아래에서 이닝 단위 dedupe 후 합산)
+                  const errCount = cellOwnErrors;
                   // 어시스트: result에 '-' 으로 연결된 fielder seq가 2명 이상이면 마지막 putout 이전 fielder 수
                   const assistCount = (r: string) => {
                     const m = r.match(/^[\d-]+$/);
@@ -3858,6 +3984,11 @@ export default function ScoreSheet({ G, onSelCell }: Props) {
                     s.p += (c.pitches || []).length;
                     // 타격(인플레이) 접촉구는 c.pitches에 없음 — reducer pitchCount와 동일 규칙으로 +1
                     if (c.result && hasBatContactPitch(c.result)) s.p += 1;
+                  });
+                  // 주자 진루 실책 — 한 실책 여러 주자 진루는 (이닝, 코드) dedupe로 1건
+                  runnerAdvErrorCodesByInning(G, half).forEach((codes, inn) => {
+                    const st = innStat[inn];
+                    if (st) st.e += codes.size;
                   });
                   // 누적값
                   const cumStat: Record<number, Stat> = {};
@@ -4625,10 +4756,10 @@ export default function ScoreSheet({ G, onSelCell }: Props) {
                   Object.values(G.cells).forEach((c) => {
                     const defSide: 'away' | 'home' = c.half === 'top' ? 'home' : 'away';
                     // 한 포일로 여러 주자가 진루해도 발생 1건으로 집계 (셀당 1회)
+                    // (P)는 포일로 기록하지 않는 표기 — 집계 제외
                     const hasPB = (c.eventLog || []).some(
                       (e) =>
-                        (e.kind === 'runner_steal' || e.kind === 'runner_adv') &&
-                        (e.advCode === 'P' || e.advCode === '(P)')
+                        (e.kind === 'runner_steal' || e.kind === 'runner_adv') && e.advCode === 'P'
                     );
                     if (hasPB) {
                       pItems.push({
@@ -4667,27 +4798,43 @@ export default function ScoreSheet({ G, onSelCell }: Props) {
                       a.inning - b.inning || (a.half === b.half ? 0 : a.half === 'top' ? -1 : 1)
                   );
 
-                  // 출전타자
-                  const tableSide: 'away' | 'home' = half === 'top' ? 'away' : 'home';
-                  const subs = (G.substitutions || [])
-                    .filter((s) => s.side === tableSide)
-                    .sort((a, b) => a.inning - b.inning);
                   const subTeam = half === 'top' ? G.awayTeam : G.homeTeam;
 
-                  // 비디오판독
-                  const vrEvents = (G.gameEvents || []).filter(
-                    (e) => e.type === 'video_review' || e.type === 'check_swing'
-                  );
-                  const calcDur = (s: string, e: string) => {
-                    if (!s || !e) return '';
-                    const [sh, sm] = s.split(':').map(Number);
-                    const [eh, em] = e.split(':').map(Number);
-                    let d = eh * 60 + em - (sh * 60 + sm);
-                    if (d < 0) d += 1440;
-                    return d < 60 ? `${d}분` : `${Math.floor(d / 60)}시간${d % 60}분`;
+                  // 소속/회/타순/성명/내용 표 — 특수 상황만 기록 (퇴장·경고·심판교체 등)
+                  // 교체 기록은 교대란/타순 칸에, 비디오판독은 갑지에 별도 표기
+                  type EtcRow = {
+                    team: string;
+                    inning: number | string;
+                    order: number | string;
+                    name: string;
+                    desc: string;
                   };
+                  const subRows: EtcRow[] = [];
+                  (G.gameEvents || []).forEach((e) => {
+                    if (e.type === 'warning_ejection') {
+                      // 해당 팀 페이지에만 표시 (팀 미입력 이벤트는 양쪽 표시)
+                      if (e.team && e.team !== subTeam) return;
+                      subRows.push({
+                        team: e.team || '',
+                        inning: e.inning,
+                        order: '',
+                        name: e.player || '',
+                        desc: `${e.kind || '경고·퇴장'}${e.content ? ` ${e.content}` : ''}`,
+                      });
+                    } else if (e.type === 'umpire_change') {
+                      subRows.push({
+                        team: '',
+                        inning: e.inning,
+                        order: '',
+                        name: e.newUmpire || '',
+                        desc: `심판교체${e.oldUmpire ? ` ←${e.oldUmpire}` : ''}${
+                          e.reason ? ` (${e.reason})` : ''
+                        }`,
+                      });
+                    }
+                  });
 
-                  // 경기중단
+                  // 경기중단 (비디오판독은 갑지 전용 표에서만)
                   const delayEvents = (G.gameEvents || []).filter((e) => e.type === 'game_delay');
 
                   // 투수
@@ -4958,20 +5105,14 @@ export default function ScoreSheet({ G, onSelCell }: Props) {
                             </tr>
                           </thead>
                           <tbody>
-                            {[...subs, ...Array(Math.max(0, 3 - subs.length)).fill(null)].map(
-                              (s, i) => (
+                            {[...subRows, ...Array(Math.max(0, 3 - subRows.length)).fill(null)].map(
+                              (s: EtcRow | null, i) => (
                                 <tr key={i}>
-                                  <td style={{ ...tdS, textAlign: 'left' }}>{s ? subTeam : ''}</td>
+                                  <td style={{ ...tdS, textAlign: 'left' }}>{s ? s.team : ''}</td>
                                   <td style={tdS}>{s ? s.inning : ''}</td>
-                                  <td style={tdS}>{s ? (s.order ?? '') : ''}</td>
-                                  <td style={{ ...tdS, textAlign: 'left' }}>
-                                    {s ? s.newName : ''}
-                                  </td>
-                                  <td style={{ ...tdS, textAlign: 'left' }}>
-                                    {s
-                                      ? `${s.kind === 'H' ? '대타' : s.kind === 'R' ? '대주자' : '수비교대'}${s.oldName ? ` ←${s.oldName}` : ''}`
-                                      : ''}
-                                  </td>
+                                  <td style={tdS}>{s ? s.order : ''}</td>
+                                  <td style={{ ...tdS, textAlign: 'left' }}>{s ? s.name : ''}</td>
+                                  <td style={{ ...tdS, textAlign: 'left' }}>{s ? s.desc : ''}</td>
                                 </tr>
                               )
                             )}
@@ -4994,31 +5135,7 @@ export default function ScoreSheet({ G, onSelCell }: Props) {
                             </tr>
                           </thead>
                           <tbody>
-                            {[
-                              ...vrEvents,
-                              ...Array(Math.max(0, 2 - vrEvents.length)).fill(null),
-                            ].map((ev, i) => (
-                              <tr key={`vr-${i}`}>
-                                <td style={tdS} />
-                                <td style={tdS}>{ev ? `${ev.inning}회` : ''}</td>
-                                <td style={tdS}>{ev && 'order' in ev ? ev.order : ''}</td>
-                                <td style={{ ...tdS, textAlign: 'left' }}>
-                                  {ev
-                                    ? ev.type === 'check_swing'
-                                      ? `체크스윙 ${(ev as { result?: string }).result ?? ''}`
-                                      : ((ev as { content?: string }).content ?? '')
-                                    : ''}
-                                </td>
-                                <td style={tdS}>
-                                  {ev
-                                    ? calcDur(
-                                        (ev as { startTime?: string }).startTime ?? '',
-                                        (ev as { endTime?: string }).endTime ?? ''
-                                      )
-                                    : ''}
-                                </td>
-                              </tr>
-                            ))}
+                            {/* 비디오판독은 갑지 전용 표에만 표시 — 을지 하단은 경기중단만 */}
                             <tr>
                               <td
                                 rowSpan={2}

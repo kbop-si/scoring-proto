@@ -34,11 +34,12 @@ const isHitR = (r: string) =>
   r === 'HR' ||
   r === 'GHR';
 
-// 타격(인플레이 접촉) 투구가 result로만 기록되는 결과인지 — c.pitches에 없는 마지막 1구
-// 삼진류(K/ꓘ, 낫아웃 포함)·볼넷·사구·타격방해는 이미 PITCH/STRIKEOUT에서 c.pitches에 포함됨
+// result로만 기록되는 추가 투구 1개가 있는지 — c.pitches에 없는 마지막 1구
+// (인플레이 타격 접촉구, 사구 HP의 맞은 공)
+// 삼진류(K/ꓘ, 낫아웃 포함)·볼넷은 이미 PITCH/STRIKEOUT에서 c.pitches에 포함됨
 export const hasBatContactPitch = (r: string): boolean => {
   if (/^K|^ꓘ/.test(r)) return false;
-  if (['B', 'IB', 'IB2', 'HP'].includes(r)) return false;
+  if (['B', 'IB', 'IB2'].includes(r)) return false;
   if (/^#\dE$/.test(r) || /^Ob\dE$/.test(r)) return false;
   return true;
 };
@@ -139,7 +140,8 @@ export function computePitcherRows(
       }
       (c.eventLog || []).forEach((e) => {
         if (e.kind === 'runner_steal') {
-          if (e.advCode === 'W' || e.advCode === '(W)') s.wp += 1;
+          // (W)는 폭투로 기록하지 않는 표기 (주자 아웃 등) — 투수 폭투 집계 제외
+          if (e.advCode === 'W') s.wp += 1;
           if (
             e.advCode === 'BK' ||
             e.advCode === '(BK)' ||

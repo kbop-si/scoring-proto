@@ -17,6 +17,7 @@ import type {
   PitcherChange,
 } from '../types';
 import { SAMPLE } from '../data/constants';
+import { hasBatContactPitch } from '../utils/pitcherStats';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -1216,11 +1217,15 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
         ...[1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => `Ob${n}E`),
       ]);
       const isBatContact = !noPitchResults.has(result);
-      const batPitcher = isBatContact
-        ? { ...state.pitcher, pitchCount: (state.pitcher.pitchCount || 0) + 1 }
-        : state.pitcher;
-      const batPitchCount = isBatContact ? state.pitchCount + 1 : state.pitchCount;
+      // 사구(HP): 몸에 맞은 그 공도 투구 1개 (볼로 집계) — PITCH 액션 없이 결과로만 입력됨
+      const isHBP = result === 'HP' || result === 'HP2';
+      const batPitcher =
+        isBatContact || isHBP
+          ? { ...state.pitcher, pitchCount: (state.pitcher.pitchCount || 0) + 1 }
+          : state.pitcher;
+      const batPitchCount = isBatContact || isHBP ? state.pitchCount + 1 : state.pitchCount;
       const batPitchStrikes = isBatContact ? state.pitchStrikes + 1 : state.pitchStrikes;
+      const batPitchBalls = isHBP ? state.pitchBalls + 1 : state.pitchBalls;
 
       const isHitOrFC = !forceTypes.includes(result) && dest !== 'HOME';
       const hasExistingRunners = Object.keys(runners).filter((k) => runners[k as Base]).length > 0;
@@ -1235,6 +1240,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
           pitcher: batPitcher,
           pitchCount: batPitchCount,
           pitchStrikes: batPitchStrikes,
+          pitchBalls: batPitchBalls,
           awayR,
           homeR,
           awayH,
@@ -1262,6 +1268,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
         pitcher: batPitcher,
         pitchCount: batPitchCount,
         pitchStrikes: batPitchStrikes,
+        pitchBalls: batPitchBalls,
         awayR,
         homeR,
         awayH,
@@ -1532,8 +1539,37 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
         const chain: Record<string, string> = { '1B': '2B', '2B': '3B', '3B': 'HOME' };
         const nx = chain[dest];
         if (nx === 'HOME') {
-          if (state.half === 'top') awayR++;
-          else homeR++;
+          if (state.half === 'top') {
+            awayR++;
+            awayER += erValue(earned);
+          } else {
+            homeR++;
+            homeER += erValue(earned);
+          }
+          // 밀려서 홈인한 주자 셀에 득점 마크 + HOME 노트
+          // (없으면 DELETE_CELL 재계산·투수 실점 집계에서 이 득점이 누락됨)
+          const pushed = runners[dest as Base]!;
+          if (pushed.inning) {
+            for (let app = 0; app <= 5; app++) {
+              const rk = cellKey(pushed.inning, pushed.order, app, pushed.half || state.half);
+              if (cells[rk]) {
+                const existing = cells[rk].runnerNotes || [];
+                cells = {
+                  ...cells,
+                  [rk]: {
+                    ...cells[rk],
+                    scored: true,
+                    earned,
+                    scorePitcher: action.scorePitcher,
+                    runnerNotes: existing.find((n) => n.base === 'HOME')
+                      ? existing
+                      : [...existing, { causedBy: runAdvCausedBy, base: 'HOME' as const }],
+                  },
+                };
+                break;
+              }
+            }
+          }
           runners[dest as Base] = undefined;
         } else {
           runners[nx as Base] = runners[dest as Base];
@@ -1633,26 +1669,48 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
       delete runners[action.base];
       const outs = state.outs + 1;
 
-      // 결과 코드에서 실제 아웃 위치 추론 (H=홈, C=3루, B=2루, A=1루, CS=다음베이스, 포스=다음베이스)
+      // 결과 코드에서 실제 아웃 위치 추론
+      // (H=홈, C=3루, B=2루, A=1루 / CS·X·포스·태그(…T)=진루 방향 다음 베이스)
       const inferOutBase = (result: string, startBase: Base): string => {
         const last = result[result.length - 1];
         if (last === 'H') return 'HOME';
         if (last === 'C') return '3B';
         if (last === 'B') return '2B';
         if (last === 'A') return '1B';
-        if (result.startsWith('CS') || result.startsWith('X')) {
-          if (startBase === '1B') return '2B';
-          if (startBase === '2B') return '3B';
-          return 'HOME';
-        }
-        if (/^[\d-]+$/.test(result) || result === '●') {
-          if (startBase === '1B') return '2B';
-          if (startBase === '2B') return '3B';
-          return 'HOME';
-        }
+        const nextOf = (): string =>
+          startBase === '1B' ? '2B' : startBase === '2B' ? '3B' : 'HOME';
+        if (result.startsWith('CS') || result.startsWith('X')) return nextOf();
+        // 태그아웃 (2-5T 등): 진루 시도 중 다음 베이스 앞에서 태그 — 그 구간에 표기
+        if (last === 'T') return nextOf();
+        if (/^[\d-]+$/.test(result) || result === '●') return nextOf();
         return startBase;
       };
-      const outBase = inferOutBase(action.result, action.base);
+      const outBase = action.outBase ?? inferOutBase(action.result, action.base);
+
+      // 명시적 outBase 지정 시(연결동작 등): 시작 루~아웃 루 사이 경유 루에 진루 노트 기록
+      // (예: 1루 주자가 2루를 밟고 3루로 가다 아웃 → 2B 노트 + 2→3 구간 아웃 표기)
+      const BASE_SEQ = ['1B', '2B', '3B', 'HOME'];
+      const midBases: Base[] = action.outBase
+        ? (BASE_SEQ.slice(BASE_SEQ.indexOf(action.base) + 1, BASE_SEQ.indexOf(outBase)) as Base[])
+        : [];
+      let midCausedBy = state.curBatterOrder;
+      if (midBases.length) {
+        // RUN_ADV와 동일 귀속 추론: 현재 타자 기록이 아직 없으면 직전 타자의 플레이로 귀속
+        const curCell = state.cells[state.selCellKey];
+        const hasBattingRecord = !!curCell && (curCell.pitches.length > 0 || !!curCell.result);
+        if (!hasBattingRecord) {
+          midCausedBy = state.curBatterOrder === 1 ? 9 : state.curBatterOrder - 1;
+        }
+      }
+      const withMidNotes = (existing: RunnerNote[]): RunnerNote[] => {
+        let list = existing;
+        for (const mb of midBases) {
+          if (!list.find((n) => n.base === mb && n.causedBy === midCausedBy)) {
+            list = [...list, { causedBy: midCausedBy, base: mb }];
+          }
+        }
+        return list;
+      };
 
       let cells = { ...state.cells };
       if (runner) {
@@ -1661,6 +1719,8 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
         const runOutNum = outs; // 이 주자 아웃이 몇 번째 아웃인지
         const deflPatch = action.deflection ? { deflection: action.deflection } : {};
         const rolePatch = action.defRoles?.length ? { runOutDefRoles: action.defRoles } : {};
+        // 폭투/포일 삽입 — 진루 시도 중 아웃: (W)/(P) 표기용 (투수 폭투/포일 기록 안 함)
+        const wpPatch = action.wpMark ? { runOutWp: action.wpMark } : {};
         let markedKey: string | null = null;
         for (let app = 0; app <= 5; app++) {
           const rk = cellKey(runner.inning, runner.order, app, runner.half);
@@ -1673,8 +1733,12 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
                 runOutBase: outBase,
                 runOutNum,
                 runOutInning: state.inning,
+                ...(midBases.length
+                  ? { runnerNotes: withMidNotes(cells[rk].runnerNotes || []) }
+                  : {}),
                 ...deflPatch,
                 ...rolePatch,
+                ...wpPatch,
               },
             };
             found = true;
@@ -1696,8 +1760,12 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
                   runOutBase: outBase,
                   runOutNum,
                   runOutInning: state.inning,
+                  ...(midBases.length
+                    ? { runnerNotes: withMidNotes(cells[rk].runnerNotes || []) }
+                    : {}),
                   ...deflPatch,
                   ...rolePatch,
+                  ...wpPatch,
                 },
               };
               found = true;
@@ -1716,13 +1784,14 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
             appearance: 0,
             pitches: [],
             result: null,
-            runnerNotes: [],
+            runnerNotes: withMidNotes([]),
             runOut: action.result,
             runOutBase: outBase,
             runOutNum,
             runOutInning: state.inning,
             ...deflPatch,
             ...rolePatch,
+            ...wpPatch,
           };
           cells = { ...cells, [rk]: newCell };
           markedKey = rk;
@@ -1791,8 +1860,10 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
         }
       }
 
-      // 도루실패(CS) / 견제사(X) 만 현재 타자 셀 eventLog에 runner_cs 항목으로 기록
-      const isCSorPickoff = action.result.startsWith('CS') || action.result.startsWith('X');
+      // 도루실패(CS) / 견제사(X) / 폭투·포일 중 아웃(wpMark) — 현재 타자 셀 eventLog에
+      // runner_cs 항목 기록 → 볼카운트판에 발생 시점 '/' (X는 견제사 마크) 표시
+      const isCSorPickoff =
+        action.result.startsWith('CS') || action.result.startsWith('X') || !!action.wpMark;
       if (isCSorPickoff && runner && state.selCellKey) {
         cells = ensureCell(cells, state.selCellKey);
         const sc = cells[state.selCellKey];
@@ -2291,19 +2362,28 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
       return withEventNotes(result);
     }
 
-    // ── DELETE_INNING — 해당 이닝 전체 삭제 ──────────────────────────────────
+    // ── DELETE_INNING — 해당 (반)이닝 삭제 ───────────────────────────────────
+    // 대상 이닝 시작 지점(NEXT_INNING 직후, 0아웃)에서 멈춤 — 이전 이닝의 3아웃
+    // 상태로 되돌아가 "3아웃" 알럿이 반복되는 문제 방지.
+    // action.half 지정 시 그 반이닝만 삭제 (미지정 = 그 이닝 번호 전체, 구형 호환)
     case 'DELETE_INNING': {
       if (!state.history.length) return state;
-      const { inning } = action;
+      const { inning, half: delHalf } = action;
+      // 이 snapshot이 삭제 대상 반이닝보다 이전(보존해야 할) 상태인지
+      const isBeforeTarget = (s: HistorySnapshot): boolean => {
+        if (s.inning < inning) return true;
+        if (s.inning === inning && delHalf === 'bottom' && s.half === 'top') return true;
+        return false;
+      };
       let history = [...state.history];
       let result = state;
       while (history.length > 0) {
         const top = history[history.length - 1];
+        if (isBeforeTarget(top)) break; // 대상 이닝 이전 상태는 pop하지 않음
         history = history.slice(0, -1);
         result = { ...result, ...top, history };
-        if (top.inning < inning) break;
       }
-      return result;
+      return withEventNotes(result);
     }
 
     // ── DELETE_CELL — 특정 타석만 직접 삭제 ─────────────────────────────────
@@ -2380,8 +2460,10 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
           arr[idx] = (arr[idx] ?? 0) + 1;
         };
 
-        // 주자 득점 (HR 타자 본인 제외)
-        if (c.scored) {
+        // 득점: 셀당 1회만 — HR 타자 셀은 scored=true이면서 result=HR이라
+        // 두 조건을 따로 세면 이중 집계됨 (err.html 점수 부풀림 원인)
+        const isHRResult = c.result === 'HR' || c.result === 'GHR' || c.result === 'GCW';
+        if (c.scored || isHRResult) {
           if (away) {
             awayR++;
             add(awayInn, i);
@@ -2389,27 +2471,13 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
             homeR++;
             add(homeInn, i);
           }
-          if (c.earned !== false) {
-            if (away) awayER++;
-            else homeER++;
-          }
+          // 반자책 0.5 반영. 구형 데이터(earned 미기록)는 기존 동작대로 자책 간주
+          const er = c.earned === undefined ? 1 : erValue(c.earned);
+          if (away) awayER += er;
+          else homeER += er;
         }
-        // HR 타자 본인 득점
-        if (c.result === 'HR' || c.result === 'GHR') {
-          if (away) {
-            awayR++;
-            add(awayInn, i);
-            awayH++;
-          } else {
-            homeR++;
-            add(homeInn, i);
-            homeH++;
-          }
-          if (c.earned !== false) {
-            if (away) awayER++;
-            else homeER++;
-          }
-        } else if (c.result && HIT.has(c.result)) {
+        // 안타 (HIT 셋에 HR/GHR 포함 — 별도 분기 불필요)
+        if (c.result && HIT.has(c.result)) {
           if (away) awayH++;
           else homeH++;
         }
@@ -2422,6 +2490,54 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
 
       // 해당 셀에 연결된 gameEvents 제거
       const gameEvents = state.gameEvents.filter((ev) => ev.cellKey !== ck);
+
+      // 삭제 셀이 현재 투수 구간이면 실시간 투구수 카운터(총/볼/스트라이크) 차감
+      // (다른 half·이전 투수 구간의 과거 셀은 현재 카운터와 무관하므로 건드리지 않음)
+      let pitchCount = state.pitchCount;
+      let pitchBalls = state.pitchBalls;
+      let pitchStrikes = state.pitchStrikes;
+      let pitcher = state.pitcher;
+      if (cell.half === state.half) {
+        const chs = state.pitcherChanges
+          .filter((pc) => pc.half === cell.half)
+          .sort((a, b) => (a.inning !== b.inning ? a.inning - b.inning : a.order - b.order));
+        const lastCh = chs[chs.length - 1];
+        const inWindow =
+          !lastCh ||
+          cell.inning > lastCh.inning ||
+          (cell.inning === lastCh.inning && cell.order > lastCh.order) ||
+          (cell.inning === lastCh.inning && cell.order === lastCh.order && !!lastCh.mid);
+        if (inWindow) {
+          // mid-PA 교체로 들어온 투수면 교체 이전 투구는 전임 몫 — 차감 제외
+          const startIdx =
+            lastCh && lastCh.mid && lastCh.inning === cell.inning && lastCh.order === cell.order
+              ? (lastCh.mid.pitches ?? (lastCh.mid.balls ?? 0) + (lastCh.mid.strikes ?? 0))
+              : 0;
+          let dc = 0;
+          let db = 0;
+          let ds = 0;
+          cell.pitches.forEach((p, idx) => {
+            if (idx < startIdx) return;
+            dc++;
+            const pb = p.startsWith('FE') && p.length > 2 ? 'FE' : p;
+            if (pb === 'B' || pb === 'PC1' || pb === 'PC2') db++;
+            else if (pb !== 'FE') ds++; // FE(파울실책)는 총 투구수만
+          });
+          // 결과로만 기록된 추가 1구 (인플레이 접촉 = 스트라이크, 사구 = 볼)
+          if (cell.result && hasBatContactPitch(cell.result)) {
+            dc++;
+            if (cell.result === 'HP' || cell.result === 'HP2') db++;
+            else ds++;
+          }
+          pitchCount = Math.max(0, pitchCount - dc);
+          pitchBalls = Math.max(0, pitchBalls - db);
+          pitchStrikes = Math.max(0, pitchStrikes - ds);
+          pitcher = {
+            ...state.pitcher,
+            pitchCount: Math.max(0, (state.pitcher.pitchCount || 0) - dc),
+          };
+        }
+      }
 
       // 삭제 후 해당 셀로 커서 이동 → 바로 재입력 가능
       return {
@@ -2446,6 +2562,10 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
         outs,
         balls: 0,
         strikes: 0,
+        pitchCount,
+        pitchBalls,
+        pitchStrikes,
+        pitcher,
         history: saveHist(state),
       };
     }
@@ -2595,6 +2715,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
         oldName: oldPlayer?.name ?? '',
         oldNum: oldPlayer?.num ?? '',
         order,
+        ...(action.atOrder !== undefined ? { atOrder: action.atOrder } : {}),
       };
       const subs = [...state.substitutions];
       const insertAt = subs.findIndex(
@@ -3346,6 +3467,8 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
             hitData: newHitData,
             ballType: newHitData ? newHitData.ballType : newBallType,
             eventLog: newEventLog,
+            // 홈런 시각을 수정 입력했으면 셀 timestamp도 갱신 (하단 홈런타자 표 시각 반영)
+            ...(newHitData?.hrTime ? { timestamp: newHitData.hrTime } : {}),
             ...deflPatch,
           },
         },
@@ -3539,10 +3662,13 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
       // pos 교환
       lu[idx1] = { ...p1, pos: p2.pos };
       lu[idx2] = { ...p2, pos: p1.pos };
+      // 소급 수비 변경: action.inning/half 지정 시 그 시점 발생으로 로그 (기록지 수비 layer 소급 반영)
+      const logInning = action.inning ?? state.inning;
+      const logHalf = action.half ?? state.half;
       const newSubs = [
         {
-          inning: state.inning,
-          half: state.half,
+          inning: logInning,
+          half: logHalf,
           side: action.team,
           kind: 'D' as const,
           pos: p2.pos,
@@ -3551,11 +3677,11 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
           oldName: p1.name,
           oldNum: p1.num,
           order: p1.order,
-          atOrder: state.curBatterOrder,
+          atOrder: action.atOrder ?? state.curBatterOrder,
         },
         {
-          inning: state.inning,
-          half: state.half,
+          inning: logInning,
+          half: logHalf,
           side: action.team,
           kind: 'D' as const,
           pos: p1.pos,
@@ -3564,7 +3690,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
           oldName: p2.name,
           oldNum: p2.num,
           order: p2.order,
-          atOrder: state.curBatterOrder,
+          atOrder: action.atOrder ?? state.curBatterOrder,
         },
       ];
       return {

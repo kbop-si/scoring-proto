@@ -14,7 +14,10 @@ interface Props {
     seq: number[],
     deflection?: DeflectionInfo,
     defRoles?: DefRole[],
-    samePlay?: boolean
+    samePlay?: boolean,
+    pickoff?: 1 | 2 | 3, // 견제삽입 — n루견제 시도 마크 (/-, /--, /---)
+    wpMark?: 'W' | 'P', // 폭투/포일삽입 — 진루 시도 중 아웃 → (W)/(P) 표기
+    outBase?: Base | 'HOME' // 아웃 위치 — 연결동작 등 2루 이상 진루 후 아웃 (미선택 시 자동 추론)
   ) => void;
   onClose: () => void;
 }
@@ -74,18 +77,23 @@ export default function RunOutModal({
   const [wInsert, setWInsert] = useState(false);
   const [pInsert, setPInsert] = useState(false);
   const [csRecord, setCsRecord] = useState(false);
+  const [pickoffInsert, setPickoffInsert] = useState(false);
   const [pickoffBase, setPickoffBase] = useState<PickoffBase>('1');
   const [deflection, setDeflection] = useState<DeflectionInfo | null>(null);
   const [samePlay, setSamePlay] = useState(false);
+  // 아웃 위치 — 연결동작 등으로 2루 이상 진루 후 아웃된 경우 명시 선택 (null = 자동 추론)
+  const [outPos, setOutPos] = useState<Base | 'HOME' | null>(null);
 
   const reset = () => {
     setDefSeq([]);
     setWInsert(false);
     setPInsert(false);
     setCsRecord(false);
+    setPickoffInsert(false);
     setPickoffBase('1');
     setDeflection(null);
     setSamePlay(false);
+    setOutPos(null);
   };
 
   // 모달이 열릴 때마다 초기화
@@ -100,7 +108,15 @@ export default function RunOutModal({
     const roles: DefRole[] = defSeq
       .filter((r) => r.assist || r.putout || r.error)
       .map((r) => ({ pos: r.pos, assist: r.assist, putout: r.putout, error: r.error }));
-    onConfirm(seq, deflection ?? undefined, roles.length ? roles : undefined, samePlay);
+    onConfirm(
+      seq,
+      deflection ?? undefined,
+      roles.length ? roles : undefined,
+      samePlay,
+      pickoffInsert ? (Number(pickoffBase) as 1 | 2 | 3) : undefined,
+      wInsert ? 'W' : pInsert ? 'P' : undefined,
+      outPos ?? undefined
+    );
     reset();
   };
 
@@ -572,6 +588,33 @@ export default function RunOutModal({
                   {B('IP 부정주루', 'IP  부정 주루')}
                 </div>
               </div>
+              {/* 아웃 위치 — 연결동작 등 한 번에 2루 이상 진루하다 아웃된 경우 명시 선택 */}
+              {(runnerBase === '1B' || runnerBase === '2B') && (
+                <div style={{ borderTop: '1px solid var(--border2)' }}>
+                  <div className="rg">
+                    <div className="rs-title">아웃 위치 (미선택 시 자동)</div>
+                    {(runnerBase === '1B'
+                      ? ([
+                          { v: '2B', l: '2루 앞 (기본)' },
+                          { v: '3B', l: '3루 앞' },
+                          { v: 'HOME', l: '홈 앞' },
+                        ] as { v: Base | 'HOME'; l: string }[])
+                      : ([
+                          { v: '3B', l: '3루 앞 (기본)' },
+                          { v: 'HOME', l: '홈 앞' },
+                        ] as { v: Base | 'HOME'; l: string }[])
+                    ).map((o) => (
+                      <button
+                        key={o.v}
+                        className={`r-btn${outPos === o.v ? ' sel' : ''}`}
+                        onClick={() => setOutPos((p) => (p === o.v ? null : o.v))}
+                      >
+                        {o.l}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* 옵션 열 */}
@@ -636,29 +679,48 @@ export default function RunOutModal({
                 도루자기록
               </label>
               <div style={{ borderTop: '1px solid var(--border2)', paddingTop: 8, marginTop: 2 }}>
-                <div style={{ fontSize: 10, color: 'var(--text3)', marginBottom: 4 }}>견제</div>
-                {(['1', '2', '3'] as PickoffBase[]).map((b) => (
-                  <label
-                    key={b}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 4,
-                      fontSize: 10,
-                      cursor: 'pointer',
-                      marginBottom: 2,
-                    }}
-                  >
-                    <input
-                      type="radio"
-                      name="runOutPickoff"
-                      checked={pickoffBase === b}
-                      onChange={() => setPickoffBase(b)}
-                      style={{ accentColor: 'var(--blue)' }}
-                    />
-                    {b}루견제
-                  </label>
-                ))}
+                <label
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 4,
+                    fontSize: 11,
+                    cursor: 'pointer',
+                    marginBottom: 4,
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={pickoffInsert}
+                    onChange={(e) => setPickoffInsert(e.target.checked)}
+                    style={{ accentColor: 'var(--blue)' }}
+                  />
+                  견제삽입
+                </label>
+                {pickoffInsert &&
+                  (['1', '2', '3'] as PickoffBase[]).map((b) => (
+                    <label
+                      key={b}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 4,
+                        fontSize: 10,
+                        cursor: 'pointer',
+                        marginBottom: 2,
+                        paddingLeft: 12,
+                      }}
+                    >
+                      <input
+                        type="radio"
+                        name="runOutPickoff"
+                        checked={pickoffBase === b}
+                        onChange={() => setPickoffBase(b)}
+                        style={{ accentColor: 'var(--blue)' }}
+                      />
+                      {b}루견제
+                    </label>
+                  ))}
               </div>
             </div>
           </div>

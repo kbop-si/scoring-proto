@@ -25,7 +25,13 @@ function eventEntryLabel(e: CellEventEntry): string {
     return `/ ${e.runnerName} ${cause}`;
   }
   if (e.kind === 'runner_adv') return `${e.runnerName} 진루 → ${e.dest}`;
-  if (e.kind === 'note') return e.note;
+  if (e.kind === 'note') {
+    if (e.note.startsWith('PK')) {
+      const n = Math.min(3, Math.max(1, parseInt(e.note.slice(2), 10) || 1));
+      return `/${'-'.repeat(n)} ${n}루견제`;
+    }
+    return e.note;
+  }
   return '';
 }
 

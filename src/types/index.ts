@@ -92,6 +92,8 @@ export interface CellData {
   ballType?: '땅' | '뜬' | '라'; // 타구 유형 (땅볼/뜬공/라이너)
   runOut?: string; // 주자 아웃 결과 코드 (주루 중 아웃될 때)
   runOutBase?: string; // 주자가 아웃된 베이스 ('1B' | '2B' | '3B')
+  // 폭투/포일 중 진루 시도하다 아웃 — (W)/(P) 표기 (주자 아웃이므로 투수 폭투/포일 기록 안 함)
+  runOutWp?: 'W' | 'P';
   runOutNum?: number; // 병살/삼중살에서 이 주자의 아웃 순서 (1-3)
   runOutInning?: number; // 주자가 아웃된 이닝 (outMap 계산용)
   lobCell?: boolean; // 잔루 — 이닝 종료 시 홈에 못 들어온 주자 셀에 표기 (ℓ)
@@ -498,9 +500,11 @@ export type GameAction =
       type: 'RUN_OUT';
       base: Base;
       result: string;
+      outBase?: Base | 'HOME'; // 명시적 아웃 위치 — 연결동작 등 2루 이상 진루 후 아웃 시 지정 (미지정이면 결과 코드로 추론)
       deflection?: DeflectionInfo;
       defRoles?: DefRole[];
       samePlay?: boolean; // 직전 아웃과 동일 플레이 — 두 아웃 셀을 { 브레이스로 묶음
+      wpMark?: 'W' | 'P'; // 폭투/포일 삽입 — 진루 시도 중 아웃 → (W)/(P) 표기, 투수 기록 제외
     }
   | { type: 'NEXT_BATTER' }
   | { type: 'NEXT_INNING' }
@@ -534,7 +538,7 @@ export type GameAction =
     }
   | { type: 'REVERT' }
   | { type: 'REVERT_TO'; cellKey: string }
-  | { type: 'DELETE_INNING'; inning: number }
+  | { type: 'DELETE_INNING'; inning: number; half?: Half } // half 지정 시 해당 반이닝만 삭제
   | { type: 'DELETE_CELL'; cellKey: string }
   | { type: 'EDIT_PITCH_SEQ'; cellKey: string; pitches: PitchType[] }
   // 볼카운트 순서 수정 (도루 '/' 등 주자 이벤트 포함) — entries = result 이전 구간의 eventLog 전체
@@ -574,6 +578,7 @@ export type GameAction =
       pos: number; // 수비 포지션
       newName: string;
       newNum: string;
+      atOrder?: number; // 교체 발생 시점에 타석에 있던 타자 타순 (이닝 중간 교체 표기용)
     }
   | {
       type: 'RETRO_SUBST_BATTER';
@@ -647,4 +652,13 @@ export type GameAction =
       newScorePitcher?: string;
     }
   | { type: 'SET_GAME_DECISIONS'; decisions: GameDecisions }
-  | { type: 'SWAP_FIELD_POS'; team: 'away' | 'home'; idx1: number; idx2: number };
+  // inning/half 지정 시 소급 수비 변경 — 교체 로그(D)가 그 시점 발생으로 기록됨
+  | {
+      type: 'SWAP_FIELD_POS';
+      team: 'away' | 'home';
+      idx1: number;
+      idx2: number;
+      inning?: number;
+      half?: Half;
+      atOrder?: number; // 교체 발생 시점 타석 타자 타순 (이닝 중간 교체 표기용)
+    };

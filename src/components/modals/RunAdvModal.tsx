@@ -61,7 +61,12 @@ interface Props {
   onSetEarned: (v: boolean | 'half') => void;
   onSetRbi: (v: boolean) => void;
   onSetPitcher: (v: string) => void;
-  onConfirm: (chain: boolean, fielderSeq: FielderEntry[], deflection?: DeflectionInfo) => void;
+  onConfirm: (
+    chain: boolean,
+    fielderSeq: FielderEntry[],
+    deflection?: DeflectionInfo,
+    pickoff?: 1 | 2 | 3 // 견제삽입 — n루견제 시도 마크 (/-, /--, /---)
+  ) => void;
   onClose: () => void;
 }
 
@@ -890,7 +895,12 @@ export default function RunAdvModal({
             <button
               className="btn-ok"
               onClick={() =>
-                onConfirm(연속플레이, fielderSeq, canDefl ? (deflection ?? undefined) : undefined)
+                onConfirm(
+                  연속플레이,
+                  fielderSeq,
+                  canDefl ? (deflection ?? undefined) : undefined,
+                  견제삽입 ? 견제루 : undefined
+                )
               }
               disabled={!canConfirm}
               style={{ opacity: canConfirm ? 1 : 0.4 }}
