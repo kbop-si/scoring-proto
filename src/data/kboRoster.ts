@@ -28,9 +28,9 @@ export const KBO_ROSTER: Record<string, Player[]> = {
     { name: '염승원', num: '39', pos: 4, order: 0, hitType: 1 },
     { name: '고영우', num: '23', pos: 5, order: 0, hitType: 2 },
     //외야수
-    { name: '최윤호', num: '114', pos: 7, order: 2, hitType: 1 },
+    { name: '이도훈', num: '08', pos: 7, order: 2, hitType: 2 },
     { name: '김현종', num: '66', pos: 8, order: 1, hitType: 2 },
-    { name: '김정민', num: '48', pos: 9, order: 6, hitType: 1 },
+    { name: '이원준', num: '100', pos: 9, order: 6, hitType: 2 },
     { name: '박채울', num: '72', pos: 7, order: 0, hitType: 2 },
     { name: '박한결', num: '13', pos: 8, order: 0, hitType: 2 },
     //지명타자
@@ -38,7 +38,7 @@ export const KBO_ROSTER: Record<string, Player[]> = {
   ],
   남부: [
     //투수
-    { name: '김정운', num: '61', pos: 1, order: 0, hitType: 1 },
+    { name: '장민호', num: '61', pos: 1, order: 0, hitType: 1 },
     { name: '박지훈', num: '66', pos: 1, order: 0, hitType: 1 },
     { name: '최요한', num: '67', pos: 1, order: 0, hitType: 1 },
     { name: '홍재문', num: '38', pos: 1, order: 0, hitType: 1 },
@@ -53,7 +53,7 @@ export const KBO_ROSTER: Record<string, Player[]> = {
     { name: '홀', num: '12', pos: 2, order: 0, hitType: 3 },
     //내야수
     { name: '신재인', num: '9', pos: 3, order: 3, hitType: 2 },
-    { name: '이서준', num: '63', pos: 4, order: 4, hitType: 2 },
+    { name: '이지훈', num: '63', pos: 4, order: 4, hitType: 2 },
     { name: '심재훈', num: '6', pos: 5, order: 5, hitType: 2 },
     { name: '엄준현', num: '131', pos: 6, order: 7, hitType: 2 },
     { name: '박종혁', num: '133', pos: 4, order: 0, hitType: 2 },
