@@ -167,23 +167,86 @@ export default function GameInfoScreen({
   const [rec1, setRec1] = useState(setup.recorder1 ?? '');
   const [rec2, setRec2] = useState(setup.recorder2 ?? '');
 
-  const officialList = useMemo(
+  // 심판위원 명단
+  const umpireList = useMemo(
     () =>
       [
-        '김철수',
-        '이영희',
-        '박민수',
-        '최지훈',
-        '정우성',
-        '강동원',
-        '오시현',
-        '윤태훈',
-        '김원석',
-        '김수현',
-        '이지은',
+        '김성철',
+        '김병주',
+        '전일수',
+        '박종철',
+        '나광남',
+        '박기택',
+        '박근영',
+        '문승훈',
+        '이영재',
+        '김풍기',
+        '원현식',
+        '오훈규',
+        '우효동',
+        '강광회',
+        '윤상원',
+        '최수원',
+        '권영철',
+        '추평호',
+        '문동균',
+        '김준희',
+        '김정국',
+        '이기중',
+        '이계성',
+        '황인태',
+        '배병두',
+        '김익수',
+        '정종수',
+        '장준영',
+        '송수근',
+        '윤태수',
+        '이용혁',
+        '구명환',
+        '김선수',
+        '함지웅',
+        '김갑수',
+        '정은재',
+        '최영주',
+        '차정구',
+        '김태완',
+        '김정',
+        '이민호',
+        '이호성',
         '박지민',
-        '남궁심판',
-        '선우기록',
+        '전준영',
+        '장호석',
+        '황인권',
+        '송원호',
+        '허정수',
+        '이상민',
+        '방건우',
+        '김준석',
+        '하승범',
+      ].sort(),
+    []
+  );
+  // 기록위원(기록원) 명단
+  const recorderList = useMemo(
+    () =>
+      [
+        '한인희',
+        '진철훈',
+        '최성용',
+        '김영성',
+        '이주헌',
+        '송권일',
+        '윤치원',
+        '장준봉',
+        '송형민',
+        '김형준',
+        '최종원',
+        '김제원',
+        '김준현',
+        '오성훈',
+        '이경수',
+        '정석준',
+        '이종훈',
       ].sort(),
     []
   );
@@ -462,10 +525,12 @@ export default function GameInfoScreen({
             {/* 2열 */}
             <div>
               {(() => {
-                // 심판·기록원 — 중복 배정 방지. 각 필드의 옵션은 (전체 - 이미 다른 필드에 들어간 사람들)
+                // 심판·기록원 — 중복 배정 방지. 각 필드의 옵션은 (해당 명단 - 이미 다른 필드에 들어간 사람들)
                 const allAssigned = [uHome, u1B, u2B, u3B, uLeft, uRight, uWait, rec1, rec2];
-                const optsExcluding = (self: string) =>
-                  officialList.filter((n) => !allAssigned.some((v) => v && v !== self && v === n));
+                const excludeAssigned = (list: string[]) => (self: string) =>
+                  list.filter((n) => !allAssigned.some((v) => v && v !== self && v === n));
+                const umpOpts = excludeAssigned(umpireList);
+                const recOpts = excludeAssigned(recorderList);
                 return (
                   <>
                     <div style={sectionTitleStyle}>심판</div>
@@ -475,43 +540,43 @@ export default function GameInfoScreen({
                           label="주심"
                           value={uHome}
                           setter={setUHome}
-                          options={optsExcluding(uHome)}
+                          options={umpOpts(uHome)}
                         />
                         <SearchableInput
                           label="1루심"
                           value={u1B}
                           setter={setU1B}
-                          options={optsExcluding(u1B)}
+                          options={umpOpts(u1B)}
                         />
                         <SearchableInput
                           label="2루심"
                           value={u2B}
                           setter={setU2B}
-                          options={optsExcluding(u2B)}
+                          options={umpOpts(u2B)}
                         />
                         <SearchableInput
                           label="3루심"
                           value={u3B}
                           setter={setU3B}
-                          options={optsExcluding(u3B)}
+                          options={umpOpts(u3B)}
                         />
                         <SearchableInput
                           label="좌선심"
                           value={uLeft}
                           setter={setULeft}
-                          options={optsExcluding(uLeft)}
+                          options={umpOpts(uLeft)}
                         />
                         <SearchableInput
                           label="우선심"
                           value={uRight}
                           setter={setURight}
-                          options={optsExcluding(uRight)}
+                          options={umpOpts(uRight)}
                         />
                         <SearchableInput
                           label="대기심"
                           value={uWait}
                           setter={setUWait}
-                          options={optsExcluding(uWait)}
+                          options={umpOpts(uWait)}
                         />
                       </tbody>
                     </table>
@@ -522,13 +587,13 @@ export default function GameInfoScreen({
                           label="기록원1"
                           value={rec1}
                           setter={setRec1}
-                          options={optsExcluding(rec1)}
+                          options={recOpts(rec1)}
                         />
                         <SearchableInput
                           label="기록원2"
                           value={rec2}
                           setter={setRec2}
-                          options={optsExcluding(rec2)}
+                          options={recOpts(rec2)}
                         />
                       </tbody>
                     </table>
