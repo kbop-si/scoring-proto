@@ -243,6 +243,7 @@ export interface SubstitutionLog {
   side: 'away' | 'home';
   kind: 'H' | 'R' | 'D'; // H=대타, R=대주자, D=수비교대
   pos: number; // 새 포지션 (H/R는 0 또는 미사용)
+  oldPos?: number; // 교체 직전 그 타순 슬롯이 지키던 포지션 — 수비기록 구간 역산용
   newName: string;
   newNum: string;
   oldName: string;

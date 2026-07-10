@@ -599,12 +599,13 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
       const oldPos = target.pos;
       const side: 'away' | 'home' = action.team;
       const newSubs: SubstitutionLog[] = [];
-      const mkLog = (p: Player, pos: number): SubstitutionLog => ({
+      const mkLog = (p: Player, pos: number, prevPos: number): SubstitutionLog => ({
         inning: state.inning,
         half: state.half,
         side,
         kind: 'D',
         pos,
+        oldPos: prevPos,
         newName: p.name,
         newNum: p.num,
         oldName: '',
@@ -620,14 +621,14 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
         if (swapIdx >= 0) {
           const swapped = { ...lu[swapIdx], pos: oldPos };
           lu[swapIdx] = swapped;
-          newSubs.push(mkLog(swapped, oldPos));
+          newSubs.push(mkLog(swapped, oldPos, action.pos));
         }
       }
       lu[action.idx] = { ...lu[action.idx], pos: action.pos, needsPosReview: false };
 
       // 본인의 포지션 변경 — 실제 변경이 있을 때만 로깅
       if (oldPos !== action.pos) {
-        newSubs.push(mkLog(lu[action.idx], action.pos));
+        newSubs.push(mkLog(lu[action.idx], action.pos, oldPos));
       }
       const substitutions =
         newSubs.length > 0 ? [...state.substitutions, ...newSubs] : state.substitutions;
@@ -2440,6 +2441,10 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
         }
       }
 
+      // 삭제 후엔 해당 타석 재입력 대기 상태로 반환하므로, 아웃이 아닌 타석을 삭제해
+      // 이닝의 3아웃이 그대로 남아 있어도 입력 가드(3아웃)에 걸리지 않게 2로 캡
+      outs = Math.min(outs, 2);
+
       // 점수/안타/실책/자책 전체 재계산 (ScoreSheet 와 동일 공식)
       const HIT = new Set(['H1', 'H2', 'H3', 'HR', 'GHR', 'INT', 'BUNT', 'OBUNT']);
       let awayR = 0,
@@ -2582,6 +2587,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
 
       let oldPlayer: Player | null = null;
       let logOrder: number | undefined;
+      let slotOldPos: number | undefined;
 
       if (existingIdx >= 0 && targetIdx >= 0 && existingIdx !== targetIdx) {
         // 라인업 내 선수가 새 포지션으로 이동 → 두 선수 포지션 swap
@@ -2591,6 +2597,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
         lu[targetIdx] = { ...lu[targetIdx], pos: oldPosOfNewPlayer };
         // 새 선수의 본인 배팅 타순 (= existingIdx의 order, 변경 안 됨)
         logOrder = lu[existingIdx].order;
+        slotOldPos = oldPosOfNewPlayer; // 이 타순 슬롯이 이동 전에 지키던 자리
       } else if (targetIdx >= 0) {
         // 벤치에서 새로 들어옴 → 기존 포지션 선수와 교체
         oldPlayer = lu[targetIdx];
@@ -2599,6 +2606,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
         bench.splice(bench.indexOf(player), 1);
         // 새 선수가 인계받은 타순 (= 빠진 선수의 order)
         logOrder = oldPlayer.order;
+        slotOldPos = oldPlayer.pos;
       }
 
       const subEntry: SubstitutionLog = {
@@ -2607,6 +2615,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
         side,
         kind: 'D',
         pos,
+        oldPos: slotOldPos,
         newName: player.name,
         newNum: player.num,
         oldName: oldPlayer?.name ?? '',
@@ -2710,6 +2719,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
         side,
         kind: 'D',
         pos,
+        oldPos: oldPlayer?.pos,
         newName,
         newNum,
         oldName: oldPlayer?.name ?? '',
@@ -2776,6 +2786,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
         side,
         kind: 'H',
         pos: 0,
+        oldPos: oldPlayer?.pos,
         newName: player.name,
         newNum: player.num,
         oldName: oldPlayer?.name ?? '',
@@ -2847,8 +2858,10 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
       const lu = [...state[luKey]];
       const bench = [...state[benchKey]];
       const idx = lu.findIndex((x) => x.order === prev.order);
+      let slotOldPos: number | undefined;
       if (idx >= 0) {
         const old = lu[idx];
+        slotOldPos = old.pos;
         lu[idx] = { ...player, order: old.order, pos: old.pos, needsPosReview: true };
         bench.push({ ...old });
         const pi = bench.findIndex((x) => x.num === player.num && x.name === player.name);
@@ -2870,6 +2883,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
         side,
         kind: 'R',
         pos: 0,
+        oldPos: slotOldPos,
         newName: player.name,
         newNum: player.num,
         oldName: prev.name,
@@ -2959,6 +2973,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
         side,
         kind: 'H',
         pos: 0,
+        oldPos: oldPlayer?.pos,
         newName: player.name,
         newNum: player.num,
         oldName: oldPlayer?.name ?? '',
@@ -3672,6 +3687,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
           side: action.team,
           kind: 'D' as const,
           pos: p2.pos,
+          oldPos: p1.pos,
           newName: p1.name,
           newNum: p1.num,
           oldName: p1.name,
@@ -3685,6 +3701,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
           side: action.team,
           kind: 'D' as const,
           pos: p1.pos,
+          oldPos: p2.pos,
           newName: p2.name,
           newNum: p2.num,
           oldName: p2.name,

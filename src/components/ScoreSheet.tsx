@@ -3105,13 +3105,28 @@ export default function ScoreSheet({ G, onSelCell }: Props) {
                     name: string;
                     num: string;
                     inning?: number;
+                    half?: 'top' | 'bottom'; // 교체 발생 반이닝 — 수비기록 창 계산용
                     atOrder?: number;
+                    statPos?: number; // 수비 집계용 포지션 — left가 표시용으로 비워진 선발 layer에 사용
                   };
                   const layers: Layer[] = [];
                   const starterName = orderSubs[0]?.oldName || p.name;
                   const starterNum = orderSubs[0]?.oldNum || p.num;
                   const starterPos = p.pos === 0 ? 'D' : String(orderSubs[0] ? '' : p.pos || '');
-                  layers.push({ left: starterPos || '', name: starterName, num: starterNum });
+                  // 선발의 수비 집계용 포지션 — left가 비워져도 스탯은 계산되어야 함.
+                  // 첫 교체 이벤트의 oldPos(교체 직전 슬롯 포지션)가 정확한 값.
+                  // oldPos 없는 구형 데이터는 첫 D 이벤트 pos → 현재 라인업 pos 순 폴백
+                  const firstD = orderSubs.find((s) => s.kind === 'D' && s.pos > 0);
+                  const starterStatPos =
+                    p.pos === 0
+                      ? undefined
+                      : (orderSubs[0]?.oldPos ?? firstD?.pos ?? (p.pos || undefined));
+                  layers.push({
+                    left: starterPos || '',
+                    name: starterName,
+                    num: starterNum,
+                    statPos: starterStatPos,
+                  });
                   for (const s of orderSubs) {
                     const left =
                       s.kind === 'R'
@@ -3139,6 +3154,7 @@ export default function ScoreSheet({ G, onSelCell }: Props) {
                         name: s.newName,
                         num: s.newNum,
                         inning: s.inning,
+                        half: s.half,
                         atOrder: s.atOrder,
                       });
                     }
@@ -3160,15 +3176,24 @@ export default function ScoreSheet({ G, onSelCell }: Props) {
                       >
                         {/* 풋아웃/어시스트/실책/병살 — 각 sub-row */}
                         {(() => {
-                          const defPos = parseInt(layer?.left ?? '');
+                          const defPos = layer?.statPos ?? parseInt(layer?.left ?? '');
+                          // 수비기록 창 시작 이닝 — 공격 중(대타/대주자) 교체는 그 반이닝 수비가
+                          // 아직 남의 시간이므로 다음 수비 이닝부터 귀속
+                          // (이 팀 수비 = 초면 다음 이닝, 말이면 같은 이닝 번호)
+                          const fieldHalf = half === 'top' ? 'bottom' : 'top';
+                          const defFromInn = (l?: Layer): number | undefined => {
+                            if (!l?.inning) return undefined;
+                            if (!l.half || l.half === fieldHalf) return l.inning;
+                            return fieldHalf === 'top' ? l.inning + 1 : l.inning;
+                          };
                           const fs = isNaN(defPos)
                             ? { fo: 0, pa: 0, err: 0, dp: 0 }
                             : calcFieldingStats(
                                 G,
                                 half,
                                 defPos,
-                                layers[sub]?.inning,
-                                layers[sub + 1]?.inning
+                                defFromInn(layers[sub]),
+                                defFromInn(layers[sub + 1])
                               );
                           const cell = (v: number) => (
                             <td
