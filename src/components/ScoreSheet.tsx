@@ -3115,12 +3115,35 @@ export default function ScoreSheet({ G, onSelCell }: Props) {
                   const starterPos = p.pos === 0 ? 'D' : String(orderSubs[0] ? '' : p.pos || '');
                   // 선발의 수비 집계용 포지션 — left가 비워져도 스탯은 계산되어야 함.
                   // 첫 교체 이벤트의 oldPos(교체 직전 슬롯 포지션)가 정확한 값.
-                  // oldPos 없는 구형 데이터는 첫 D 이벤트 pos → 현재 라인업 pos 순 폴백
+                  // oldPos 없는 구형 데이터 폴백:
+                  //  - 첫 D가 자리교대(같은 선수 이동)면 파트너 엔트리(같은 시점 반대쪽 이동)의
+                  //    pos가 곧 이동 전 자리 — 맞교환 시 선발 구간이 서로 뒤바뀌는 오류 방지
+                  //  - 그 외(벤치 승계 등)는 첫 D의 pos → 현재 라인업 pos 순
                   const firstD = orderSubs.find((s) => s.kind === 'D' && s.pos > 0);
+                  const inferStarterPos = (): number | undefined => {
+                    if (!firstD) return undefined;
+                    const isSelfMove = firstD.oldName !== '' && firstD.oldName === firstD.newName;
+                    if (isSelfMove) {
+                      const partner = (G.substitutions || []).find(
+                        (s2) =>
+                          s2 !== firstD &&
+                          s2.side === tableSide &&
+                          s2.kind === 'D' &&
+                          s2.inning === firstD.inning &&
+                          s2.half === firstD.half &&
+                          s2.atOrder === firstD.atOrder &&
+                          s2.oldName !== '' &&
+                          s2.oldName === s2.newName &&
+                          s2.order !== firstD.order
+                      );
+                      if (partner) return partner.pos;
+                    }
+                    return firstD.pos;
+                  };
                   const starterStatPos =
                     p.pos === 0
                       ? undefined
-                      : (orderSubs[0]?.oldPos ?? firstD?.pos ?? (p.pos || undefined));
+                      : (orderSubs[0]?.oldPos ?? inferStarterPos() ?? (p.pos || undefined));
                   layers.push({
                     left: starterPos || '',
                     name: starterName,
