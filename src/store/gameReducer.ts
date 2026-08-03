@@ -109,6 +109,29 @@ export function isOnBase(r: string | null): boolean {
   ].includes(r);
 }
 
+// 타구가 실제로 발생한 결과(안타·땅볼/뜬공 아웃·실책·야수선택·병살 등) — 같은 플레이에서
+// 다른 주자도 함께 움직여 그 여파(추가 진루)를 다음 타자로 넘어간 뒤 뒤늦게 기록하게 되는
+// "연결형" 결과. 삼진(타구 없음)과 강제진루형 볼넷/사구(causedBy를 결과 처리 시점에 이미
+// 직접 찍음 — addForceNote)는 제외. RUN_ADV의 이전 타자 귀속 추론에서만 사용.
+function isMultiRunnerPlayResult(r: string | null): boolean {
+  if (!r) return false;
+  if (r === 'B' || r === 'IB' || r === 'IB2' || r === 'HP') return false;
+  const isStrikeoutOut = r === 'K' || r === 'K3B' || r.startsWith('KT') || /^ꓘ[\d-]+T?$/.test(r);
+  if (isStrikeoutOut) return false;
+  return isOut(r) || isOnBase(r);
+}
+
+// 이 반이닝에서 특정 타순의 가장 최근(결과 있는) 셀 — 이전 타자 결과 참조용
+// (한 이닝에 같은 타순이 두 번 오는 빅이닝 대비 appearance 최댓값 사용)
+function lastResultCellForOrder(s: GameState, order: number): CellData | undefined {
+  return Object.values(s.cells)
+    .filter(
+      (c) => c.half === s.half && c.inning === s.inning && c.order === order && c.result !== null
+    )
+    .sort((a, b) => a.appearance - b.appearance)
+    .pop();
+}
+
 // 실책 체크박스(defRoles/runOutDefRoles) → 표시용 E 마크 삽입.
 // 저장된 result/runOut 코드는 불변(파서 호환 유지) — 표시 시점에만 호출.
 // 배치 규칙은 BatAdvModal.buildSeqWithError 와 동일: 단일 수비수 E4 / 마지막 수비수(포구) 4-3E / 그 외(송구) E4-3
@@ -1611,12 +1634,20 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
         '✓(BK)',
       ];
       const isRunAdvSelf = !!action.steal || RUN_ADV_SELF_CODES.includes(action.advCode || '');
+      // 기본은 현재 타자 귀속(현재 타자의 결과로 인한 진루라고 간주) — 새 타자 셀이 아직
+      // 비어있다는 이유만으로 이전 타자 탓으로 넘기지 않음. 예외: 직전 타자가 희생플라이/
+      // 희생번트(아웃)나 실책으로 나간 "연결형" 결과일 때만, 그 플레이의 잔여 여파(다른
+      // 주자 추가 진루)를 다음 타자로 넘어간 뒤 뒤늦게 기록하는 것으로 보고 직전 타자에 귀속.
       let inferredCausedBy = state.curBatterOrder;
       if (!action.causedBy && !isRunAdvSelf) {
         const curCell = state.cells[state.selCellKey];
         const hasBattingRecord = !!curCell && (curCell.pitches.length > 0 || !!curCell.result);
         if (!hasBattingRecord) {
-          inferredCausedBy = state.curBatterOrder === 1 ? 9 : state.curBatterOrder - 1;
+          const prevOrder = state.curBatterOrder === 1 ? 9 : state.curBatterOrder - 1;
+          const prevCell = lastResultCellForOrder(state, prevOrder);
+          if (prevCell && isMultiRunnerPlayResult(prevCell.result)) {
+            inferredCausedBy = prevOrder;
+          }
         }
       }
       const runAdvCausedBy = action.causedBy ?? inferredCausedBy;
@@ -1892,11 +1923,16 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
         : [];
       let midCausedBy = state.curBatterOrder;
       if (midBases.length) {
-        // RUN_ADV와 동일 귀속 추론: 현재 타자 기록이 아직 없으면 직전 타자의 플레이로 귀속
+        // RUN_ADV와 동일 귀속 추론: 현재 타자 기록이 아직 없고, 직전 타자가 연결형 결과
+        // (타구 발생)일 때만 직전 타자의 플레이로 귀속
         const curCell = state.cells[state.selCellKey];
         const hasBattingRecord = !!curCell && (curCell.pitches.length > 0 || !!curCell.result);
         if (!hasBattingRecord) {
-          midCausedBy = state.curBatterOrder === 1 ? 9 : state.curBatterOrder - 1;
+          const prevOrder = state.curBatterOrder === 1 ? 9 : state.curBatterOrder - 1;
+          const prevCell = lastResultCellForOrder(state, prevOrder);
+          if (prevCell && isMultiRunnerPlayResult(prevCell.result)) {
+            midCausedBy = prevOrder;
+          }
         }
       }
       const withMidNotes = (existing: RunnerNote[]): RunnerNote[] => {
