@@ -30,6 +30,8 @@ function getStartBaseIdx(r: string | null): number {
   if (['HR', 'GHR', 'GCW'].includes(r)) return 4;
   if (/^>>>[789]$/.test(r) || r === '>>>hit' || r === 'H3') return 3;
   if (/^>[789](-[789])?$/.test(r) || r === '>hit' || r === 'H2') return 2;
+  // 선행주자아웃 — isOnBase 목록에는 없지만 타자는 1루 출루 (멀티 진루 표기용)
+  if (r === '선행주자아웃' || r === '→선행주자아웃') return 1;
   if (isOnBase(r)) return 1;
   return 0;
 }
@@ -208,7 +210,32 @@ function ScoreCell({
 }) {
   const pitches = cell?.pitches || [];
   const result = cell?.result || null;
-  const notes = cell?.runnerNotes || [];
+  const rawNotes = cell?.runnerNotes || [];
+  // 같은 원인 타자(causedBy)의 연속 무코드 진루(1→2, 2→3로 나눠 입력된 경우)는
+  // 하나의 연속 진루(1→3)로 합쳐서 한자+화살표 멀티 표기를 타게 함 (정답지 방식)
+  const notes = rawNotes.reduce<typeof rawNotes>((acc, n) => {
+    const prev = acc[acc.length - 1];
+    if (
+      prev &&
+      !prev.advCode &&
+      !n.advCode &&
+      prev.causedBy != null &&
+      prev.causedBy === n.causedBy &&
+      prev.base !== 'HOME' &&
+      !prev.force &&
+      !n.force &&
+      !prev.steal &&
+      !n.steal &&
+      !prev.chain &&
+      !n.chain &&
+      (BIDX[n.base] || 0) > (BIDX[prev.base] || 0)
+    ) {
+      acc[acc.length - 1] = { ...n }; // 최종 도착 노트만 유지 (rbi 등 최종 플래그 보존)
+      return acc;
+    }
+    acc.push(n);
+    return acc;
+  }, []);
   const scored = cell?.scored || false;
   const earned = cell?.earned;
   const runOut = cell?.runOut || null;
@@ -354,8 +381,10 @@ function ScoreCell({
   let nonHomeSkipKanjiTarget: string | null = null;
   let nonHomeSkipKanjiFromBase: string | null = null;
   let nonHomeSkipCausedBy: number | null = null;
-  if (onBase || scored) {
-    const startIdx = getStartBaseIdx(result);
+  // 선행주자아웃 등 isOnBase 목록 밖 출루 코드도 시작 루가 있으면 멀티 진루 표기 적용
+  const multiStartIdx = getStartBaseIdx(result);
+  if (onBase || scored || multiStartIdx > 0) {
+    const startIdx = multiStartIdx;
     let curIdx = startIdx;
     for (const n of notes) {
       const destIdx = BIDX[n.base] || 0;
@@ -575,6 +604,8 @@ function ScoreCell({
             fontSize: 8,
             fontWeight: 900,
             color: '#0003cc',
+            lineHeight: 1,
+            boxSizing: 'border-box',
           }}
         >
           t
@@ -601,6 +632,30 @@ function ScoreCell({
           }}
         >
           d
+        </div>
+      );
+    }
+    if (note === 'VR') {
+      return (
+        <div
+          key={key}
+          title="비디오판독"
+          style={{
+            width: 12,
+            height: 12,
+            borderRadius: '50%',
+            border: '1px solid #dc2626',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            fontSize: 7,
+            fontWeight: 700,
+            color: '#dc2626',
+            lineHeight: 1,
+            boxSizing: 'border-box',
+          }}
+        >
+          VR
         </div>
       );
     }
@@ -708,6 +763,18 @@ function ScoreCell({
       let pinchSubIdx = 0; // pinchSubsAt 배열 내 현재 인덱스
       while (i < eventLog.length) {
         const entry = eventLog[i];
+        // 같은 투구 시점의 대타 사다리는 노트(타자타임 등)·주자 이벤트보다 먼저 표시
+        // (교체가 먼저 일어난 뒤 새 타자의 타임 요청이 뒤따르는 순서)
+        if (entry.kind !== 'pitch') {
+          while (
+            pinchSubsAt &&
+            pinchSubIdx < pinchSubsAt.length &&
+            pinchSubsAt[pinchSubIdx].at === pitchCounter
+          ) {
+            items.push(ladderMark(pinchSubsAt[pinchSubIdx].tip));
+            pinchSubIdx++;
+          }
+        }
         if (entry.kind === 'pitch') {
           if (pitcherChangeAt !== undefined && pitchCounter === pitcherChangeAt) {
             items.push(smallWave(`sw-${i}`));
@@ -848,7 +915,7 @@ function ScoreCell({
   };
 
   const bbChargedTo = cell?.bbChargedTo;
-  const STAR_NOTES = new Set(['VR', 'CS', 'ME', 'GD', 'WE', 'UC']);
+  const STAR_NOTES = new Set(['CS', 'ME', 'GD', 'WE', 'UC']);
   const hasStarNote = sideNotes.some((n) => STAR_NOTES.has(String(n).trim()));
   return (
     <div className={cls}>
@@ -931,7 +998,7 @@ function ScoreCell({
           sideNotes.map((n, i) => {
             const note = String(n).trim();
 
-            if (STAR_NOTES.has(note)) return null;
+            if (STAR_NOTES.has(note) || note === 'VR') return null;
 
             if (note === 'M_R') {
               return (
@@ -980,6 +1047,8 @@ function ScoreCell({
                     fontSize: 8,
                     fontWeight: 900,
                     color: '#0003cc',
+                    lineHeight: 1,
+                    boxSizing: 'border-box',
                   }}
                 >
                   t
@@ -1827,7 +1896,7 @@ function ScoreCell({
             </>
           )}
           {result.startsWith('SF')
-            ? // 희생플라이: 네모 안에 NF(외야)/Nf(내야)/NL(라인)
+            ? // 희생플라이: 네모 안에 FN(외야)/fN(내야)/LN(라인) — 문자 먼저 (기록 규칙)
               (() => {
                 const seq = dispResult.slice(2);
                 const lastN = parseInt((seq.match(/\d+/g) ?? []).pop() ?? '0');
@@ -1845,8 +1914,8 @@ function ScoreCell({
                       fontSize: 13,
                     }}
                   >
-                    {seq}
                     {sfx}
+                    {seq}
                   </span>
                 );
               })()
@@ -2078,7 +2147,8 @@ function calcStats(
   half: 'top' | 'bottom',
   ord: number,
   fromInn?: number,
-  toInn?: number
+  toInn?: number,
+  playerName?: string // 지정 시 대주자 잔루를 이름 기준으로 정확 귀속
 ) {
   const cs = Object.values(G.cells).filter((c) => {
     if (c.half !== half || c.order !== ord || !c.result) return false;
@@ -2150,17 +2220,36 @@ function calcStats(
     if (isKResult(r)) k++;
     if (isSH) sh++;
     if (isSF) sf++;
-    if (c.scored) run++;
+    // 득점도 주자 기록 — 대주자로 교체된 출루 셀이면 대주자 몫 (아래 이름 기반 패스)
+    if (c.scored && !(playerName && c.pinchRunnerMark)) run++;
     if (c.isDoublePlay) dp++;
 
-    // 도루: 진루 노트의 도루 코드 기준 — 무관심도루 (S)/(SD)는 도루로 기록하지 않음
-    (c.runnerNotes || []).forEach((n) => {
-      const code = n.advCode ?? (n.steal ? 'S' : '');
-      if (code === 'S' || code === 'SD') sb++;
-    });
-    // 도루실패: 이 타자가 주자로 아웃된 기록이 CS 계열일 때
-    if (c.runOut && c.runOut.startsWith('CS')) caught++;
+    // 도루/도루실패 — 대주자로 교체된 출루 셀(pinchRunnerMark)의 주자 기록은
+    // 원 타자가 아니라 대주자 몫 (행별 호출에서는 아래 이름 기반 패스에서 집계)
+    if (!(playerName && c.pinchRunnerMark)) {
+      // 도루: 진루 노트의 도루 코드 기준 — 무관심도루 (S)/(SD)는 도루로 기록하지 않음
+      (c.runnerNotes || []).forEach((n) => {
+        const code = n.advCode ?? (n.steal ? 'S' : '');
+        if (code === 'S' || code === 'SD') sb++;
+      });
+      // 도루실패: 이 타자가 주자로 아웃된 기록이 CS 계열일 때
+      if (c.runOut && c.runOut.startsWith('CS')) caught++;
+    }
   });
+
+  // 대주자 본인의 득점/도루/도루실패 — 대주자 마크가 붙은 출루 셀에서 이름 기준 귀속
+  if (playerName) {
+    Object.values(G.cells).forEach((c) => {
+      if (c.half !== half || c.order !== ord) return;
+      if (c.pinchRunnerMark?.pinchName !== playerName) return;
+      if (c.scored) run++;
+      (c.runnerNotes || []).forEach((n) => {
+        const code = n.advCode ?? (n.steal ? 'S' : '');
+        if (code === 'S' || code === 'SD') sb++;
+      });
+      if (c.runOut && c.runOut.startsWith('CS')) caught++;
+    });
+  }
 
   // 타점(RBI) 자동 집계 — "이 타자의 플레이로 홈까지 들어간" 주자만 인정
   // (타자가 1→2루로만 보낸 주자가 나중에 다른 사유로 득점하면 이 타자 타점 아님
@@ -2190,20 +2279,11 @@ function calcStats(
     // 본인 홈런 득점 = 타점 1
     const isHRCell = c.result === 'HR' || c.result === 'GHR' || c.result === 'GCW';
     if (isHRCell) rbi++;
-    // 이 타자 타석 중 발생한 주자 홈인 (eventLog runner_adv dest=HOME)
-    (c.eventLog || []).forEach((e) => {
-      if (e.kind !== 'runner_adv' || e.dest !== 'HOME') return;
-      if (isErrAdv(e.advCode)) return; // 실책·폭투·포일·보크 등
-      if (c.isDoublePlay) return; // 병살타 중 득점은 타점 불인정
-      rbi++;
-    });
   });
-  // 홈런으로 홈인한 선행 주자 + 밀어내기(force) 득점 — eventLog에 없고 runnerNotes로만 기록됨
-  const hrInnings = new Set(
-    cs
-      .filter((c) => c.result === 'HR' || c.result === 'GHR' || c.result === 'GCW')
-      .map((c) => c.inning)
-  );
+  // 주자 홈인 타점 — 주자 셀 HOME 노트의 causedBy(원인 타자)로 귀속.
+  // eventLog 위치 기반이던 기존 방식은 다음 타자 커서 상태에서 진루를 입력하면
+  // 타점이 다음 타자에게 잘못 붙음 — causedBy는 기록 시점에 원인 타자로 저장되므로 정확.
+  // advCode 유무는 구분하지 않음 (홈런 선행주자·일반 진루 모두 advCode 없이 저장될 수 있음)
   Object.values(G.cells).forEach((rc) => {
     if (rc.half !== half) return;
     if (fromInn !== undefined && rc.inning < fromInn) return;
@@ -2214,26 +2294,47 @@ function calcStats(
         rbi++; // 밀어내기 (볼넷·사구 만루)
         return;
       }
-      // 홈런 타점: HR 셀과 같은 이닝의 HOME 노트 (advCode·steal 없음)
-      if (hrInnings.has(rc.inning) && !n.advCode && !n.steal && !n.chain) rbi++;
+      if (n.steal) return; // 자력 진루 (도루 등)
+      if (isErrAdv(n.advCode)) return; // 실책·폭투·포일·보크 등
+      // 병살타 중 득점은 타점 불인정
+      if (cs.some((bc) => bc.inning === rc.inning && bc.isDoublePlay)) return;
+      rbi++;
     });
   });
 
-  // 도루: 같은 half의 모든 셀에서 이 타자가 주자로 있던 시점 집계 (sideNotes 기반)
+  // 도루: 같은 half의 모든 셀에서 이 타자(타순)가 주자로 있던 시점 집계 (sideNotes 기반)
+  // 대주자 이닝(출루 셀에 pinchRunnerMark)의 도루는 대주자 이름으로 귀속
+  const pinchOfInn = (inn: number): string | undefined =>
+    Object.values(G.cells).find(
+      (c) => c.half === half && c.order === ord && c.inning === inn && !!c.pinchRunnerMark
+    )?.pinchRunnerMark?.pinchName;
   const sbCount = Object.values(G.cells)
-    .filter((c) => {
-      if (c.half !== half) return false;
-      if (fromInn !== undefined && c.inning < fromInn) return false;
-      if (toInn !== undefined && c.inning >= toInn) return false;
-      return true;
-    })
-    .reduce(
-      (acc, c) =>
-        acc + (c.sideNotes || []).filter((n) => n === `SB${ord}` || n === `S${ord}`).length,
-      0
-    );
+    .filter((c) => c.half === half)
+    .reduce((acc, c) => {
+      const notes = (c.sideNotes || []).filter((n) => n === `SB${ord}` || n === `S${ord}`).length;
+      if (!notes) return acc;
+      if (playerName) {
+        const pinch = pinchOfInn(c.inning);
+        if (pinch) return acc + (pinch === playerName ? notes : 0);
+      }
+      if (fromInn !== undefined && c.inning < fromInn) return acc;
+      if (toInn !== undefined && c.inning >= toInn) return acc;
+      return acc + notes;
+    }, 0);
 
-  const lob = cs.filter((c) => c.lobCell).length;
+  // 잔루 — 대주자로 교체된 주자의 잔루(pinchRunnerMark 셀)는 원 타자가 아니라
+  // 대주자 본인 기록. playerName이 지정된 호출(행별)에서는 이름 기준으로 귀속하고,
+  // 미지정 호출(팀 합계 등)은 기존대로 셀 단위 전체 집계
+  const lob = playerName
+    ? cs.filter((c) => c.lobCell && !c.pinchRunnerMark).length +
+      Object.values(G.cells).filter(
+        (c) =>
+          c.half === half &&
+          c.order === ord &&
+          !!c.lobCell &&
+          c.pinchRunnerMark?.pinchName === playerName
+      ).length
+    : cs.filter((c) => c.lobCell).length;
   return {
     ab,
     h,
@@ -2339,6 +2440,15 @@ function calcFieldingStats(
           if (r.error) err++;
         });
       }
+    }
+    // 디플렉션(맞고 튕긴 공) 수비수 보살 — 아웃에 기여했을 때만, defRoles 에 이미
+    // 집계돼 있지 않은 경우에만 +1 (이닝별 통계의 addAssist 디플렉션 처리와 동일 기준)
+    if (
+      c.deflection?.pos === defPos &&
+      ((c.result && !isOnBase(c.result)) || !!c.runOut) &&
+      !(c.defRoles || []).some((r) => r.pos === defPos && r.assist)
+    ) {
+      pa++;
     }
   });
   // 주자 진루 실책 (advCode E4/4-3E 등) — (이닝, 코드) dedupe 후 해당 수비수에게 귀속
@@ -2846,12 +2956,13 @@ export default function ScoreSheet({ G, onSelCell }: Props) {
                           const homeInnRuns = Array(INN_MAX).fill(null) as (number | null)[];
                           Object.values(G.cells).forEach((c) => {
                             if (c.inning > INN_MAX) return;
-                            if (c.scored) {
-                              if (c.half === 'top')
-                                awayInnRuns[c.inning - 1] = (awayInnRuns[c.inning - 1] || 0) + 1;
-                              else homeInnRuns[c.inning - 1] = (homeInnRuns[c.inning - 1] || 0) + 1;
-                            }
-                            if (c.result === 'HR' || c.result === 'GHR') {
+                            // 득점: 셀당 1회만 — HR 타자 셀은 scored=true이면서 result=HR이라 조건을 따로 세면 이중 집계
+                            if (
+                              c.scored ||
+                              c.result === 'HR' ||
+                              c.result === 'GHR' ||
+                              c.result === 'GCW'
+                            ) {
                               if (c.half === 'top')
                                 awayInnRuns[c.inning - 1] = (awayInnRuns[c.inning - 1] || 0) + 1;
                               else homeInnRuns[c.inning - 1] = (homeInnRuns[c.inning - 1] || 0) + 1;
@@ -3050,16 +3161,16 @@ export default function ScoreSheet({ G, onSelCell }: Props) {
                     타점
                   </th>
                   <th className="ss-stat" rowSpan={2}>
-                    희타
-                  </th>
-                  <th className="ss-stat" rowSpan={2}>
-                    희비
-                  </th>
-                  <th className="ss-stat" rowSpan={2}>
                     도루
                   </th>
                   <th className="ss-stat" rowSpan={2}>
                     도실
+                  </th>
+                  <th className="ss-stat" rowSpan={2}>
+                    희타
+                  </th>
+                  <th className="ss-stat" rowSpan={2}>
+                    희비
                   </th>
                   <th className="ss-stat" rowSpan={2}>
                     4구
@@ -3110,8 +3221,11 @@ export default function ScoreSheet({ G, onSelCell }: Props) {
                     statPos?: number; // 수비 집계용 포지션 — left가 표시용으로 비워진 선발 layer에 사용
                   };
                   const layers: Layer[] = [];
-                  const starterName = orderSubs[0]?.oldName || p.name;
-                  const starterNum = orderSubs[0]?.oldNum || p.num;
+                  // 선발 = 전임자(oldName)가 기록된 첫 로그 기준 — 포지션 이동 로그(oldName='')는
+                  // 전임자 정보가 없으므로 건너뜀 (예: 디아즈 투수 이동 후 이영하 교체 케이스)
+                  const firstNamedSub = orderSubs.find((s) => !!s.oldName);
+                  const starterName = firstNamedSub?.oldName || p.name;
+                  const starterNum = firstNamedSub?.oldNum || p.num;
                   const starterPos = p.pos === 0 ? 'D' : String(orderSubs[0] ? '' : p.pos || '');
                   // 선발의 수비 집계용 포지션 — left가 비워져도 스탯은 계산되어야 함.
                   // 첫 교체 이벤트의 oldPos(교체 직전 슬롯 포지션)가 정확한 값.
@@ -3145,43 +3259,107 @@ export default function ScoreSheet({ G, onSelCell }: Props) {
                       ? undefined
                       : (orderSubs[0]?.oldPos ?? inferStarterPos() ?? (p.pos || undefined));
                   layers.push({
-                    left: starterPos || '',
+                    // 교체가 있어도 선발이 지키던 포지션을 표시 (정답지 표기 방식)
+                    // 선발이 지타였으면(oldPos 0) 숫자 0 대신 'D'
+                    left:
+                      starterPos ||
+                      (starterStatPos != null
+                        ? starterStatPos === 0
+                          ? 'D'
+                          : String(starterStatPos)
+                        : ''),
                     name: starterName,
                     num: starterNum,
                     statPos: starterStatPos,
                   });
-                  for (const s of orderSubs) {
+                  // 이 타순 슬롯을 지키는 팀이 실제로 수비에 나서는 half (away=말, home=초)
+                  const fieldingHalf = tableSide === 'away' ? 'bottom' : 'top';
+                  const battingHalf = tableSide === 'away' ? 'top' : 'bottom';
+                  // 두 로그 사이에 실제 수비 이닝이 하나도 끼지 않았는지 (타격 중 배정 → 바로 다음
+                  // 수비 half 로 넘어가는 경계는 실제 수비 공백이 없으므로 같은 시점으로 취급)
+                  const sameDefenseWindow = (
+                    a: (typeof orderSubs)[number],
+                    b: (typeof orderSubs)[number]
+                  ): boolean => {
+                    if (a.inning === b.inning && a.half === b.half) return true;
+                    if (a.half === battingHalf && b.half === fieldingHalf) {
+                      return tableSide === 'away'
+                        ? b.inning === a.inning
+                        : b.inning === a.inning + 1;
+                    }
+                    return false;
+                  };
+                  // 같은 선수가 같은 수비 공백 없이 자리만 연달아 재배치(셀프무브)하는 체인은
+                  // 마지막 값으로 흡수 — 중간 단계는 별도 행을 만들지 않음 (예: 강민균 6→5)
+                  const absorbed = new Set<number>();
+                  const resolved: Record<
+                    number,
+                    { pos: number; inning: number; half: Half; atOrder?: number }
+                  > = {};
+                  for (let i = 0; i < orderSubs.length; i++) {
+                    if (absorbed.has(i)) continue;
+                    let cur = orderSubs[i];
+                    let j = i + 1;
+                    while (
+                      j < orderSubs.length &&
+                      orderSubs[j].kind === 'D' &&
+                      orderSubs[j].oldName === orderSubs[j].newName &&
+                      orderSubs[j].newName === cur.newName &&
+                      orderSubs[j].newNum === cur.newNum &&
+                      sameDefenseWindow(cur, orderSubs[j])
+                    ) {
+                      absorbed.add(j);
+                      cur = orderSubs[j];
+                      j++;
+                    }
+                    resolved[i] = {
+                      pos: cur.pos,
+                      inning: cur.inning,
+                      half: cur.half,
+                      atOrder: cur.atOrder,
+                    };
+                  }
+                  orderSubs.forEach((s, si) => {
+                    if (absorbed.has(si)) return;
+                    const r = resolved[si];
                     const left =
                       s.kind === 'R'
                         ? 'R'
                         : s.kind === 'H'
                           ? 'H'
-                          : s.pos === 0
+                          : r.pos === 0
                             ? 'D' // 지타(DH) 교체
-                            : String(s.pos);
+                            : String(r.pos);
+                    // 0초짜리 자리이동 생략 — 같은 수비 공백 없이 곧바로 무효화된 이동:
+                    //  (a) 다른 선수로 교체됨 (엄준현 6→5 직후 박종혁 투입, 디아즈 투수행 직후 이영하,
+                    //      대타로 들어와 수비 배정만 받고 바로 다음 수비 이닝에 교체된 경우)
+                    //  (b) 같은 선수가 또 이동함 (포지션 셔플 중간 단계 — 김도환 2→0→3의 0)
+                    // 자리이동 로그는 oldName===newName(자리교대) 또는 oldName=''(포지션 변경)
+                    if (s.kind === 'D' && (s.oldName === s.newName || s.oldName === '')) {
+                      const voidedRightAway = orderSubs.slice(si + 1).some(
+                        (s3) =>
+                          s3.kind === 'D' &&
+                          sameDefenseWindow(s, s3) &&
+                          ((s3.oldName === s.newName && s3.newName !== s.newName) || // (a)
+                            (s3.newName === s.newName && s3.newNum === s.newNum)) // (b)
+                      );
+                      if (voidedRightAway) return;
+                    }
                     const lastIdx = layers.length - 1;
                     const last = layers[lastIdx];
-                    // 직전 layer 가 같은 선수의 R/H 입장이고 이번이 D 면 → 새 행 추가하지 않고
-                    // 그 layer 의 left 를 새 수비 포지션 숫자로 갱신 (이닝/타순 표시는 입장 시점 유지)
-                    if (
-                      s.kind === 'D' &&
-                      last.name === s.newName &&
-                      (last.left === 'R' || last.left === 'H')
-                    ) {
-                      layers[lastIdx] = { ...last, left: String(s.pos) };
-                      continue;
-                    }
+                    // 대타/대주자(R/H) 입장과 이후 수비 포지션 부여(D)는 별도 행으로 표시
+                    // (정답지 표기 방식 — H 입장 행 + 수비 포지션 행, 각자의 시점 표기 유지)
                     if (last.left !== left || last.name !== s.newName) {
                       layers.push({
                         left,
                         name: s.newName,
                         num: s.newNum,
-                        inning: s.inning,
-                        half: s.half,
-                        atOrder: s.atOrder,
+                        inning: r.inning,
+                        half: r.half,
+                        atOrder: r.atOrder,
                       });
                     }
-                  }
+                  });
                   const SUB_ROWS = Math.max(3, layers.length);
                   const fmtTs = (l: Layer) => {
                     if (!l.inning) return '';
@@ -3195,7 +3373,12 @@ export default function ScoreSheet({ G, onSelCell }: Props) {
                     return (
                       <tr
                         key={`${ord}-sub${sub}`}
-                        className={[sub > 0 ? 'ss-row-sublayer' : ''].filter(Boolean).join(' ')}
+                        className={[
+                          sub > 0 ? 'ss-row-sublayer' : '',
+                          sub === 0 ? 'ss-row-neworder' : '',
+                        ]
+                          .filter(Boolean)
+                          .join(' ')}
                       >
                         {/* 풋아웃/어시스트/실책/병살 — 각 sub-row */}
                         {(() => {
@@ -3691,18 +3874,46 @@ export default function ScoreSheet({ G, onSelCell }: Props) {
                               </>
                             );
                           }
+                          // 같은 선수의 연속 layer(수비 위치 이동, 대타 H→D 승계)는
+                          // 타격 기록을 첫 행에 합산 표시하고 나머지 행은 비움 (정답지 표기)
+                          let runStart = sub;
+                          while (runStart > 0 && layers[runStart - 1]?.name === layer.name)
+                            runStart--;
+                          if (runStart !== sub) {
+                            return (
+                              <>
+                                {Array.from({ length: 18 }, (_, i) => (
+                                  <td key={i} className="ss-stat" />
+                                ))}
+                              </>
+                            );
+                          }
+                          let nextDiff = sub + 1;
+                          while (nextDiff < layers.length && layers[nextDiff]?.name === layer.name)
+                            nextDiff++;
+                          // 타격 창 경계 = "유효 공격 이닝" — 교체가 수비 반이닝에 발생하면
+                          // 그 선수의 첫 공격은 다음 이닝이므로 +1 (같은 이닝 초·말 승계 구분)
+                          // 대주자(R)는 전임 타자의 타석(출루) "이후"부터가 본인 기록 —
+                          // 그 이닝의 안타는 원 타자 몫이므로 경계를 다음 이닝으로
+                          const offFromInn = (l?: (typeof layers)[number]): number | undefined => {
+                            if (!l?.inning) return undefined;
+                            if (l.left === 'R') return l.inning + 1;
+                            if (!l.half || l.half === half) return l.inning;
+                            return half === 'top' ? l.inning + 1 : l.inning;
+                          };
                           const st = calcStats(
                             G,
                             half,
                             ord,
-                            layers[sub]?.inning,
-                            layers[sub + 1]?.inning
+                            offFromInn(layers[sub]),
+                            offFromInn(layers[nextDiff]),
+                            layer.name
                           );
                           const tb = st.h - st.d - st.t - st.hr + 2 * st.d + 3 * st.t + 4 * st.hr;
                           return (
                             <>
                               <td className="ss-stat" style={{}}>
-                                {st.ab || ''}
+                                {st.ab}
                               </td>
                               <td className="ss-stat" style={{}}>
                                 {st.run || ''}
@@ -3726,16 +3937,16 @@ export default function ScoreSheet({ G, onSelCell }: Props) {
                                 {st.rbi || ''}
                               </td>
                               <td className="ss-stat" style={{}}>
-                                {st.sh || ''}
-                              </td>
-                              <td className="ss-stat" style={{}}>
-                                {st.sf || ''}
-                              </td>
-                              <td className="ss-stat" style={{}}>
                                 {st.sb || ''}
                               </td>
                               <td className="ss-stat" style={{}}>
                                 {st.cs || ''}
+                              </td>
+                              <td className="ss-stat" style={{}}>
+                                {st.sh || ''}
+                              </td>
+                              <td className="ss-stat" style={{}}>
+                                {st.sf || ''}
                               </td>
                               <td className="ss-stat" style={{}}>
                                 {st.bb || ''}
@@ -3768,37 +3979,91 @@ export default function ScoreSheet({ G, onSelCell }: Props) {
                   const sideR: 'away' | 'home' = half === 'top' ? 'away' : 'home';
                   const myLineupR = sideR === 'away' ? G.awayLineup : G.homeLineup;
                   const myPitchHalfR: Half = half === 'top' ? 'bottom' : 'top';
+                  // 투수 명단: 선발 + 교체 등판 투수. 전임(oldName)은 실제 등판자
+                  // (선발이거나 다른 교체의 새 투수)만 — 야수가 투수 자리로 이동만 했다가
+                  // 투구 없이 곧장 교체된 경우(디아즈)는 투수로 세지 않음
+                  const pset = new Set<string>();
+                  const psetNames = new Set<string>();
+                  const addP = (num: string, name: string) => {
+                    pset.add(`${num}|${name}`);
+                    psetNames.add(name);
+                  };
+                  const sp = myLineupR.find((p) => p.pos === 1);
+                  if (sp && sp.name) addP(sp.num, sp.name);
+                  const pcsR = (G.pitcherChanges || []).filter((pc) => pc.half === myPitchHalfR);
+                  pcsR.forEach((pc, i) => {
+                    addP(pc.num ?? '', pc.name);
+                    if (pc.oldName) {
+                      const wasPitcher = i === 0 || pcsR.some((x) => x.name === pc.oldName);
+                      if (wasPitcher) addP(pc.oldNum ?? '', pc.oldName);
+                    }
+                  });
                   const fset = new Set<string>();
                   myLineupR.forEach((p) => {
                     if (p.pos !== 1 && p.name) fset.add(`${p.num}|${p.name}`);
                   });
                   (G.substitutions || []).forEach((s) => {
                     if (s.side !== sideR) return;
-                    if (s.kind === 'D' && s.pos === 1) return;
+                    if (s.kind === 'D' && s.pos === 1) {
+                      // 투수 슬롯 이동/교체 로그 — 투수 명단에 없는 이름(야수 출신
+                      // 이동자, 예: 디아즈)은 야수 명단에 포함
+                      if (s.newName && !psetNames.has(s.newName)) {
+                        fset.add(`${s.newNum}|${s.newName}`);
+                      }
+                      if (s.oldName && !psetNames.has(s.oldName)) {
+                        fset.add(`${s.oldNum}|${s.oldName}`);
+                      }
+                      return;
+                    }
                     if (s.newName) fset.add(`${s.newNum}|${s.newName}`);
                     if (s.oldName) fset.add(`${s.oldNum}|${s.oldName}`);
                   });
-                  const pset = new Set<string>();
-                  const sp = myLineupR.find((p) => p.pos === 1);
-                  if (sp && sp.name) pset.add(`${sp.num}|${sp.name}`);
-                  (G.pitcherChanges || [])
-                    .filter((pc) => pc.half === myPitchHalfR)
-                    .forEach((pc) => {
-                      pset.add(`${pc.num ?? ''}|${pc.name}`);
-                      if (pc.oldName) pset.add(`${pc.oldNum ?? ''}|${pc.oldName}`);
-                    });
-                  (G.substitutions || []).forEach((s) => {
-                    if (s.side !== sideR) return;
-                    if (s.kind === 'D' && s.pos === 1) {
-                      pset.add(`${s.newNum}|${s.newName}`);
-                      if (s.oldName) pset.add(`${s.oldNum}|${s.oldName}`);
-                    }
-                  });
                   const fCount = fset.size;
                   const pCount = pset.size;
+                  // 팀 수비 합계 — 포지션 1~9 전체 합산 (풋아웃·실책은 포지션별 합이 곧 팀 합)
+                  // 어시스트는 야수(2~9)/투수(1) 구분해서 따로 집계
+                  let defFoF = 0,
+                    defFoP = 0,
+                    defPaF = 0,
+                    defPaP = 0,
+                    defErr = 0;
+                  for (let pos = 1; pos <= 9; pos++) {
+                    const fs = calcFieldingStats(G, half, pos);
+                    if (pos === 1) defFoP += fs.fo;
+                    else defFoF += fs.fo;
+                    if (pos === 1) defPaP += fs.pa;
+                    else defPaF += fs.pa;
+                    defErr += fs.err;
+                  }
+                  // 병살은 포지션별 합산 시 관여한 수비수 수만큼 중복되므로 병살 셀 개수로 별도 집계
+                  const defFieldHalf: 'top' | 'bottom' = half === 'top' ? 'bottom' : 'top';
+                  const defDp = Object.values(G.cells).filter(
+                    (c) => c.half === defFieldHalf && c.isDoublePlay
+                  ).length;
+                  const defTdStyle: React.CSSProperties = {
+                    borderTop: '2px solid var(--border)',
+                    textAlign: 'center',
+                    fontSize: 10,
+                    fontWeight: 700,
+                  };
                   return (
                     <tr style={{ height: 28, borderTop: '2px solid var(--border)' }}>
-                      <td colSpan={4} style={{ borderTop: '2px solid var(--border)' }} />
+                      <td
+                        style={{ ...defTdStyle, lineHeight: 1.2, padding: '2px 0' }}
+                        title={`풋아웃(야수) ${defFoF} / 풋아웃(투수) ${defFoP}`}
+                      >
+                        <div>{defFoF || ''}</div>
+                        <div>{defFoP || ''}</div>
+                      </td>
+                      <td
+                        style={{ ...defTdStyle, lineHeight: 1.2, padding: '2px 0' }}
+                        title={`어시스트(야수) ${defPaF} / 어시스트(투수) ${defPaP}`}
+                      >
+                        <div>{defPaF || ''}</div>
+                        <div>{defPaP || ''}</div>
+                      </td>
+                      <td style={defTdStyle}>{defErr || ''}</td>
+                      <td style={defTdStyle}>{defDp || ''}</td>
                       <td style={{ borderTop: '2px solid var(--border)' }} />
                       <td
                         style={{
@@ -3826,7 +4091,12 @@ export default function ScoreSheet({ G, onSelCell }: Props) {
                         <div>{fCount}명</div>
                         <div>{pCount}명</div>
                       </td>
-                      <td colSpan={inns.length} style={{ borderTop: '2px solid var(--border)' }} />
+                      {/* 이닝 영역 — 타자일순 추가 컬럼 포함 실제 열 수(innCols) 기준
+                          (inns.length로 하면 타자일순 시 한 칸 모자라 합계가 왼쪽으로 밀림) */}
+                      <td
+                        colSpan={innCols.length}
+                        style={{ borderTop: '2px solid var(--border)' }}
+                      />
                       {(() => {
                         // 우측 stat 컬럼 팀 합계 — 라인업의 모든 타순 합산
                         const totals = {
@@ -3892,10 +4162,10 @@ export default function ScoreSheet({ G, onSelCell }: Props) {
                           totals.hr,
                           tb,
                           totals.rbi,
-                          totals.sh,
-                          totals.sf,
                           totals.sb,
                           totals.cs,
+                          totals.sh,
+                          totals.sf,
                           totals.bb,
                           totals.ibb,
                           totals.hbp,
@@ -3996,10 +4266,10 @@ export default function ScoreSheet({ G, onSelCell }: Props) {
                   // 합계: 이닝별 득점 (offense side per inning)
                   const innRuns: (number | null)[] = half === 'top' ? G.awayInn : G.homeInn;
 
-                  // 이닝별 통계 계산: 안타, 실책, 어시스트, 투구수
-                  type Stat = { h: number; e: number; a: number; p: number };
+                  // 이닝별 통계 계산: 안타, 실책, 어시스트(야수/투수 구분), 투구수
+                  type Stat = { h: number; e: number; aF: number; aP: number; p: number };
                   const innStat: Record<number, Stat> = {};
-                  inns.forEach((i) => (innStat[i] = { h: 0, e: 0, a: 0, p: 0 }));
+                  inns.forEach((i) => (innStat[i] = { h: 0, e: 0, aF: 0, aP: 0, p: 0 }));
                   const isHit = (r: string) =>
                     /^\/[789]$/.test(r) ||
                     ['H1', '/hit', 'INT', 'BUNT', 'OBUNT'].includes(r) ||
@@ -4013,20 +4283,63 @@ export default function ScoreSheet({ G, onSelCell }: Props) {
                     r === 'GHR';
                   // 실책: 결과 문자열 + 수비 체크 (주자 진루 실책은 아래에서 이닝 단위 dedupe 후 합산)
                   const errCount = cellOwnErrors;
-                  // 어시스트: result에 '-' 으로 연결된 fielder seq가 2명 이상이면 마지막 putout 이전 fielder 수
-                  const assistCount = (r: string) => {
+                  // 어시스트: result에 '-' 으로 연결된 fielder seq가 2명 이상이면 마지막 putout 이전
+                  // fielder 수 — 투수(1번)와 야수(2~9번)를 구분해서 집계
+                  const assistCount = (r: string): { fielder: number; pitcher: number } => {
                     const m = r.match(/^[\d-]+$/);
-                    if (!m) return 0;
-                    const parts = r.split('-').filter((x) => x.length > 0);
-                    return Math.max(0, parts.length - 1);
+                    if (!m) return { fielder: 0, pitcher: 0 };
+                    const parts = r
+                      .split('-')
+                      .filter((x) => x.length > 0)
+                      .slice(0, -1);
+                    let fielder = 0;
+                    let pitcher = 0;
+                    parts.forEach((p) => (p === '1' ? pitcher++ : fielder++));
+                    return { fielder, pitcher };
+                  };
+                  const addAssist = (s: Stat, pos: number, n: number) => {
+                    if (pos === 1) s.aP += n;
+                    else s.aF += n;
                   };
                   Object.values(G.cells).forEach((c) => {
                     if (c.half !== half) return;
                     const s = innStat[c.inning];
                     if (!s) return;
-                    if (c.result) {
-                      if (isHit(c.result)) s.h += 1;
-                      s.a += assistCount(c.result);
+                    if (c.result && isHit(c.result)) s.h += 1;
+                    // 어시스트 — 선수별 열(calcFieldingStats)과 동일 출처:
+                    // 수비 체크(defRoles) 우선, 없으면 결과 문자열 + 삼진(낫아웃 송구) 폴백
+                    const roles = c.defRoles || [];
+                    if (roles.length) {
+                      roles.forEach((r) => {
+                        if (r.assist) addAssist(s, r.pos, 1);
+                      });
+                    } else if (c.result) {
+                      const ac = assistCount(c.result);
+                      s.aF += ac.fielder;
+                      s.aP += ac.pitcher;
+                      for (let p = 1; p <= 9; p++) {
+                        const pa = strikeoutDefStats(c.result, p).pa;
+                        if (pa) addAssist(s, p, pa);
+                      }
+                    }
+                    // 주자 아웃 보살 — 아웃이 발생한 이닝(runOutInning) 기준 귀속
+                    if (c.runOutDefRoles?.length) {
+                      const rs = innStat[c.runOutInning ?? c.inning];
+                      if (rs) {
+                        c.runOutDefRoles.forEach((r) => {
+                          if (r.assist) addAssist(rs, r.pos, 1);
+                        });
+                      }
+                    }
+                    // 디플렉션 수비수 보살 — 하단 누계에만 +1
+                    // 보살은 아웃에 기여했을 때만: 타자 아웃 또는 주자 아웃이 있는 셀만 집계
+                    // (안타가 된 디플렉션은 제외, 수비 체크 중복 방지)
+                    if (
+                      c.deflection &&
+                      ((c.result && !isOnBase(c.result)) || !!c.runOut) &&
+                      !roles.some((r) => r.pos === c.deflection!.pos && r.assist)
+                    ) {
+                      addAssist(s, c.deflection.pos, 1);
                     }
                     s.e += errCount(c);
                     s.p += (c.pitches || []).length;
@@ -4042,14 +4355,16 @@ export default function ScoreSheet({ G, onSelCell }: Props) {
                   const cumStat: Record<number, Stat> = {};
                   let cH = 0,
                     cE = 0,
-                    cA = 0,
+                    cAF = 0,
+                    cAP = 0,
                     cP = 0;
                   inns.forEach((i) => {
                     cH += innStat[i].h;
                     cE += innStat[i].e;
-                    cA += innStat[i].a;
+                    cAF += innStat[i].aF;
+                    cAP += innStat[i].aP;
                     cP += innStat[i].p;
-                    cumStat[i] = { h: cH, e: cE, a: cA, p: cP };
+                    cumStat[i] = { h: cH, e: cE, aF: cAF, aP: cAP, p: cP };
                   });
 
                   // 좌/우 분할 cell 렌더 helper
@@ -4067,6 +4382,7 @@ export default function ScoreSheet({ G, onSelCell }: Props) {
                         padding: 0,
                         fontSize: 9,
                         textAlign: 'center',
+                        borderLeft: '1.5px solid var(--border)',
                       }}
                     >
                       <div style={{ display: 'flex', height: '100%' }}>
@@ -4106,6 +4422,7 @@ export default function ScoreSheet({ G, onSelCell }: Props) {
                         padding: 0,
                         fontSize: 9,
                         textAlign: 'center',
+                        borderLeft: '1.5px solid var(--border)',
                       }}
                     >
                       <div style={{ display: 'flex', height: '100%' }}>
@@ -4179,7 +4496,7 @@ export default function ScoreSheet({ G, onSelCell }: Props) {
                         )}
                         <td colSpan={18} style={{ borderTop: '1px solid var(--border)' }} />
                       </tr>
-                      {/* 어시스트: 좌 현재 / 우 누적 */}
+                      {/* 어시스트: 좌 현재 / 우 누적 (야수+투수 통합) */}
                       <tr style={{ height: 18 }}>
                         <td
                           colSpan={7}
@@ -4194,8 +4511,8 @@ export default function ScoreSheet({ G, onSelCell }: Props) {
                         </td>
                         {inns.map((i) =>
                           splitCellLR(
-                            innStat[i].a,
-                            cumStat[i].a,
+                            innStat[i].aF + innStat[i].aP,
+                            cumStat[i].aF + cumStat[i].aP,
                             `a-${i}`,
                             (maxAppByInn[i] ?? 0) + 1
                           )
@@ -4279,6 +4596,9 @@ export default function ScoreSheet({ G, onSelCell }: Props) {
                       };
                       let diff = parse(G.endTime) - parse(G.startTime);
                       if (diff < 0) diff += 1440;
+                      if (G.delayTime) {
+                        diff -= parseInt(G.delayTime) || 0;
+                      }
                       return `${Math.floor(diff / 60)}시간 ${String(diff % 60).padStart(2, '0')}분`;
                     };
                     const cellL: React.CSSProperties = {
@@ -4316,7 +4636,8 @@ export default function ScoreSheet({ G, onSelCell }: Props) {
                             </tr>
                             <tr>
                               <td colSpan={2} style={{ ...cellR, fontSize: 8 }}>
-                                ( 제외시간 &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 분)
+                                ( 제외시간 &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;{' '}
+                                {G.delayTime ? `${G.delayTime}분` : '분'})
                               </td>
                             </tr>
                             <tr>
@@ -4433,7 +4754,7 @@ export default function ScoreSheet({ G, onSelCell }: Props) {
                           <th style={{ ...thV, width: 25 }} />
                           <th style={{ ...thV, width: 35 }}>회</th>
                           <th style={{ ...thV, width: 35 }}>타순</th>
-                          <th style={{ ...thV, width: 35 }}>요청</th>
+                          <th style={{ ...thV, width: 45 }}>요청</th>
                           <th style={thV}>내 용</th>
                           <th style={{ ...thV, width: 40 }}>최초</th>
                           <th style={{ ...thV, width: 40 }}>최종</th>
@@ -4460,15 +4781,18 @@ export default function ScoreSheet({ G, onSelCell }: Props) {
                             )}
                             <td style={tdV}>{ev ? `${ev.inning}회` : ''}</td>
                             <td style={tdV}>{ev && 'order' in ev ? ev.order : ''}</td>
-                            <td style={tdV}>
-                              {ev
-                                ? ev.type === 'check_swing'
-                                  ? `체크스윙 (${(ev as { umpire?: string }).umpire ?? ''})`
-                                  : ((ev as { situation?: string }).situation ?? '')
-                                : ''}
-                            </td>
+                            <td style={tdV}>{ev ? ((ev as { team?: string }).team ?? '') : ''}</td>
                             <td style={{ ...tdV, maxWidth: 160 }}>
-                              {ev ? ((ev as { content?: string }).content ?? '') : ''}
+                              {ev
+                                ? (() => {
+                                    const situation = (ev as { situation?: string }).situation;
+                                    const main =
+                                      ev.type === 'check_swing'
+                                        ? `체크스윙 (${(ev as { umpire?: string }).umpire ?? ''})`
+                                        : ((ev as { content?: string }).content ?? '');
+                                    return situation ? `${main} (${situation})` : main;
+                                  })()
+                                : ''}
                             </td>
                             <td style={tdV}>
                               {ev ? ((ev as { firstCall?: string }).firstCall ?? '') : ''}
@@ -4530,8 +4854,8 @@ export default function ScoreSheet({ G, onSelCell }: Props) {
                     const decision = G.gameDecisions?.[decisionTeam];
                     const markOf = (name: string): string => {
                       if (!decision || !name) return '';
-                      if (name === decision.win) return '승';
-                      if (name === decision.loss) return '패';
+                      if (name === decision.win) return 'W';
+                      if (name === decision.loss) return 'L';
                       if (name === decision.save) return 'S';
                       if (decision.holds.includes(name)) return 'H';
                       if (decision.bs.includes(name)) return 'BS';
@@ -4598,8 +4922,8 @@ export default function ScoreSheet({ G, onSelCell }: Props) {
                               row.so || '',
                               row.wp || '',
                               row.bk || '',
-                              row.r || '',
-                              row.er || '',
+                              row.r,
+                              row.er,
                             ];
                             return (
                               <tr key={i} style={{ height: 20 }}>
@@ -4660,8 +4984,8 @@ export default function ScoreSheet({ G, onSelCell }: Props) {
                               sum('so') || '',
                               sum('wp') || '',
                               sum('bk') || '',
-                              sum('r') || '',
-                              sum('er') || '',
+                              sum('r'),
+                              sum('er'),
                             ];
                             return (
                               <tr
@@ -4761,7 +5085,7 @@ export default function ScoreSheet({ G, onSelCell }: Props) {
                   };
                   const hrKind = (runs: number) =>
                     runs === 1
-                      ? '솔로'
+                      ? '1점'
                       : runs === 2
                         ? '2점'
                         : runs === 3
@@ -4772,7 +5096,6 @@ export default function ScoreSheet({ G, onSelCell }: Props) {
 
                   // D/P
                   const teamFor = (h: string) => (h === 'top' ? G.awayTeam : G.homeTeam);
-                  const lineupFor = (h: string) => (h === 'top' ? G.awayLineup : G.homeLineup);
                   const dpItems = Object.values(G.cells)
                     .filter((c) => c.isDoublePlay || c.isTriplePlay)
                     .sort(
@@ -4784,16 +5107,18 @@ export default function ScoreSheet({ G, onSelCell }: Props) {
                   // P — 각 포수의 패스트볼(포일) [공식기록 항목5]: 소속=수비팀, 성명=당시 포수
                   // 폭투(W)는 투수 기록표 '폭투' 열 담당이라 여기서 제외
                   const catcherAt = (defSide: 'away' | 'home', inning: number): string => {
-                    const catSubs = (G.substitutions || [])
-                      .filter((s) => s.side === defSide && s.pos === 2)
-                      .sort((a, b) => a.inning - b.inning);
-                    let name =
-                      (defSide === 'away' ? G.awayLineup : G.homeLineup).find((p) => p.pos === 2)
-                        ?.name || '';
-                    for (let i = catSubs.length - 1; i >= 0; i--) {
-                      if (catSubs[i].inning > inning) name = catSubs[i].oldName;
+                    const currentLU = defSide === 'away' ? G.awayLineup : G.homeLineup;
+                    const catcher = currentLU.find((p) => p.pos === 2);
+                    if (!catcher) return '';
+
+                    const afterInning = (G.substitutions || [])
+                      .filter((s) => s.side === defSide && s.pos === 2 && s.inning > inning)
+                      .sort((a, b) => b.inning - a.inning);
+
+                    if (afterInning.length > 0) {
+                      return afterInning[0].oldName;
                     }
-                    return name;
+                    return catcher.name;
                   };
                   const pItems: {
                     inning: number;
@@ -4920,8 +5245,8 @@ export default function ScoreSheet({ G, onSelCell }: Props) {
                   const decision = G.gameDecisions?.[decisionTeam];
                   const markOf = (name: string) => {
                     if (!decision || !name) return '';
-                    if (name === decision.win) return '승';
-                    if (name === decision.loss) return '패';
+                    if (name === decision.win) return 'W';
+                    if (name === decision.loss) return 'L';
                     if (name === decision.save) return 'S';
                     if (decision.holds.includes(name)) return 'H';
                     if (decision.bs.includes(name)) return 'BS';
@@ -5011,15 +5336,22 @@ export default function ScoreSheet({ G, onSelCell }: Props) {
                                 dangerouslySetInnerHTML={{ __html: label.replace('\n', '<br/>') }}
                               />
                             )}
-                            <td style={{ ...tdS, textAlign: 'left' }}>{teamName}</td>
                             <td
                               style={{
                                 ...tdS,
                                 textAlign: 'left',
-                                maxWidth: 80,
-                                overflow: 'hidden',
-                                whiteSpace: 'nowrap',
-                                textOverflow: 'ellipsis',
+                                width: 30,
+                                fontSize: 10,
+                                padding: '2px 4px',
+                              }}
+                            >
+                              {teamName}
+                            </td>
+                            <td
+                              style={{
+                                ...tdS,
+                                textAlign: 'left',
+                                maxWidth: 200,
                               }}
                             >
                               {content}
@@ -5028,27 +5360,66 @@ export default function ScoreSheet({ G, onSelCell }: Props) {
                           </tr>
                         );
                         const dpBodyRows: React.ReactNode[] = [];
+                        const getDefendersName = (
+                          defRoles: (typeof G.cells)[string]['defRoles'],
+                          half: string,
+                          inning: number
+                        ): string => {
+                          if (!defRoles || defRoles.length === 0) return '';
+                          const defSide: 'away' | 'home' = half === 'top' ? 'home' : 'away';
+                          const currentLU = defSide === 'home' ? G.homeLineup : G.awayLineup;
+
+                          // 현재 라인업 복사 후, inning보다 큰 교체들을 역으로 적용
+                          const defLU = currentLU.map((p) => ({ ...p }));
+                          const afterInning = (G.substitutions || [])
+                            .filter((s) => s.side === defSide && s.pos > 0 && s.inning > inning)
+                            .sort((a, b) => b.inning - a.inning); // 역순 정렬
+
+                          afterInning.forEach((s) => {
+                            const idx = defLU.findIndex((p) => p.pos === s.pos);
+                            if (idx >= 0) {
+                              defLU[idx] = {
+                                ...defLU[idx],
+                                name: s.oldName,
+                                num: s.oldNum,
+                              };
+                            }
+                          });
+
+                          // 투수(pos=1)인 경우 pitcherChanges에서 당시 투수 찾기
+                          const getPitcherAtInning = (inn: number): string => {
+                            const pitchChanges = (G.pitcherChanges || []).filter(
+                              (c) => c.half === half && c.inning <= inn
+                            );
+                            if (pitchChanges.length === 0) {
+                              return defLU.find((p) => p.pos === 1)?.name || '';
+                            }
+                            return pitchChanges[pitchChanges.length - 1].name;
+                          };
+
+                          const names = defRoles
+                            .map((r) => {
+                              if (r.pos === 1) {
+                                return getPitcherAtInning(inning);
+                              }
+                              const player = defLU.find((p) => p.pos === r.pos);
+                              return player?.name || '';
+                            })
+                            .filter(Boolean);
+                          const poses = defRoles.map((r) => r.pos).join('-');
+                          return `${names.join(' ')} (${poses})`;
+                        };
                         for (let i = 0; i < dRows; i++) {
                           const item = dpItems[i];
-                          const p2 = item ? lineupFor(item.half)[item.order - 1] : null;
                           // 병살 유형 [공식기록 항목10] — dpType 없는 과거 기록은 result 'R' 접미사로 리버스만 판별
-                          const dpKind = item
-                            ? (item.dpType ?? (item.result?.endsWith('R') ? 'reverse' : undefined))
-                            : undefined;
-                          const kindLabel =
-                            dpKind === 'reverse'
-                              ? ' 리버스포스'
-                              : dpKind === 'force'
-                                ? ' 포스'
-                                : dpKind === 'tag'
-                                  ? ' 태그'
-                                  : '';
                           dpBodyRows.push(
                             renderDPRow(
                               i === 0 ? 'D\nP' : null,
                               i === 0 ? dRows : undefined,
-                              item ? teamFor(item.half) : '',
-                              item ? `${p2?.name || ''}${kindLabel}` : '',
+                              item ? (item.half === 'top' ? G.homeTeam : G.awayTeam) : '',
+                              item
+                                ? `${getDefendersName(item.defRoles, item.half, item.inning)}`
+                                : '',
                               item ? item.inning : '',
                               `d-${i}`
                             )
@@ -5336,11 +5707,10 @@ export default function ScoreSheet({ G, onSelCell }: Props) {
                                     row.so || '',
                                     row.wp || '',
                                     row.bk || '',
-                                    row.r || '',
-                                    row.er || '',
+                                    row.r,
+                                    row.er,
                                   ]
                                 : Array(19).fill('');
-                              if (row && i > 0) cells2[1] = '/3';
                               if (!row) cells2[3] = '/3';
                               return (
                                 <tr key={i}>
@@ -5382,8 +5752,8 @@ export default function ScoreSheet({ G, onSelCell }: Props) {
                                 sum('so') || '',
                                 sum('wp') || '',
                                 sum('bk') || '',
-                                sum('r') || '',
-                                sum('er') || '',
+                                sum('r'),
+                                sum('er'),
                               ];
                               return (
                                 <tr style={{ fontWeight: 700 }}>

@@ -30,6 +30,13 @@ export function parseKey(k: string): [Half, number, number, number] {
   return [p[0] as Half, +p[1], +p[2], +p[3]];
 }
 
+// 소급 재입력(이미 지난 반이닝을 DELETE_CELL로 지웠다가 다시 여는 경우) 시
+// state.runners에는 그 사이 실제로 진행된 이후 이닝의 주자가 남아있을 수 있다.
+// 그런 잔존 주자를 엉뚱한(다른 이닝) 셀에 아웃/잔루로 잘못 태그하지 않도록 가드.
+function isCurrentInningRunner(runner: Runner, state: GameState): boolean {
+  return runner.inning === state.inning;
+}
+
 export function isOut(r: string | null): boolean {
   if (!r) return false;
   // ꓘ prefix: KT(ꓘ2T) / KSG(ꓘ2-3) — 보/자/E 없는 패턴은 모두 아웃 (다른주자수비 출루는 보/자/E 포함)
@@ -203,6 +210,129 @@ function snapshot(s: GameState): HistorySnapshot {
   };
 }
 
+// 구버전이 커서 시점으로 잘못 찍은 수비 자동확정(D, oldName='') 로그의 시점을
+// 데이터 기준으로 정규화 — 대타/대주자(H/R) 교체 → 다음 수비 반이닝 → 그 반이닝 선두타자.
+// 저장본 불러오기 시 1회 적용 (신규 기록은 처음부터 올바르게 찍힘)
+export function normalizeAutoDefStamps(s: GameState): GameState {
+  const subs = s.substitutions;
+  if (!subs?.length) return s;
+  let changed = false;
+  const out = subs.map((d, i) => {
+    if (d.kind !== 'D' || d.oldName !== '') return d;
+    // 이 슬롯의 직전 H/R 교체 (같은 선수)
+    let hr: SubstitutionLog | undefined;
+    let hrIdx = -1;
+    for (let j = i - 1; j >= 0; j--) {
+      const s2 = subs[j];
+      if (
+        s2.side === d.side &&
+        s2.order === d.order &&
+        (s2.kind === 'H' || s2.kind === 'R') &&
+        s2.newName === d.newName &&
+        s2.newNum === d.newNum
+      ) {
+        hr = s2;
+        hrIdx = j;
+        break;
+      }
+    }
+    if (!hr) return d;
+    // H/R 이후 "첫" 확정 로그만 수비 진입 시점으로 교정 —
+    // 그 뒤의 같은 선수 D 로그는 후속 포지션 변경이므로 시점을 건드리지 않음
+    for (let j = hrIdx + 1; j < i; j++) {
+      const s2 = subs[j];
+      if (
+        s2.kind === 'D' &&
+        s2.oldName === '' &&
+        s2.side === d.side &&
+        s2.order === d.order &&
+        s2.newName === d.newName &&
+        s2.newNum === d.newNum
+      ) {
+        return d; // 첫 확정이 아님 — 원본 유지
+      }
+    }
+    const defenseHalf: Half = d.side === 'away' ? 'bottom' : 'top';
+    const inn =
+      hr.half === defenseHalf ? hr.inning : defenseHalf === 'top' ? hr.inning + 1 : hr.inning;
+    let lead: number | undefined;
+    for (const k of Object.keys(s.cells)) {
+      const c = s.cells[k];
+      if (c.half === defenseHalf && c.inning === inn) {
+        lead = c.order;
+        break;
+      }
+    }
+    if (d.inning === inn && d.half === defenseHalf && (lead === undefined || d.atOrder === lead)) {
+      return d;
+    }
+    changed = true;
+    return {
+      ...d,
+      inning: inn,
+      half: defenseHalf,
+      ...(lead !== undefined ? { atOrder: lead } : {}),
+    };
+  });
+  return changed ? { ...s, substitutions: out } : s;
+}
+
+// 구버전 저장본: 타순 슬롯 투수(DH 소멸)의 투수교체가 pitcherChanges에만 있고
+// substitutions(교대란) 로그가 없는 경우 — 체인을 역추적해 D 로그 합성
+function synthesizePitcherSlotSubs(s: GameState): GameState {
+  let subs = s.substitutions;
+  let changed = false;
+  (['away', 'home'] as const).forEach((side) => {
+    const lu = side === 'away' ? s.awayLineup : s.homeLineup;
+    const slot = lu.find((p) => p.pos === 1 && p.order >= 1);
+    if (!slot) return;
+    let cur = { name: slot.name, num: slot.num };
+    for (let i = s.pitcherChanges.length - 1; i >= 0; i--) {
+      const pc = s.pitcherChanges[i];
+      // pitcherChanges에는 side가 없음 — 수비 반이닝으로 추정 (초 수비 = 홈 투수)
+      const pcSide: 'away' | 'home' = pc.half === 'top' ? 'home' : 'away';
+      if (pcSide !== side) continue;
+      if (pc.name !== cur.name || pc.num !== cur.num) continue;
+      if (!pc.oldName) break;
+      const exists = subs.some(
+        (x) =>
+          x.kind === 'D' &&
+          x.side === side &&
+          x.order === slot.order &&
+          x.newName === pc.name &&
+          x.oldName === pc.oldName
+      );
+      if (!exists) {
+        subs = [
+          ...subs,
+          {
+            inning: pc.inning,
+            half: pc.half,
+            side,
+            kind: 'D',
+            pos: 1,
+            oldPos: 1,
+            newName: pc.name,
+            newNum: pc.num,
+            oldName: pc.oldName,
+            oldNum: pc.oldNum || '',
+            order: slot.order,
+            atOrder: pc.order,
+          },
+        ];
+        changed = true;
+      }
+      cur = { name: pc.oldName, num: pc.oldNum || '' };
+    }
+  });
+  return changed ? { ...s, substitutions: subs } : s;
+}
+
+// 저장본 불러오기 시 1회 적용되는 정규화 묶음
+export function normalizeLoadedGame(s: GameState): GameState {
+  return normalizeAutoDefStamps(synthesizePitcherSlotSubs(s));
+}
+
 // REVERT 후 gameEvents의 노트를 복원된 cells에 atBatPitch 위치로 재적용
 function withEventNotes(s: GameState): GameState {
   let cells = s.cells;
@@ -277,7 +407,6 @@ function advanceInning(s: GameState, cells: Record<string, CellData>): GameState
   const finishedOrder = curBatterFinished ? (s.curBatterOrder % 9) + 1 : s.curBatterOrder;
   let awayNextOrder = s.awayNextOrder;
   let homeNextOrder = s.homeNextOrder;
-  const prevInning = inning;
 
   if (half === 'top') {
     prevInn[inning - 1] =
@@ -310,9 +439,10 @@ function advanceInning(s: GameState, cells: Record<string, CellData>): GameState
         sub.pos === p.pos
     );
     if (!exists) {
+      // 수비 진입 시점 = 새 반이닝 시작 — (이닝, 새 반이닝 선두타자)로 표기 (정답지 형식)
       newDefLogs.push({
-        inning: prevInning,
-        half: prevHalf,
+        inning,
+        half,
         side: defendingSide,
         kind: 'D',
         pos: p.pos,
@@ -321,7 +451,7 @@ function advanceInning(s: GameState, cells: Record<string, CellData>): GameState
         oldName: '',
         oldNum: '',
         order: p.order,
-        atOrder: s.curBatterOrder,
+        atOrder: half === 'top' ? awayNextOrder : homeNextOrder,
       });
     }
   });
@@ -535,7 +665,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
     // 로컬 저장본 복원: 저장된 state 스냅샷을 통째로 교체.
     // (idempotent — 같은 페이로드를 두 번 보내도 동일 결과)
     case 'LOAD_GAME': {
-      return action.state;
+      return normalizeLoadedGame(action.state);
     }
 
     // ── SET_GAME_INFO ────────────────────────────────────────────────────────
@@ -577,6 +707,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
         ...(info.windDir !== undefined && { windDir: info.windDir }),
         ...(info.windSpeed !== undefined && { windSpeed: info.windSpeed }),
         ...(info.weatherLog !== undefined && { weatherLog: info.weatherLog }),
+        ...(info.delayTime !== undefined && { delayTime: info.delayTime }),
       };
     }
 
@@ -599,9 +730,14 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
       const oldPos = target.pos;
       const side: 'away' | 'home' = action.team;
       const newSubs: SubstitutionLog[] = [];
-      const mkLog = (p: Player, pos: number, prevPos: number): SubstitutionLog => ({
-        inning: state.inning,
-        half: state.half,
+      const mkLog = (
+        p: Player,
+        pos: number,
+        prevPos: number,
+        stamp?: { inning: number; half: Half; atOrder: number }
+      ): SubstitutionLog => ({
+        inning: stamp?.inning ?? state.inning,
+        half: stamp?.half ?? state.half,
         side,
         kind: 'D',
         pos,
@@ -611,7 +747,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
         oldName: '',
         oldNum: '',
         order: p.order,
-        atOrder: state.curBatterOrder,
+        atOrder: stamp?.atOrder ?? state.curBatterOrder,
       });
 
       // 동일 포지션을 가진 다른 선수가 있으면 자동 스왑 — 라인업 내 중복 방지
@@ -627,11 +763,68 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
       lu[action.idx] = { ...lu[action.idx], pos: action.pos, needsPosReview: false };
 
       // 본인의 포지션 변경 — 실제 변경이 있을 때만 로깅
+      let baseSubs = state.substitutions;
       if (oldPos !== action.pos) {
-        newSubs.push(mkLog(lu[action.idx], action.pos, oldPos));
+        let merged = false;
+        if (target.needsPosReview) {
+          // 수비 미확정 선수의 첫 확정: 이 선수의 기존 D 로그(공수교대 자동확정 또는
+          // 없음-교체 잠정 로그)를 찾아 pos만 갱신 — 새 행을 쌓지 않음 (이중 행 방지)
+          for (let i = baseSubs.length - 1; i >= 0; i--) {
+            const s2 = baseSubs[i];
+            if (
+              s2.kind === 'D' &&
+              s2.side === side &&
+              s2.order === target.order &&
+              s2.newName === target.name &&
+              s2.newNum === target.num
+            ) {
+              baseSubs = [
+                ...baseSubs.slice(0, i),
+                { ...s2, pos: action.pos },
+                ...baseSubs.slice(i + 1),
+              ];
+              merged = true;
+              break;
+            }
+          }
+        }
+        if (!merged) {
+          // 미확정 첫 확정인데 기존 D 로그가 없으면 시점을 커서가 아니라 데이터로 역산:
+          // 이 선수의 H/R 교체 → 다음 수비 반이닝 → 그 반이닝 선두타자
+          let stamp: { inning: number; half: Half; atOrder: number } | undefined;
+          if (target.needsPosReview) {
+            const prevHR = [...state.substitutions]
+              .reverse()
+              .find(
+                (s2) =>
+                  s2.side === side &&
+                  s2.order === target.order &&
+                  (s2.kind === 'H' || s2.kind === 'R') &&
+                  s2.newName === target.name
+              );
+            if (prevHR) {
+              const defenseHalf: Half = side === 'away' ? 'bottom' : 'top';
+              const inn =
+                prevHR.half === defenseHalf
+                  ? prevHR.inning
+                  : defenseHalf === 'top'
+                    ? prevHR.inning + 1
+                    : prevHR.inning;
+              let lead = state.curBatterOrder;
+              for (const k of Object.keys(state.cells)) {
+                const c = state.cells[k];
+                if (c.half === defenseHalf && c.inning === inn) {
+                  lead = c.order;
+                  break;
+                }
+              }
+              stamp = { inning: inn, half: defenseHalf, atOrder: lead };
+            }
+          }
+          newSubs.push(mkLog(lu[action.idx], action.pos, oldPos, stamp));
+        }
       }
-      const substitutions =
-        newSubs.length > 0 ? [...state.substitutions, ...newSubs] : state.substitutions;
+      const substitutions = newSubs.length > 0 ? [...baseSubs, ...newSubs] : baseSubs;
       return { ...state, [luKey]: lu, substitutions };
     }
 
@@ -1329,22 +1522,24 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
             const runOutSeq = digits.slice(0, partCount).join('-') || result;
             // 포스플레이: 주자는 다음 베이스에서 아웃
             const dpOutBase = base === '1B' ? '2B' : base === '2B' ? '3B' : 'HOME';
-            for (let app = 0; app <= 5; app++) {
-              const rk = cellKey(runner.inning, runner.order, app, runner.half || state.half);
-              if (cells[rk]) {
-                cells = {
-                  ...cells,
-                  [rk]: {
-                    ...cells[rk],
-                    runOut: runOutSeq,
-                    runOutBase: dpOutBase,
-                    runOutNum,
-                    runOutInning: state.inning,
-                    isDPRunner: true,
-                    outGroup: key,
-                  },
-                };
-                break;
+            if (isCurrentInningRunner(runner, state)) {
+              for (let app = 0; app <= 5; app++) {
+                const rk = cellKey(runner.inning, runner.order, app, runner.half || state.half);
+                if (cells[rk]) {
+                  cells = {
+                    ...cells,
+                    [rk]: {
+                      ...cells[rk],
+                      runOut: runOutSeq,
+                      runOutBase: dpOutBase,
+                      runOutNum,
+                      runOutInning: state.inning,
+                      isDPRunner: true,
+                      outGroup: key,
+                    },
+                  };
+                  break;
+                }
               }
             }
             delete runners[base]; // 다이아몬드에서 제거
@@ -1360,7 +1555,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
       // 타자일순 대비 — 같은 (inning, order) 의 가장 최근 PA (높은 app) 셀에 찍어야 함
       if (outs === 3) {
         for (const runner of Object.values(runners).filter(Boolean)) {
-          if (runner) {
+          if (runner && isCurrentInningRunner(runner, state)) {
             for (let app = 5; app >= 0; app--) {
               const rk = cellKey(runner.inning, runner.order, app, runner.half || state.half);
               if (cells[rk]) {
@@ -1714,7 +1909,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
       };
 
       let cells = { ...state.cells };
-      if (runner) {
+      if (runner && isCurrentInningRunner(runner, state)) {
         let found = false;
 
         const runOutNum = outs; // 이 주자 아웃이 몇 번째 아웃인지
@@ -1837,7 +2032,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
           }
         }
         for (const rem of Object.values(runners).filter(Boolean)) {
-          if (rem) {
+          if (rem && isCurrentInningRunner(rem, state)) {
             let found = false;
             for (let app = 5; app >= 0; app--) {
               const rk = cellKey(rem.inning, rem.order, app, rem.half || state.half);
@@ -2024,6 +2219,131 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
         homeER,
         ...next,
         pendingBatter: null,
+        history: saveHist(state),
+      };
+    }
+
+    // ── DELETE_SUBST — 대타/대주자 교체 취소 ─────────────────────────────────
+    // 새 선수의 타격 기록이 생기기 전에만 허용. 라인업/벤치/교체로그/셀 마크 원복.
+    case 'DELETE_SUBST': {
+      const { side, kind, order, newName, newNum } = action;
+      const subsArr = [...state.substitutions];
+      let subIdx = -1;
+      for (let i = subsArr.length - 1; i >= 0; i--) {
+        const s2 = subsArr[i];
+        if (
+          s2.side === side &&
+          s2.kind === kind &&
+          s2.order === order &&
+          s2.newName === newName &&
+          s2.newNum === newNum
+        ) {
+          subIdx = i;
+          break;
+        }
+      }
+      if (subIdx < 0) return state;
+      const sub = subsArr[subIdx];
+      if (!sub.oldName) return state;
+
+      const luKey = side === 'away' ? 'awayLineup' : 'homeLineup';
+      const benchKey = side === 'away' ? 'awayBench' : 'homeBench';
+      const lu = [...state[luKey]];
+      const bench = [...state[benchKey]];
+      const li = lu.findIndex((p) => p.order === order);
+      const bi = bench.findIndex((p) => p.name === sub.oldName && p.num === sub.oldNum);
+      if (li < 0 || bi < 0) return state;
+
+      // 대상 교체 이후(기록 순서 기준) 같은 슬롯의 후속 교체(H/D)는 함께 연쇄 취소
+      // (후속 수비교체 행이 로그 목록에 안 보이는 경우에도 취소가 막히지 않도록)
+      const chainIdxSet = new Set<number>([subIdx]);
+      for (let i = subIdx + 1; i < subsArr.length; i++) {
+        const s2 = subsArr[i];
+        if (s2.side !== side || s2.order !== order) continue;
+        if (s2.kind === 'R') return state; // 대주자 얽힘은 개별 취소로 처리
+        chainIdxSet.add(i); // 후속 H/D(자동확정 포함)
+      }
+      // 취소 후 슬롯 점유자 검증 — 체인의 마지막 '선수 변경' 교체의 newName이어야 함
+      const chainSubs = [...chainIdxSet].sort((a, b) => a - b).map((i) => subsArr[i]);
+      const changing = chainSubs.filter(
+        (s2) => s2.kind !== 'D' || (s2.oldName !== '' && s2.oldName !== s2.newName)
+      );
+      const lastChange = changing[changing.length - 1] ?? sub;
+      if (lu[li].name !== lastChange.newName || lu[li].num !== lastChange.newNum) return state;
+
+      // 교체 시점 이후 그 타순의 타석 결과가 있으면 취소 불가 (타석 삭제 먼저)
+      // — (이닝, 반이닝) 단위 비교: 수비 교체(D)는 공격 반이닝 이후에 찍히므로
+      //   같은 이닝의 교체 전 타석(대타 본인 타석 등)에는 걸리지 않음
+      const offenseHalf: Half = side === 'away' ? 'top' : 'bottom';
+      const subT = sub.inning * 2 + (sub.half === 'bottom' ? 1 : 0);
+      const offHalfIdx = offenseHalf === 'bottom' ? 1 : 0;
+      const hasRecordAfterSub = Object.values(state.cells).some(
+        (c) =>
+          c.half === offenseHalf &&
+          c.order === order &&
+          !!c.result &&
+          c.inning * 2 + offHalfIdx >= subT
+      );
+      if (hasRecordAfterSub) return state;
+
+      const oldPlayer = bench[bi];
+      const newPlayer = lu[li];
+      // 수비 교체(D) 취소: 이전 선수(대타 등)의 pos/미확정 상태를 그대로 복원
+      // 대타/대주자(H/R) 취소: 원래 선발 복귀 — 슬롯 pos 유지, 미확정 해제
+      lu[li] =
+        kind === 'D'
+          ? { ...oldPlayer, order }
+          : { ...oldPlayer, order, pos: oldPlayer.pos || lu[li].pos, needsPosReview: undefined };
+      bench.splice(bi, 1);
+      bench.push({ ...newPlayer });
+
+      // 체인(대상 + 후속 H/D + 자동확정) 전부 제거
+      const substitutions = subsArr.filter((_, i) => !chainIdxSet.has(i));
+
+      // 셀의 대타/대주자 마크 제거 — 체인의 H 교체 전임자 마크 전부
+      const chainHOldNames = new Set(
+        chainSubs.filter((s2) => s2.kind === 'H' && s2.oldName).map((s2) => s2.oldName)
+      );
+      let cells = state.cells;
+      for (const [k, c] of Object.entries(state.cells)) {
+        if (
+          c.pinchHitter &&
+          c.half === offenseHalf &&
+          c.order === order &&
+          chainHOldNames.has(c.pinchHitter.name)
+        ) {
+          cells = { ...cells, [k]: { ...c, pinchHitter: undefined } };
+        }
+        if (kind === 'R' && c.pinchRunnerMark?.pinchName === newName) {
+          cells = { ...cells, [k]: { ...c, pinchRunnerMark: undefined } };
+        }
+      }
+
+      // 대주자(R)면 루의 주자 원복
+      let runners = state.runners;
+      if (kind === 'R') {
+        runners = { ...state.runners };
+        (['1B', '2B', '3B'] as const).forEach((b) => {
+          const r = runners[b];
+          if (r && r.name === newName && r.num === newNum && r.pinchRunner) {
+            runners[b] = {
+              name: sub.oldName,
+              num: sub.oldNum,
+              order: r.order,
+              half: r.half,
+              inning: r.inning,
+            };
+          }
+        });
+      }
+
+      return {
+        ...state,
+        [luKey]: lu,
+        [benchKey]: bench,
+        substitutions,
+        cells,
+        runners,
         history: saveHist(state),
       };
     }
@@ -2384,7 +2704,15 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
         history = history.slice(0, -1);
         result = { ...result, ...top, history };
       }
-      return withEventNotes(result);
+      // 삭제된 반이닝 이후의 이벤트 로그(타자타임·마운드방문·특수상황 등)도 제거
+      // — snapshot에 gameEvents가 없어 남아 있으면, 재기록 시 특수표에 유령 행이 남고
+      //   다음 되돌리기 때 withEventNotes가 옛 노트를 새 셀에 다시 꽂아 넣음
+      const gameEvents = state.gameEvents.filter((ev) => {
+        if (ev.inning < inning) return true;
+        if (ev.inning === inning && delHalf === 'bottom' && ev.half === 'top') return true;
+        return false;
+      });
+      return withEventNotes({ ...result, gameEvents });
     }
 
     // ── DELETE_CELL — 특정 타석만 직접 삭제 ─────────────────────────────────
@@ -2582,6 +2910,82 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
       const benchKey = side === 'away' ? 'awayBench' : 'homeBench';
       const lu = [...state[luKey]];
       const bench = [...state[benchKey]];
+
+      // order 지정: 타순 슬롯 기준으로 "선수만" 교체 — 다른 포지션 선수를 건드리지 않고,
+      // 새 선수 포지션은 미확정(needsPosReview) 상태로 두어 사용자가 이어서 선택
+      if (action.order != null) {
+        const ti = lu.findIndex((x) => x.order === action.order);
+        if (ti < 0) return state;
+        const outP = lu[ti];
+        const slotPos = outP.pos;
+        lu[ti] = { ...player, order: outP.order, pos: slotPos, needsPosReview: true };
+        bench.push({ ...outP });
+        const pi = bench.findIndex((x) => x.num === player.num && x.name === player.name);
+        if (pi >= 0) bench.splice(pi, 1);
+        // 표기 시점 — 입력 순간의 커서(state)가 아니라 데이터에서 역산:
+        // 이 슬롯의 직전 대타/대주자 교체 → 그다음 수비 반이닝 → 그 반이닝 선두타자.
+        // (PitcherLog 수정 등으로 커서가 과거에 가 있어도 항상 같은 시점이 찍힘)
+        const prevHR = [...state.substitutions]
+          .reverse()
+          .find(
+            (s2) =>
+              s2.side === side && s2.order === outP.order && (s2.kind === 'H' || s2.kind === 'R')
+          );
+        const defenseHalf: Half = side === 'away' ? 'bottom' : 'top';
+        let stampInn = state.inning;
+        let stampHalf: Half = state.half;
+        if (prevHR) {
+          stampHalf = defenseHalf;
+          stampInn =
+            prevHR.half === defenseHalf
+              ? prevHR.inning
+              : defenseHalf === 'top'
+                ? prevHR.inning + 1
+                : prevHR.inning;
+        }
+        let leadOrder = state.curBatterOrder;
+        for (const k of Object.keys(state.cells)) {
+          const c = state.cells[k];
+          if (c.half === stampHalf && c.inning === stampInn) {
+            leadOrder = c.order;
+            break;
+          }
+        }
+        const slotSub: SubstitutionLog = {
+          inning: stampInn,
+          half: stampHalf,
+          side,
+          kind: 'D',
+          pos: slotPos,
+          oldPos: slotPos,
+          newName: player.name,
+          newNum: player.num,
+          oldName: outP.name,
+          oldNum: outP.num,
+          order: outP.order,
+          atOrder: leadOrder,
+          mid,
+        };
+        // 빠지는 선수가 실제 수비에 선 적 없이 잠정 승계만 된 경우(공수교대 자동확정,
+        // oldName='') 그 잠정 D 로그 제거 — 유령 수비 layer("6 박성빈") 방지
+        const cleaned = state.substitutions.filter(
+          (s2) =>
+            !(
+              s2.side === side &&
+              s2.kind === 'D' &&
+              s2.oldName === '' &&
+              s2.newName === outP.name &&
+              s2.newNum === outP.num
+            )
+        );
+        return {
+          ...state,
+          [luKey]: lu,
+          [benchKey]: bench,
+          substitutions: [...cleaned, slotSub],
+        };
+      }
+
       const targetIdx = lu.findIndex((x) => x.pos === pos);
       const existingIdx = lu.findIndex((x) => x.num === player.num && x.name === player.name);
 
@@ -2664,10 +3068,34 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
       const inheritsBB = !!mid && (mid.balls >= 2 || mid.balls > mid.strikes);
       const prevPitcherName = state.pitcher.name;
 
+      // 빠지는 투수가 타순 슬롯에 있는 경우(DH 소멸 등) — 교대란 layers 표시용 D 로그도 기록
+      let substitutions = state.substitutions;
+      if (oldPlayer && oldPlayer.order >= 1) {
+        substitutions = [
+          ...substitutions,
+          {
+            inning: state.inning,
+            half: state.half,
+            side,
+            kind: 'D',
+            pos: 1,
+            oldPos: 1,
+            newName: player.name,
+            newNum: player.num,
+            oldName: oldPlayer.name,
+            oldNum: oldPlayer.num,
+            order: oldPlayer.order,
+            atOrder: state.curBatterOrder,
+            mid,
+          },
+        ];
+      }
+
       return {
         ...state,
         [luKey]: lu,
         [benchKey]: bench,
+        substitutions,
         pitcher: { name: player.name, num: player.num, pitchCount: incoming.pitchCount },
         pitchBalls: incoming.pitchBalls,
         pitchStrikes: incoming.pitchStrikes,
@@ -3019,7 +3447,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
         // 3아웃 시 잔루: 남은 주자 셀에 lobCell 표기 (타자일순 대비 — 가장 최근 PA 셀에)
         if (outs === 3) {
           for (const runner of Object.values(state.runners).filter(Boolean)) {
-            if (runner) {
+            if (runner && isCurrentInningRunner(runner, state)) {
               for (let app = 5; app >= 0; app--) {
                 const rk = cellKey(runner.inning, runner.order, app, runner.half || state.half);
                 if (cells[rk]) {

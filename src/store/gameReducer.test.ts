@@ -92,6 +92,44 @@ describe('DELETE_CELL', () => {
     expect(s.cells[runnerKey].runOut).toBeUndefined();
     expect(s.cells[runnerKey].outGroup).toBeUndefined();
   });
+
+  // 소급 재입력(이미 지난 반이닝을 다시 열어 편집) 시 state.runners에 남아있는
+  // 다른 이닝의 잔존 주자를 병살 대상으로 착각해 엉뚱한 셀에 태그하면 안 됨
+  it('병살 처리 시 다른 이닝에서 넘어온 잔존 주자는 무시(엉뚱한 셀 태그 방지)', () => {
+    let s = run(freshGame(), []);
+    // 9회초 9번 타자의 실제 안타 셀(나중 이닝, 이미 기록됨)
+    const staleRunnerKey = cellKey(9, 9, 0, 'top');
+    s = {
+      ...s,
+      cells: {
+        ...s.cells,
+        [staleRunnerKey]: {
+          half: 'top',
+          inning: 9,
+          order: 9,
+          appearance: 0,
+          pitches: [],
+          result: 'H1',
+          runnerNotes: [],
+        },
+      },
+      // 7회초 3번 타순 타석으로 커서를 옮기고, runners에는 9회 소속 주자가 잘못 남아있는 상황을 재현
+      half: 'top',
+      inning: 7,
+      curBatterOrder: 3,
+      selCellKey: cellKey(7, 3, 0, 'top'),
+      outs: 1,
+      runners: { '1B': { name: '이원준', num: '100', order: 9, half: 'top', inning: 9 } },
+    };
+    s = gameReducer(s, { type: 'BAT_OUT', result: '1-4-3', dp: true, ballType: '땅' });
+    expect(s.outs).toBe(3);
+
+    // 9회 주자의 셀에 7회 병살 태그가 잘못 붙으면 안 됨
+    expect(s.cells[staleRunnerKey].isDPRunner).toBeUndefined();
+    expect(s.cells[staleRunnerKey].runOut).toBeUndefined();
+    // 잔존 주자는 다이아몬드에서는 정리됨(더 이상 유효하지 않은 잔존 데이터이므로)
+    expect(s.runners['1B']).toBeUndefined();
+  });
 });
 
 // ── CLEAR_CELL (타석지우기) ──────────────────────────────────────────────────
@@ -292,6 +330,258 @@ describe('DELETE_CELL 점수 재계산 정합성', () => {
     expect(s.pitchBalls).toBe(1);
     expect(s.pitchStrikes).toBe(2);
     expect(s.pitcher.pitchCount).toBe(3);
+  });
+});
+
+// ── DELETE_CELL — 아웃 아닌 타석 삭제 시 3아웃 잠금 방지 ─────────────────────
+
+describe('DELETE_CELL 아웃 아닌 타석 삭제', () => {
+  it('3아웃 완료 이닝에서 안타 타석 삭제 → outs 2로 캡 (재입력 가능)', () => {
+    // 1번 안타 + 2·3·4번 아웃 = 3아웃. 안타(아웃 아님) 타석을 삭제해도
+    // 남은 아웃 3개 때문에 outs=3이면 재입력이 가드에 막힘 → 2로 캡되어야 함
+    let s = run(freshGame(), [single, groundOut, groundOut, groundOut]);
+    expect(s.outs).toBe(3);
+
+    const hitKey = cellKey(1, 1, 0, 'top');
+    s = gameReducer(s, { type: 'DELETE_CELL', cellKey: hitKey });
+
+    expect(s.cells[hitKey]).toBeUndefined();
+    expect(s.outs).toBe(2); // 3아웃 가드에 걸리지 않아야 재입력 가능
+    expect(s.selCellKey).toBe(hitKey);
+    expect(s.curBatterOrder).toBe(1);
+  });
+});
+
+// ── DELETE_INNING — 이벤트 로그 정리 ─────────────────────────────────────────
+
+describe('DELETE_INNING 이벤트 정리', () => {
+  it('반이닝 삭제 시 그 반이닝의 gameEvents(타자타임 등)도 제거', () => {
+    let s = run(freshGame(), [
+      { type: 'PITCH', pitchType: 'B' },
+      { type: 'GAME_EVENT', eventType: 'batter_timeout', note: 'BT' },
+      groundOut,
+      groundOut,
+    ]);
+    expect(s.gameEvents).toHaveLength(1);
+
+    s = gameReducer(s, { type: 'DELETE_INNING', inning: 1, half: 'top' });
+    expect(s.gameEvents).toHaveLength(0); // 유령 이벤트 없음
+    expect(s.outs).toBe(0);
+    // 셀도 롤백됨 — 남은 셀에 BT 노트가 없어야 함
+    const anyBT = Object.values(s.cells).some((c) =>
+      (c.eventLog || []).some((e) => e.kind === 'note' && e.note === 'BT')
+    );
+    expect(anyBT).toBe(false);
+  });
+});
+
+// ── DELETE_SUBST — 대타/대주자 교체 취소 ─────────────────────────────────────
+
+describe('DELETE_SUBST', () => {
+  it('대타 교체 취소 → 라인업/벤치/교체로그/셀 마크 원복', () => {
+    let s = freshGame();
+    const pinch = mkPlayer('대타맨', 1, 3);
+    s = { ...s, awayBench: [pinch] };
+    s = gameReducer(s, { type: 'SUBST_BATTER', side: 'away', player: pinch });
+    expect(s.awayLineup[0].name).toBe('대타맨');
+    expect(s.substitutions).toHaveLength(1);
+
+    s = gameReducer(s, {
+      type: 'DELETE_SUBST',
+      side: 'away',
+      kind: 'H',
+      order: 1,
+      newName: '대타맨',
+      newNum: pinch.num,
+    });
+    expect(s.awayLineup[0].name).toBe('원정1'); // 원래 선수 복귀
+    expect(s.substitutions).toHaveLength(0);
+    expect(s.awayBench.some((p) => p.name === '대타맨')).toBe(true); // 대타 벤치 복귀
+    expect(s.awayBench.some((p) => p.name === '원정1')).toBe(false);
+    const cell = s.cells[cellKey(1, 1, 0, 'top')];
+    expect(cell?.pinchHitter).toBeUndefined(); // 셀 대타 마크 제거
+  });
+
+  it('수비 교체(D) 취소 → 이전 선수(수비 미확정 대타) 원복', () => {
+    // 박성빈 대타 → 이닝 종료 후 "없음" → 강민균 수비 투입 시나리오의 취소
+    let s = freshGame();
+    const pinch = mkPlayer('박성빈', 1, 3);
+    const fielder = mkPlayer('강민균', 1, 3);
+    s = { ...s, awayBench: [pinch, fielder] };
+    s = gameReducer(s, { type: 'SUBST_BATTER', side: 'away', player: pinch });
+    const pinchPos = s.awayLineup[0].pos;
+    expect(s.awayLineup[0].needsPosReview).toBe(true);
+    // 수비 교체: 박성빈 자리에 강민균 투입 (LineupReviewModal '없음' 플로우와 동일 액션)
+    s = gameReducer(s, { type: 'SUBST', side: 'away', pos: pinchPos, player: fielder });
+    expect(s.awayLineup[0].name).toBe('강민균');
+
+    s = gameReducer(s, {
+      type: 'DELETE_SUBST',
+      side: 'away',
+      kind: 'D',
+      order: 1,
+      newName: '강민균',
+      newNum: fielder.num,
+    });
+    expect(s.awayLineup[0].name).toBe('박성빈'); // 대타 복귀 (수비 미확정 상태 유지)
+    expect(s.awayLineup[0].needsPosReview).toBe(true);
+    expect(s.awayBench.some((p) => p.name === '강민균')).toBe(true);
+    // 이후 H(박성빈 대타)도 연속 취소 가능
+    s = gameReducer(s, {
+      type: 'DELETE_SUBST',
+      side: 'away',
+      kind: 'H',
+      order: 1,
+      newName: '박성빈',
+      newNum: pinch.num,
+    });
+    expect(s.awayLineup[0].name).toBe('원정1');
+    expect(s.substitutions).toHaveLength(0);
+  });
+
+  it('없음 플로우: 슬롯 기준 선수 교체 — 다른 포지션 선수 안 건드림 + 포지션 이어서 선택', () => {
+    // 대타(포수 슬롯 승계) 자리에 강민균 투입 — 기존 유격수(원정4, pos... i=3 → pos 3) 등
+    // 다른 선수는 그대로여야 하고, 강민균은 미확정 상태로 들어와 이후 포지션 선택
+    let s = freshGame();
+    const pinch = mkPlayer('박성빈', 1, 3);
+    const fielder = mkPlayer('강민균', 1, 3);
+    s = { ...s, awayBench: [pinch, fielder] };
+    s = gameReducer(s, { type: 'SUBST_BATTER', side: 'away', player: pinch });
+    const othersBefore = s.awayLineup.slice(1).map((p) => `${p.name}:${p.pos}`);
+
+    // 공수교대 시 생기는 잠정 수비확정(auto-D) 로그 시뮬레이션 — 없음 교체 시 제거돼야 함
+    s = {
+      ...s,
+      substitutions: [
+        ...s.substitutions,
+        {
+          inning: 1,
+          half: 'top' as const,
+          side: 'away' as const,
+          kind: 'D' as const,
+          pos: s.awayLineup[0].pos,
+          newName: '박성빈',
+          newNum: pinch.num,
+          oldName: '',
+          oldNum: '',
+          order: 1,
+        },
+      ],
+    };
+
+    // 슬롯(order 1) 기준 선수만 교체
+    s = gameReducer(s, {
+      type: 'SUBST',
+      side: 'away',
+      pos: s.awayLineup[0].pos,
+      order: 1,
+      player: fielder,
+    });
+    expect(s.awayLineup[0].name).toBe('강민균');
+    // 박성빈의 잠정 수비확정 로그가 제거됨 — "6 박성빈" 유령 layer 방지
+    expect(
+      s.substitutions.some((x) => x.kind === 'D' && x.newName === '박성빈' && x.oldName === '')
+    ).toBe(false);
+    expect(s.awayLineup[0].needsPosReview).toBe(true); // 포지션 미확정 유지
+    // 나머지 라인업 전원 무변동 (기존 유격수 안 빠짐)
+    expect(s.awayLineup.slice(1).map((p) => `${p.name}:${p.pos}`)).toEqual(othersBefore);
+
+    // 시점 표기 = 반이닝 선두타자 (타자 몇 명 지나고 입력해도 선두타순으로 찍힘)
+    const kmSub = s.substitutions[s.substitutions.length - 1];
+    expect(kmSub.atOrder).toBe(1); // 1회초 선두 = 1번 (원정1 셀 존재)
+
+    // 이어서 포지션 선택(예: 5) → 같은 시점 D 로그의 pos만 갱신 (이중 행 없음)
+    const dCountBefore = s.substitutions.filter((x) => x.newName === '강민균').length;
+    s = gameReducer(s, { type: 'CHANGE_LU_POS', team: 'away', idx: 0, pos: 5 });
+    expect(s.awayLineup[0].pos).toBe(5);
+    expect(s.awayLineup[0].needsPosReview).toBe(false);
+    const kmLogs = s.substitutions.filter((x) => x.newName === '강민균');
+    expect(kmLogs.length).toBe(dCountBefore); // 로그 개수 그대로 (pos만 갱신)
+    expect(kmLogs[kmLogs.length - 1].pos).toBe(5);
+  });
+
+  it('H 취소 시 후속 수비교체(D)까지 연쇄 취소 (스크린샷 시나리오)', () => {
+    // 심건보 → 박성빈(H) → 강민균(D) 상태에서 H를 바로 취소하면 전부 원복
+    let s = freshGame();
+    const pinch = mkPlayer('박성빈', 1, 3);
+    const fielder = mkPlayer('강민균', 1, 3);
+    s = { ...s, awayBench: [pinch, fielder] };
+    s = gameReducer(s, { type: 'SUBST_BATTER', side: 'away', player: pinch });
+    s = gameReducer(s, {
+      type: 'SUBST',
+      side: 'away',
+      pos: s.awayLineup[0].pos,
+      player: fielder,
+    });
+    expect(s.awayLineup[0].name).toBe('강민균');
+    expect(s.substitutions).toHaveLength(2);
+
+    s = gameReducer(s, {
+      type: 'DELETE_SUBST',
+      side: 'away',
+      kind: 'H',
+      order: 1,
+      newName: '박성빈',
+      newNum: pinch.num,
+    });
+    expect(s.awayLineup[0].name).toBe('원정1'); // 원래 선수 복귀
+    expect(s.substitutions).toHaveLength(0); // H·D 둘 다 제거
+    expect(s.awayBench.map((p) => p.name).sort()).toContain('강민균');
+    expect(s.awayBench.map((p) => p.name)).toContain('박성빈');
+  });
+
+  it('대타가 타석 결과를 남긴 뒤에는 취소 불가 (no-op)', () => {
+    let s = freshGame();
+    const pinch = mkPlayer('대타맨', 1, 3);
+    s = { ...s, awayBench: [pinch] };
+    s = gameReducer(s, { type: 'SUBST_BATTER', side: 'away', player: pinch });
+    s = gameReducer(s, single); // 대타가 안타 기록
+    const before = s;
+    s = gameReducer(s, {
+      type: 'DELETE_SUBST',
+      side: 'away',
+      kind: 'H',
+      order: 1,
+      newName: '대타맨',
+      newNum: pinch.num,
+    });
+    expect(s).toBe(before); // 상태 변화 없음
+  });
+});
+
+// ── 교체 로그 oldPos (수비기록 구간 역산용) ──────────────────────────────────
+
+describe('SubstitutionLog oldPos', () => {
+  it('대타 교체 시 빠지는 타자의 수비 포지션이 oldPos로 기록', () => {
+    // freshGame 1번 타자 = 포수(pos 2)
+    let s = freshGame();
+    s = gameReducer(s, {
+      type: 'SUBST_BATTER',
+      side: 'away',
+      player: mkPlayer('대타맨', 1, 3),
+    });
+    const log = s.substitutions[s.substitutions.length - 1];
+    expect(log.kind).toBe('H');
+    expect(log.oldPos).toBe(2);
+    expect(log.newName).toBe('대타맨');
+  });
+
+  it('자리교대(SWAP_FIELD_POS) 시 각자 이전 포지션이 oldPos로 기록', () => {
+    let s = freshGame();
+    // 원정 라인업에서 야수 두 명 (idx 1: pos 3, idx 2: pos 3... mkPlayer i>0 → pos 3)
+    // pos 중복 mock이므로 pos를 명시 세팅
+    s = {
+      ...s,
+      awayLineup: s.awayLineup.map((p, i) =>
+        i === 1 ? { ...p, pos: 7 } : i === 2 ? { ...p, pos: 8 } : p
+      ),
+    };
+    s = gameReducer(s, { type: 'SWAP_FIELD_POS', team: 'away', idx1: 1, idx2: 2 });
+    const [l1, l2] = s.substitutions.slice(-2);
+    expect(l1.pos).toBe(8); // idx1: 7 → 8
+    expect(l1.oldPos).toBe(7);
+    expect(l2.pos).toBe(7); // idx2: 8 → 7
+    expect(l2.oldPos).toBe(8);
   });
 });
 

@@ -460,6 +460,7 @@ export interface GameSetup {
   windDir?: string;
   windSpeed?: string;
   weatherLog?: string;
+  delayTime?: string;
 }
 
 export type GameAction =
@@ -522,6 +523,15 @@ export type GameAction =
       deflection?: DeflectionInfo;
     }
   | { type: 'REMOVE_RUNNER'; base: Base }
+  // 대타/대주자/수비 교체 취소 — 교체 후 새 선수의 기록이 생기기 전 삭제용 (PitcherLog)
+  | {
+      type: 'DELETE_SUBST';
+      side: 'away' | 'home';
+      kind: 'H' | 'R' | 'D';
+      order: number; // 교체가 일어난 타순 슬롯
+      newName: string;
+      newNum: string;
+    }
   | {
       type: 'CHAIN_TRANSIT_ADV';
       runner: Runner;
@@ -550,6 +560,8 @@ export type GameAction =
       side: 'away' | 'home';
       pos: number;
       player: Player;
+      // 지정 시 pos 대신 타순 슬롯 기준으로 선수만 교체 (포지션은 미확정으로 두고 이후 선택)
+      order?: number;
       mid?: { balls: number; strikes: number };
     }
   | {

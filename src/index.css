@@ -795,6 +795,9 @@ button {
 .ss-row-sublayer td {
   border-top: 1px dashed #b0b5bd !important;
 }
+.ss-row-neworder td {
+  border-top: 2px solid #6b7280 !important;
+}
 .cur-inn-col {
   background: rgba(37, 99, 235, 0.03);
 }

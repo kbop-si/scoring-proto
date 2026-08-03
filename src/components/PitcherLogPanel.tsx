@@ -188,6 +188,8 @@ type LogRow = {
   pitcher: string;
   batter: string;
   paStart: boolean;
+  // 타석 본문(투구/결과)의 첫 행 — 교체 행이 paStart를 가져가도 타석 삭제 ✕가 뜨도록
+  paMain?: boolean;
   // 편집을 위한 source 매핑 — eventLog 기반 행에만 부여
   cellKey?: string;
   entryIdx?: number;
@@ -217,7 +219,21 @@ type LogRow = {
       runnerName?: string;
       dest?: string;
     } // 도루·도루실패·주자아웃
-  | { kind: 'event'; label: string; pitcherLabel?: string } // 견제·마운드방문·투수교체 등
+  | {
+      kind: 'event';
+      label: string;
+      pitcherLabel?: string;
+      // 대타/대주자/수비 교체 행 취소용 식별자
+      subInfo?: {
+        side: 'away' | 'home';
+        kind: 'H' | 'R' | 'D';
+        order: number;
+        inning: number; // 교체 발생 이닝 — 이후 타석 기록 존재 검사용
+        half: 'top' | 'bottom'; // 교체 발생 반이닝
+        newName: string;
+        newNum: string;
+      };
+    } // 견제·마운드방문·투수교체 등
 );
 
 function buildPitcherLog(G: GameState): LogRow[] {
@@ -324,6 +340,7 @@ function buildPitcherLog(G: GameState): LogRow[] {
     // ── 대타 / 대주자 교체 행 ───────────────────────────────────────────────
     const battingSide: 'away' | 'home' = cell.half === 'top' ? 'away' : 'home';
     let batterShown = false;
+    let mainShown = false; // 타석 본문(투구/결과) 첫 행 여부 — 타석 삭제 ✕ 위치
 
     const pinchSubs = (G.substitutions || []).filter(
       (s) =>
@@ -341,6 +358,15 @@ function buildPitcherLog(G: GameState): LogRow[] {
         paStart: !batterShown,
         kind: 'event',
         label: `대타 교체: ${sub.oldName} → ${sub.newName}${midStr}`,
+        subInfo: {
+          side: battingSide,
+          kind: 'H',
+          order: sub.order ?? cell.order,
+          inning: sub.inning,
+          half: sub.half,
+          newName: sub.newName,
+          newNum: sub.newNum,
+        },
       });
       batterShown = true;
     }
@@ -361,6 +387,46 @@ function buildPitcherLog(G: GameState): LogRow[] {
         paStart: !batterShown,
         kind: 'event',
         label: `대주자 교체: ${rs.oldName} → ${rs.newName}${baseLabel}`,
+        subInfo: {
+          side: battingSide,
+          kind: 'R',
+          order: rs.order ?? cell.order,
+          inning: rs.inning,
+          half: rs.half,
+          newName: rs.newName,
+          newNum: rs.newNum,
+        },
+      });
+      if (!batterShown) batterShown = true;
+    }
+    // ── 수비 교체(D) 행 — 수비팀(= 공격의 상대) 벤치 투입만 (자동확정·자리교대 제외) ──
+    const defendingSide: 'away' | 'home' = cell.half === 'top' ? 'home' : 'away';
+    const defSubs = (G.substitutions || []).filter(
+      (s) =>
+        s.kind === 'D' &&
+        s.side === defendingSide &&
+        s.inning === cell.inning &&
+        s.half === cell.half &&
+        s.atOrder === cell.order &&
+        !!s.oldName &&
+        s.oldName !== s.newName
+    );
+    for (const ds of defSubs) {
+      rows.push({
+        ...base,
+        no: noMap[pitcher],
+        paStart: !batterShown,
+        kind: 'event',
+        label: `수비 교체: ${ds.oldName} → ${ds.newName} (${ds.pos}번)`,
+        subInfo: {
+          side: defendingSide,
+          kind: 'D',
+          order: ds.order ?? cell.order,
+          inning: ds.inning,
+          half: ds.half,
+          newName: ds.newName,
+          newNum: ds.newNum,
+        },
       });
       if (!batterShown) batterShown = true;
     }
@@ -370,6 +436,21 @@ function buildPitcherLog(G: GameState): LogRow[] {
       let pitchSeq = 0;
       const pendingMidChanges = [...midChanges]; // 남은 mid-PA 교체 큐 (투구 수 오름차순)
       let nextPitchShowsPitcher = false; // mid-PA 교체 직후 첫 투구 행에 투수 이름 표시
+      // runner_adv(이 타석 결과로 인한 다른 주자 진루/득점)는 이 타석의 최종 no를 항상 갖도록
+      // 미리 계산 — eventLog 안에서 result보다 먼저 기록돼도(입력 순서 무관) 직전 타석 번호를
+      // 물려받지 않게 함 (도루·견제 등 실제 투구 사이 이벤트는 그대로 실시간 값 사용)
+      const cellPitchResultCount = cell.eventLog.filter(
+        (e) => e.kind === 'pitch' || e.kind === 'result'
+      ).length;
+      const cellFinalNo = (noMap[curPitcher] ?? 0) + cellPitchResultCount;
+      // runner_adv는 항상 이 타석의 result 행 "다음"에 보이도록 위치도 강제 —
+      // eventLog 저장 순서상 result보다 앞서 있어도(입력 순서 무관) 여기서 모아뒀다가
+      // result 처리 직후(또는 result 없이 끝나면 타석 끝) 한꺼번에 flush
+      const pendingRunnerAdvRows: LogRow[] = [];
+      const flushRunnerAdvRows = () => {
+        rows.push(...pendingRunnerAdvRows);
+        pendingRunnerAdvRows.length = 0;
+      };
       cell.eventLog.forEach((entry, entryIdx) => {
         // 투수 교체 시점 도달: 복수 교체도 순차 처리
         while (pendingMidChanges.length > 0) {
@@ -410,12 +491,15 @@ function buildPitcherLog(G: GameState): LogRow[] {
           noMap[curPitcher] = (noMap[curPitcher] ?? 0) + 1;
           const isFirst = !batterShown;
           batterShown = true;
+          const isMain = !mainShown;
+          mainShown = true;
           const showPitcher = nextPitchShowsPitcher;
           nextPitchShowsPitcher = false;
           rows.push({
             ...base,
             no: noMap[curPitcher],
             paStart: isFirst,
+            paMain: isMain,
             kind: 'pitch',
             pitchNum: `${pitchSeq}구`,
             label: PITCH_LABEL[entry.pitch] ?? entry.pitch,
@@ -462,10 +546,13 @@ function buildPitcherLog(G: GameState): LogRow[] {
           noMap[curPitcher] = (noMap[curPitcher] ?? 0) + 1;
           const resultIsFirst = !batterShown;
           batterShown = true;
+          const resultIsMain = !mainShown;
+          mainShown = true;
           rows.push({
             ...base,
             no: noMap[curPitcher],
             paStart: resultIsFirst,
+            paMain: resultIsMain,
             kind: 'result',
             result: entry.result,
             ballType: cell.ballType,
@@ -474,6 +561,7 @@ function buildPitcherLog(G: GameState): LogRow[] {
             hitData: cell.hitData,
             pitchNum: resultIsFirst ? '1구' : '',
           });
+          flushRunnerAdvRows(); // result 이전에 먼저 쌓인 runner_adv를 이 결과 행 바로 다음에 노출
         } else if (entry.kind === 'runner_adv') {
           const ac = entry.advCode;
           const reason = advLabel(ac);
@@ -485,9 +573,9 @@ function buildPitcherLog(G: GameState): LogRow[] {
           } else {
             label = reason || `→${baseChar(entry.dest)}`;
           }
-          rows.push({
+          pendingRunnerAdvRows.push({
             ...base,
-            no: noMap[curPitcher] ?? 0,
+            no: cellFinalNo,
             paStart: false,
             kind: 'runner',
             label: `${entry.runnerName} ${label}`,
@@ -510,6 +598,7 @@ function buildPitcherLog(G: GameState): LogRow[] {
           });
         }
       });
+      flushRunnerAdvRows(); // result 없이 끝난 셀 등 — 남아있으면 타석 끝에 추가
       // 루프 후에도 남은 교체(투구 수를 넘은 시점 이후) 마지막에 추가
       for (const ch of pendingMidChanges) {
         rows.push({
@@ -679,11 +768,22 @@ export default function PitcherLogPanel({
   G,
   onEditRow,
   onDeleteCell,
+  onDeleteSubst,
   onRetroSwap,
 }: {
   G: GameState;
   onEditRow?: (info: EditRowInfo) => void;
   onDeleteCell?: (key: string) => void;
+  // 대타/대주자/수비 교체 취소 (새 선수 기록 생기기 전)
+  onDeleteSubst?: (info: {
+    side: 'away' | 'home';
+    kind: 'H' | 'R' | 'D';
+    order: number;
+    inning: number;
+    half: 'top' | 'bottom';
+    newName: string;
+    newNum: string;
+  }) => void;
   // 선택된 이닝 시점의 소급 수비 변경 (좌↔우익수 교대 뒤늦게 발견 등)
   onRetroSwap?: (inning: number, half: 'top' | 'bottom') => void;
 }) {
@@ -948,6 +1048,71 @@ export default function PitcherLogPanel({
                   </div>
                   <div className="plp-cell" style={{ fontWeight: 600, color: '#b45309' }}>
                     {r.label}
+                    {r.subInfo &&
+                      onDeleteSubst &&
+                      (() => {
+                        const dk = `sub-${r.subInfo.side}-${r.subInfo.kind}-${r.subInfo.order}-${r.subInfo.newNum}-${r.subInfo.newName}`;
+                        return confirmDeleteKey === dk ? (
+                          <>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onDeleteSubst(r.subInfo!);
+                                setConfirmDeleteKey(null);
+                              }}
+                              style={{
+                                fontSize: 9,
+                                padding: '1px 4px',
+                                background: '#dc2626',
+                                color: '#fff',
+                                border: 'none',
+                                borderRadius: 2,
+                                cursor: 'pointer',
+                                marginLeft: 6,
+                                marginRight: 2,
+                              }}
+                            >
+                              교체취소
+                            </button>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setConfirmDeleteKey(null);
+                              }}
+                              style={{
+                                fontSize: 9,
+                                padding: '1px 4px',
+                                background: '#fff',
+                                border: '1px solid #cbd5e1',
+                                borderRadius: 2,
+                                cursor: 'pointer',
+                              }}
+                            >
+                              취소
+                            </button>
+                          </>
+                        ) : (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setConfirmDeleteKey(dk);
+                            }}
+                            style={{
+                              fontSize: 9,
+                              padding: '1px 4px',
+                              background: '#fff',
+                              border: '1px solid #e2e8f0',
+                              borderRadius: 2,
+                              cursor: 'pointer',
+                              color: '#94a3b8',
+                              marginLeft: 6,
+                            }}
+                            title="교체 취소 (새 선수 기록 생기기 전만 가능)"
+                          >
+                            ✕
+                          </button>
+                        );
+                      })()}
                   </div>
                 </div>
               );
@@ -1168,61 +1333,64 @@ export default function PitcherLogPanel({
                         resultRow!.hitData
                       )
                     : (r as { label: string }).label}
-                  {r.paStart && onDeleteCell && r.cellKey && G.cells[r.cellKey]?.result && (
-                    <span style={{ marginLeft: 6 }} onClick={(e) => e.stopPropagation()}>
-                      {confirmDeleteKey === r.cellKey ? (
-                        <>
+                  {(r.paStart || r.paMain) &&
+                    onDeleteCell &&
+                    r.cellKey &&
+                    G.cells[r.cellKey]?.result && (
+                      <span style={{ marginLeft: 6 }} onClick={(e) => e.stopPropagation()}>
+                        {confirmDeleteKey === r.cellKey ? (
+                          <>
+                            <button
+                              onClick={() => {
+                                onDeleteCell(r.cellKey!);
+                                setConfirmDeleteKey(null);
+                              }}
+                              style={{
+                                fontSize: 9,
+                                padding: '1px 4px',
+                                background: '#dc2626',
+                                color: '#fff',
+                                border: 'none',
+                                borderRadius: 2,
+                                cursor: 'pointer',
+                                marginRight: 2,
+                              }}
+                            >
+                              삭제
+                            </button>
+                            <button
+                              onClick={() => setConfirmDeleteKey(null)}
+                              style={{
+                                fontSize: 9,
+                                padding: '1px 4px',
+                                background: '#fff',
+                                border: '1px solid #cbd5e1',
+                                borderRadius: 2,
+                                cursor: 'pointer',
+                              }}
+                            >
+                              취소
+                            </button>
+                          </>
+                        ) : (
                           <button
-                            onClick={() => {
-                              onDeleteCell(r.cellKey!);
-                              setConfirmDeleteKey(null);
-                            }}
-                            style={{
-                              fontSize: 9,
-                              padding: '1px 4px',
-                              background: '#dc2626',
-                              color: '#fff',
-                              border: 'none',
-                              borderRadius: 2,
-                              cursor: 'pointer',
-                              marginRight: 2,
-                            }}
-                          >
-                            삭제
-                          </button>
-                          <button
-                            onClick={() => setConfirmDeleteKey(null)}
+                            onClick={() => setConfirmDeleteKey(r.cellKey!)}
                             style={{
                               fontSize: 9,
                               padding: '1px 4px',
                               background: '#fff',
-                              border: '1px solid #cbd5e1',
+                              border: '1px solid #e2e8f0',
                               borderRadius: 2,
                               cursor: 'pointer',
+                              color: '#94a3b8',
                             }}
+                            title="타석 삭제"
                           >
-                            취소
+                            ✕
                           </button>
-                        </>
-                      ) : (
-                        <button
-                          onClick={() => setConfirmDeleteKey(r.cellKey!)}
-                          style={{
-                            fontSize: 9,
-                            padding: '1px 4px',
-                            background: '#fff',
-                            border: '1px solid #e2e8f0',
-                            borderRadius: 2,
-                            cursor: 'pointer',
-                            color: '#94a3b8',
-                          }}
-                          title="타석 삭제"
-                        >
-                          ✕
-                        </button>
-                      )}
-                    </span>
-                  )}
+                        )}
+                      </span>
+                    )}
                 </div>
               </div>
             );

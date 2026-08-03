@@ -261,7 +261,13 @@ export default function GameScreen({ setup, onEnd }: Props) {
 
   useEffect(() => {
     if (localStorage.getItem('kbo_sheet_state')) {
-      localStorage.setItem('kbo_sheet_state', JSON.stringify(G));
+      try {
+        // history(되돌리기 스냅샷)는 시트 렌더에 불필요 + 용량이 커서 제외
+        // (포함 시 localStorage 한도 초과 → QuotaExceededError로 앱 크래시)
+        localStorage.setItem('kbo_sheet_state', JSON.stringify({ ...G, history: [] }));
+      } catch {
+        /* 저장공간 초과 — 시트 창 동기화만 생략, 기록 화면은 유지 */
+      }
     }
   }, [G]);
 
@@ -1408,6 +1414,59 @@ export default function GameScreen({ setup, onEnd }: Props) {
     [dispatch]
   );
 
+  // 대타/대주자/수비 교체 취소 — 교체 시점 이후 그 타순의 타석 기록이 없을 때만 허용
+  const handleDeleteSubst = useCallback(
+    (info: {
+      side: 'away' | 'home';
+      kind: 'H' | 'R' | 'D';
+      order: number;
+      inning: number;
+      half: 'top' | 'bottom';
+      newName: string;
+      newNum: string;
+    }) => {
+      const offenseHalf = info.side === 'away' ? 'top' : 'bottom';
+      // (이닝, 반이닝) 단위 비교 — 교체 이후의 타석 결과만 검사
+      // (수비 교체 D는 공격 반이닝 뒤에 찍히므로 같은 이닝의 교체 전 타석에는 안 걸림)
+      const subT = info.inning * 2 + (info.half === 'bottom' ? 1 : 0);
+      const offHalfIdx = offenseHalf === 'bottom' ? 1 : 0;
+      const hasRecord = Object.values(G.cells).some(
+        (c) =>
+          c.half === offenseHalf &&
+          c.order === info.order &&
+          !!c.result &&
+          c.inning * 2 + offHalfIdx >= subT
+      );
+      if (hasRecord) {
+        showToast('교체 이후 타석 기록이 있어 취소 불가 — 먼저 해당 타석을 삭제(✕)하세요');
+        return;
+      }
+      // 후속 교체(H/D)는 reducer에서 연쇄 취소됨 — 대주자(R)가 얽힌 경우만 개별 처리 필요
+      const laterR = G.substitutions.some(
+        (s) =>
+          s.side === info.side &&
+          s.order === info.order &&
+          s.kind === 'R' &&
+          s.inning * 2 + (s.half === 'bottom' ? 1 : 0) >= subT &&
+          !(s.newName === info.newName && s.newNum === info.newNum)
+      );
+      if (laterR) {
+        showToast('대주자 교체가 얽혀 있어 대주자부터 개별 취소하세요');
+        return;
+      }
+      dispatch({
+        type: 'DELETE_SUBST',
+        side: info.side,
+        kind: info.kind,
+        order: info.order,
+        newName: info.newName,
+        newNum: info.newNum,
+      });
+      showToast(`교체 취소됨 — 후속 수비교체 포함 원복`);
+    },
+    [G.cells, G.substitutions, dispatch, showToast]
+  );
+
   const handleClear = useCallback(() => {
     // 진행 중 타석: 투구만 클리어 / 결과 있는 타석(3아웃 직후 포함): 그 PA 전체를 history에서 pop
     dispatch({ type: 'CLEAR_CELL' });
@@ -1478,7 +1537,12 @@ export default function GameScreen({ setup, onEnd }: Props) {
           showSheet={showSheet}
           onToggleSheet={() => setShowSheet((s) => !s)}
           onOpenSheetWindow={() => {
-            localStorage.setItem('kbo_sheet_state', JSON.stringify(G));
+            try {
+              // history 제외 — 용량 초과(QuotaExceededError) 방지, 시트 렌더에 불필요
+              localStorage.setItem('kbo_sheet_state', JSON.stringify({ ...G, history: [] }));
+            } catch {
+              showToast('저장공간 부족 — 기록지 창 데이터 동기화 실패');
+            }
             window.open('?sheet=1', '_blank', 'noopener,noreferrer');
           }}
           onOpenScoreReview={() => setScoreReviewTarget({ inning: G.inning, half: G.half })}
@@ -1494,6 +1558,7 @@ export default function GameScreen({ setup, onEnd }: Props) {
               G={G}
               onEditRow={handleEditRow}
               onDeleteCell={(key) => dispatchDeleteCell(key)}
+              onDeleteSubst={handleDeleteSubst}
               onRetroSwap={(inning, half) => {
                 setRetroSwapTarget({ inning, half });
                 setRetroSwapSel([]);
@@ -1749,6 +1814,7 @@ export default function GameScreen({ setup, onEnd }: Props) {
               G={G}
               onEditRow={handleEditRow}
               onDeleteCell={(key) => dispatchDeleteCell(key)}
+              onDeleteSubst={handleDeleteSubst}
               onRetroSwap={(inning, half) => {
                 setRetroSwapTarget({ inning, half });
                 setRetroSwapSel([]);
@@ -2238,11 +2304,41 @@ export default function GameScreen({ setup, onEnd }: Props) {
               : ''
         }
         lineup={lineupReviewTeam === 'away' ? G.awayLineup : G.homeLineup}
+        bench={availableBench(lineupReviewTeam === 'away' ? G.awayBench : G.homeBench)}
         onChangePos={(idx, pos) => {
           if (!lineupReviewTeam) return;
           dispatch({ type: 'CHANGE_LU_POS', team: lineupReviewTeam, idx, pos });
         }}
-        onClose={() => setLineupReviewTeam(null)}
+        onSubstitute={(idx, player) => {
+          if (!lineupReviewTeam) return;
+          // 대타/대주자가 수비에 안 들어감 → 그 타순 슬롯의 "선수만" 교체
+          // (포지션은 미확정으로 두고 사용자가 이어서 선택 — 다른 포지션 선수 안 건드림)
+          const lu = lineupReviewTeam === 'away' ? G.awayLineup : G.homeLineup;
+          const out = lu[idx];
+          if (!out) return;
+          dispatch({
+            type: 'SUBST',
+            side: lineupReviewTeam,
+            pos: out.pos,
+            order: out.order,
+            player,
+          });
+          showToast(`${player.name} 투입 — 수비 위치를 선택하세요`);
+        }}
+        onClose={() => {
+          // 확인 = 남은 미확정 선수를 현재 포지션으로 확정 처리 (flag 해제).
+          // 안 풀어두면 몇 이닝 뒤 포지션 변경이 "첫 확정"으로 오인되어
+          // 과거 잠정 로그를 덮어씀 (조형우 9회 포수 전환 소실 사고)
+          if (lineupReviewTeam) {
+            const luC = lineupReviewTeam === 'away' ? G.awayLineup : G.homeLineup;
+            luC.forEach((pl, i) => {
+              if (pl.needsPosReview) {
+                dispatch({ type: 'CHANGE_LU_POS', team: lineupReviewTeam, idx: i, pos: pl.pos });
+              }
+            });
+          }
+          setLineupReviewTeam(null);
+        }}
       />
 
       {scoreReviewTarget &&

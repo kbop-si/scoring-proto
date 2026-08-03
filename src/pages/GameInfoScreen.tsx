@@ -731,6 +731,7 @@ export default function GameInfoScreen({
                   windDir,
                   windSpeed,
                   weatherLog,
+                  delayTime: delayRegManual,
                 });
               }}
               style={{

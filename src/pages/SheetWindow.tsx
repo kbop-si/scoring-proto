@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { GameState } from '../types';
 import ScoreSheet from '../components/ScoreSheet';
+import { normalizeLoadedGame } from '../store/gameReducer';
 
 export default function SheetWindow() {
   const [G, setG] = useState<GameState | null>(null);
@@ -9,7 +10,8 @@ export default function SheetWindow() {
     const raw = localStorage.getItem('kbo_sheet_state');
     if (raw) {
       try {
-        setG(JSON.parse(raw));
+        // 구버전 스탬프의 수비 자동확정 로그 시점 교정 (불러오기와 동일 정규화)
+        setG(normalizeLoadedGame(JSON.parse(raw)));
       } catch {
         /* ignore */
       }
@@ -18,7 +20,7 @@ export default function SheetWindow() {
     const onStorage = (e: StorageEvent) => {
       if (e.key === 'kbo_sheet_state' && e.newValue) {
         try {
-          setG(JSON.parse(e.newValue));
+          setG(normalizeLoadedGame(JSON.parse(e.newValue)));
         } catch {
           /* ignore */
         }
