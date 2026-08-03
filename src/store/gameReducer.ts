@@ -658,6 +658,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
         windDir: setup.windDir,
         windSpeed: setup.windSpeed,
         weatherLog: setup.weatherLog,
+        delayTime: setup.delayTime,
       };
     }
 

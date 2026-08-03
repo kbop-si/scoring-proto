@@ -334,6 +334,7 @@ export interface GameState {
   windDir?: string;
   windSpeed?: string;
   weatherLog?: string;
+  delayTime?: string;
   // 경기 종료 시 산정된 양팀 투수 판정 (W/L/S/H/BS). 종료 모달 확인 시 set.
   gameDecisions?: GameDecisions;
 }
