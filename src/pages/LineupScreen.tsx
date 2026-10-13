@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import type { Player, GameSetup } from '../types';
-import { POS_NAME, posGroupAbbr, getDuplicateNames, displayName, hitMark } from '../data/constants';
+import { POS_NAME, posGroupAbbr, getDuplicateNames, displayName } from '../data/constants';
 import { KBO_ROSTER } from '../data/kboRoster';
 
 function buildLineupFromRoster(teamName: string): { lineup: Player[]; bench: Player[] } {
@@ -388,7 +388,6 @@ export default function LineupScreen({ setup, onUpdateLineups, onStart }: Props)
                       {/* 선수명: 드래그 가능 */}
                       <td {...dragProps} style={tdStyle}>
                         {displayName(p.name, p.num, dupeNames)}
-                        {p.hitType ? ` ${hitMark(p.hitType)}` : ''}
                       </td>
                     </tr>
                   );
@@ -460,10 +459,7 @@ export default function LineupScreen({ setup, onUpdateLineups, onStart }: Props)
                         cursor: 'pointer',
                       }}
                     >
-                      <td style={tdStyle}>
-                        {displayName(p.name, p.num, dupeNames)}
-                        {p.hitType ? ` ${hitMark(p.hitType)}` : ''}
-                      </td>
+                      <td style={tdStyle}>{displayName(p.name, p.num, dupeNames)}</td>
                       <td style={tdStyle}>{posGroupAbbr(p.pos)}</td>
                       <td style={tdStyle}>
                         <input type="checkbox" readOnly />
