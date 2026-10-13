@@ -66,6 +66,11 @@ export function getDuplicateNames(roster: { name?: string }[]): Set<string> {
 }
 
 // 동명이인일 때만 "이름 등번호" 형식으로 표시, 아니면 이름 그대로
+// 타격 유형 표기 — hitType 1=우타(R), 2=좌타(L), 3=스위치(S)
+export function hitMark(hitType: number | undefined): string {
+  return hitType === 1 ? 'R' : hitType === 2 ? 'L' : hitType === 3 ? 'S' : '';
+}
+
 export function displayName(
   name: string | undefined,
   num: string | undefined,
@@ -100,24 +105,23 @@ export const TEAM_FLAG: Record<string, string> = {
 
 // SVG base centers (viewBox 200x200)
 export const BASE_XY: Record<string, { x: number; y: number }> = {
-  HOME: { x: 100, y: 175 },
-  '1B': { x: 145, y: 130 },
-  '2B': { x: 100, y: 85 },
-  '3B': { x: 55, y: 130 },
+  HOME: { x: 99, y: 139 },
+  '1B': { x: 163, y: 88 },
+  '2B': { x: 99, y: 59 },
+  '3B': { x: 36, y: 88 },
 };
 
-// Fielder SVG centers (베이스 사각형과 겹치지 않도록 오프셋)
-// 베이스: HOME(100,175) 1B(145,130) 2B(100,85) 3B(55,130) — 각 14×14 사각형
+// Fielder SVG centers — ground.png(xMidYMid slice) 기준 베이스 위치에 맞춤
 export const FPOS_XY: Record<number, { x: number; y: number }> = {
-  1: { x: 100, y: 128 }, // 투수: 마운드 중앙
-  2: { x: 100, y: 197 }, // 포수: 홈 아래로 이동 (홈 rect y=168~182 아래)
-  3: { x: 164, y: 125 }, // 1루수: 1루 베이스 rect(138~152,123~137) 우측 바깥
-  4: { x: 128, y: 97 }, // 2루수: 1~2루 사이
-  5: { x: 36, y: 125 }, // 3루수: 3루 베이스 rect(48~62,123~137) 좌측 바깥
-  6: { x: 72, y: 97 }, // 유격수: 2~3루 사이
-  7: { x: 25, y: 52 }, // 좌익수
-  8: { x: 100, y: 22 }, // 중견수
-  9: { x: 175, y: 52 }, // 우익수
+  1: { x: 99, y: 88 }, // 투수: 마운드
+  2: { x: 99, y: 168 }, // 포수: 홈 아래
+  3: { x: 180, y: 84 }, // 1루수: 1루 우측 바깥
+  4: { x: 132, y: 62 }, // 2루수: 1~2루 사이
+  5: { x: 20, y: 84 }, // 3루수: 3루 좌측 바깥
+  6: { x: 66, y: 62 }, // 유격수: 2~3루 사이
+  7: { x: 30, y: 32 }, // 좌익수
+  8: { x: 99, y: 22 }, // 중견수
+  9: { x: 168, y: 32 }, // 우익수
 };
 
 export const PITCH_SYM: Record<string, string> = {

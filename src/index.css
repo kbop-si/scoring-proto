@@ -7,7 +7,7 @@
   /* ── ui_개선 디자인 토큰 ─────────────────────────
      네이비 한 계열(ink-900/800/700), radius 6px, 테두리 1px,
      강조색 2개: amber(점수·현재), action(선택·진행) */
-  --bg: #eef1f5;
+  --bg: #f2f3f7;
   --panel: #ffffff;
   --panel2: #f6f8fa;
   --line: #dde3ea;
@@ -402,7 +402,7 @@ button {
 
 /* Scoreboard */
 .scoreboard {
-  background: var(--ink-900);
+  background: #032561;
   color: #fff;
   display: flex;
   align-items: stretch;
@@ -425,57 +425,78 @@ button {
   gap: 1px;
   padding: 5px 12px 5px 0;
   min-width: 72px;
-  border-right: 1px solid rgba(255, 255, 255, 0.08);
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
 }
 .sb-team-name {
-  font-size: 11px;
-  color: var(--on-dark-dim);
+  font-size: 22px;
+  color: #fff;
   font-weight: 700;
-  letter-spacing: 0.06em;
 }
 .sb-team-score {
-  font-size: 24px;
+  font-size: 22px;
   font-weight: 700;
   line-height: 1;
-  color: var(--amber);
+  color: #fff;
   font-family: 'IBM Plex Mono', monospace;
 }
 .sb-innings {
   flex: 1;
   display: flex;
-  align-items: center;
-  padding: 0 10px;
+  align-items: stretch;
+  padding: 7px 10px;
   overflow: hidden;
 }
 .sb-inn-group {
+  flex: 1;
   display: flex;
   flex-direction: column;
   gap: 0;
+  background: #f4f6fa;
+  border-radius: 8px;
+  padding: 2px 10px;
+  justify-content: center;
 }
 .sb-inn-row {
   display: flex;
   gap: 0;
 }
 .sb-inn-cell {
-  width: 30px;
+  flex: 1 1 0;
+  min-width: 22px;
+  width: auto;
   text-align: center;
   font-size: 12px;
   font-family: 'IBM Plex Mono', monospace;
-  color: var(--on-dark-dim);
-  padding: 2px 0;
+  color: #111827;
+  padding: 0;
+  line-height: 16px;
 }
 .sb-inn-cell.cur {
-  color: var(--amber);
-  background: rgba(240, 173, 30, 0.1);
+  color: var(--action);
+  background: rgba(37, 99, 235, 0.1);
   font-weight: 700;
 }
 .sb-inn-cell.hd {
-  color: #5d6e8a;
+  color: #6b7280;
   font-size: 11px;
   font-weight: 700;
 }
+.sb-inn-row > .sb-inn-cell:first-child {
+  flex: 0 0 30px;
+}
+.sb-inn-cell.rheb {
+  flex: 0 0 44px;
+  width: 44px;
+  font-weight: 600;
+}
+.sb-inn-cell.rheb-first {
+  margin-left: 6px;
+  border-left: 1px solid #e3e7ee;
+}
 .sb-inn-cell.score {
-  color: #fff;
+  color: #111827;
   font-weight: 700;
 }
 .sb-actions {
@@ -561,19 +582,17 @@ button {
 }
 .lineup-team-hd {
   background: var(--panel2);
-  color: #3e6bd6;
-  text-align: center;
+  color: var(--text);
+  text-align: left;
   font-weight: 700;
-  font-size: 12px;
-  padding: 7px 2px;
+  font-size: 14px;
+  padding: 9px 14px;
   border-bottom: 1px solid var(--line);
 }
 .lineup-team-hd:first-child {
   border-right: 1px solid var(--line);
 }
-.lineup-team-hd:last-child {
-  color: #2e9e6b;
-}
+
 .lineup-scroll {
   overflow-y: auto;
   flex: 1;
@@ -611,8 +630,15 @@ button {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.lineup-tbl th:nth-child(4),
-.lineup-tbl td:nth-child(4) {
+.lineup-tbl col.lu-col-hit {
+  width: 28px;
+}
+.lineup-tbl td.lu-hit {
+  color: var(--muted);
+  font-weight: 700;
+}
+.lineup-tbl th:nth-child(5),
+.lineup-tbl td:nth-child(5) {
   border-left: 1px solid var(--line);
 }
 .lineup-tbl td[draggable='true'] {
@@ -625,8 +651,8 @@ button {
   background: var(--panel2);
   color: var(--muted);
 }
-.lineup-tbl tr.bat-cur-away td:nth-child(-n + 3) {
-  background: #ebf1fe;
+.lineup-tbl tr.bat-cur-away td:nth-child(-n + 4) {
+  background: #edf1f7;
   font-weight: 700;
 }
 .lineup-tbl tr.bat-cur-away td:nth-child(1) {
@@ -635,22 +661,22 @@ button {
 .lineup-tbl tr.bat-cur-away td:nth-child(3) {
   color: var(--action);
 }
-.lineup-tbl tr.bat-cur-home td:nth-child(n + 4) {
-  background: #ebf1fe;
+.lineup-tbl tr.bat-cur-home td:nth-child(n + 5) {
+  background: #edf1f7;
   font-weight: 700;
 }
-.lineup-tbl tr.bat-cur-home td:nth-child(4) {
+.lineup-tbl tr.bat-cur-home td:nth-child(5) {
   box-shadow: inset 3px 0 0 var(--action);
 }
-.lineup-tbl tr.bat-cur-home td:nth-child(6) {
+.lineup-tbl tr.bat-cur-home td:nth-child(7) {
   color: var(--action);
 }
 
 /* Scoreboard action buttons */
 .sb-sheet-btn {
-  background: transparent;
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  color: #b9c6d9;
+  background: #fff;
+  border: 1px solid #dedede;
+  color: #1b2534;
   font-size: 11px;
   padding: 6px 12px;
   border-radius: var(--r);
@@ -663,18 +689,11 @@ button {
   transition: all 0.12s;
 }
 .sb-sheet-btn:hover {
-  color: #fff;
-  background: rgba(255, 255, 255, 0.08);
-  border-color: rgba(255, 255, 255, 0.28);
+  background: #f1f4fa;
 }
 .sb-sheet-btn.active,
 .sb-sheet-btn.primary {
-  color: var(--amber);
-  background: rgba(240, 173, 30, 0.12);
-  border-color: rgba(240, 173, 30, 0.4);
-}
-.sb-sheet-btn.primary:hover {
-  background: rgba(240, 173, 30, 0.2);
+  font-weight: 700;
 }
 
 /* ── SCORESHEET ── */
@@ -995,27 +1014,28 @@ button {
 }
 .mini-lbl {
   font-size: 10px;
-  color: #8ea3c4;
+  color: var(--muted);
 }
 .mini-name {
   font-size: 18px;
-  color: #fff;
+  color: var(--text);
   font-family: 'Noto Sans KR', sans-serif;
 }
 .mini-count {
   font-size: 11px;
-  color: #c6d4ea;
+  color: var(--muted);
 }
 .ip-info-card {
   margin: 0;
-  background: var(--ink-800);
+  background: var(--panel);
+  border: 1px solid var(--line);
   border-radius: var(--r);
   display: flex;
   flex-direction: column;
   justify-content: center;
   gap: 10px;
   padding: 14px 16px;
-  color: #fff;
+  color: var(--text);
 }
 .info-row {
   display: flex;
@@ -1027,7 +1047,7 @@ button {
 .info-lbl {
   font-size: 12px;
   font-weight: 700;
-  color: var(--on-dark-dim);
+  color: var(--muted);
   letter-spacing: 0.08em;
 }
 .info-val {
@@ -1037,7 +1057,8 @@ button {
 }
 .ip-bso-card {
   margin: 0;
-  background: var(--ink-800);
+  background: var(--panel);
+  border: 1px solid var(--line);
   border-radius: var(--r);
   display: flex;
   flex-direction: column;
@@ -1055,7 +1076,7 @@ button {
 .bso-big-lbl {
   font-size: 18px;
   font-weight: 700;
-  color: var(--on-dark-dim);
+  color: var(--text);
   font-family: 'IBM Plex Mono', monospace;
   line-height: 1;
 }
@@ -1069,18 +1090,18 @@ button {
   height: 13px;
   border-radius: 50%;
   border: none;
-  background: #25334c;
+  background: #d1d5db;
   transition: all 0.15s;
   display: inline-block;
 }
 .dot.b {
-  background: #3b82f6;
+  background: #16a34a;
 }
 .dot.s {
-  background: var(--amber);
+  background: #f5b800;
 }
 .dot.o {
-  background: #e14545;
+  background: #e0245e;
 }
 .ip-sec {
   padding: 10px 12px;
@@ -1092,8 +1113,8 @@ button {
 .ip-sec-t {
   font-size: 10px;
   font-weight: 700;
-  color: var(--faint);
-  letter-spacing: 0.1em;
+  color: var(--text);
+  letter-spacing: 0.02em;
   margin-bottom: 6px;
 }
 .ip-g2 {
@@ -1112,7 +1133,7 @@ button {
   gap: 4px;
 }
 .ip-btn {
-  border: 1px solid var(--line);
+  border: 1px solid #dedede;
   background: var(--panel);
   color: var(--text);
   border-radius: var(--r);
@@ -1158,17 +1179,17 @@ button {
 .b-SW,
 .b-B,
 .b-F {
-  background: var(--ink-700);
-  border-color: var(--ink-700);
-  color: #fff;
+  background: var(--panel);
+  border-color: #dedede;
+  color: var(--text);
 }
 .b-S:hover,
 .b-SW:hover,
 .b-B:hover,
 .b-F:hover {
-  background: #274069;
-  border-color: #274069;
-  color: #fff;
+  background: #f1f4fa;
+  border-color: var(--ink-700);
+  color: var(--ink-700);
 }
 .ta-lbl {
   font-size: 10px;
@@ -1182,9 +1203,9 @@ button {
   gap: 6px;
 }
 .ta-btn {
-  border: 1px solid var(--ink-700);
-  background: var(--ink-700);
-  color: #fff;
+  border: 1px solid #dedede;
+  background: var(--panel);
+  color: var(--text);
   border-radius: var(--r);
   padding: 10px 6px;
   font-size: 13px;
@@ -1195,13 +1216,14 @@ button {
   flex: 1;
 }
 .ta-btn:hover {
-  filter: brightness(1.08);
+  background: #f1f4fa;
+  border-color: var(--ink-700);
 }
 .ta-btn.adv,
 .ta-btn.out {
-  background: var(--ink-700);
-  color: #fff;
-  border-color: var(--ink-700);
+  background: var(--panel);
+  color: var(--text);
+  border-color: #dedede;
   font-size: 14px;
 }
 .sp-row {
@@ -1377,17 +1399,17 @@ button {
   width: 30px;
   height: 30px;
   border-radius: 50%;
-  background: var(--red);
-  border: 2px solid var(--red2);
+  background: #fff;
+  border: 1px solid #dedede;
   display: flex;
   align-items: center;
   justify-content: center;
   font-size: 12px;
   font-weight: 700;
-  color: #fff;
+  color: var(--ink-900);
   z-index: 10;
   transform: translate(-50%, -50%);
-  animation: b-pulse 1.2s ease-in-out infinite;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
   cursor: pointer;
 }
 @keyframes b-pulse {

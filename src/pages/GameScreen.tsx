@@ -26,7 +26,7 @@ import type {
   Runner,
 } from '../types';
 import { gameReducer, initialGameState } from '../store/gameReducer';
-import { POS_NAME } from '../data/constants';
+import { POS_NAME, hitMark } from '../data/constants';
 import Scoreboard from '../components/Scoreboard';
 import GameInfoScreen from './GameInfoScreen';
 import ScoreSheet from '../components/ScoreSheet';
@@ -1655,18 +1655,22 @@ export default function GameScreen({ setup, onEnd }: Props) {
                       <col className="lu-col-order" />
                       <col className="lu-col-pos" />
                       <col />
+                      <col className="lu-col-hit" />
                       <col className="lu-col-order" />
                       <col className="lu-col-pos" />
                       <col />
+                      <col className="lu-col-hit" />
                     </colgroup>
                     <thead>
                       <tr>
                         <th>타순</th>
                         <th>수비</th>
                         <th>선수명</th>
+                        <th>타</th>
                         <th>타순</th>
                         <th>수비</th>
                         <th>선수명</th>
+                        <th>타</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -1741,11 +1745,13 @@ export default function GameScreen({ setup, onEnd }: Props) {
                                 {a ? (a.pos === 0 ? 'D' : String(a.pos)) : ''}
                               </td>
                               <td style={{ textAlign: 'left', paddingLeft: 4 }}>{a?.name ?? ''}</td>
+                              <td className="lu-hit">{hitMark(a?.hitType)}</td>
                               <td>{h?.order ?? ''}</td>
                               <td {...hPosDrag} style={hPosBg}>
                                 {h ? (h.pos === 0 ? 'D' : String(h.pos)) : ''}
                               </td>
                               <td style={{ textAlign: 'left', paddingLeft: 4 }}>{h?.name ?? ''}</td>
+                              <td className="lu-hit">{hitMark(h?.hitType)}</td>
                             </tr>
                           );
                         }
@@ -1755,9 +1761,11 @@ export default function GameScreen({ setup, onEnd }: Props) {
                           <td>P</td>
                           <td>1</td>
                           <td style={{ textAlign: 'left', paddingLeft: 4 }}>{awayPitcherName}</td>
+                          <td className="lu-hit" />
                           <td>P</td>
                           <td>1</td>
                           <td style={{ textAlign: 'left', paddingLeft: 4 }}>{homePitcherName}</td>
+                          <td className="lu-hit" />
                         </tr>
                       )}
                     </tbody>

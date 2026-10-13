@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useRef, useState, type CSSProperties } from 'react';
 import type { GameState, Base, BaseTargetState, Runner } from '../types';
 import { BASE_XY, FPOS_XY } from '../data/constants';
 
@@ -61,9 +61,9 @@ export default function Diamond({
 
   // 수비수 칩 지오메트리 — 가로 필 (번호 이름 한 줄), viewBox 200×200 단위
   const CHIP_H = 13;
-  const chipGeom = (num: string, name: string, pos: number) => {
+  const chipGeom = (_num: string, name: string, pos: number) => {
     const fp = FPOS_XY[pos];
-    const label = `${num} ${name}`;
+    const label = name;
     let w = 8;
     for (const ch of label) w += /[0-9 .-]/.test(ch) ? 4.2 : 7.4;
     w = Math.max(30, w);
@@ -71,8 +71,8 @@ export default function Diamond({
     const cy = pos === 2 ? 190 : fp.y;
     let cx = fp.x;
     // 1루수/3루수: 베이스 사각형·주자 배지와 겹치지 않게 라인 바깥으로
-    if (pos === 3) cx = Math.max(fp.x, 154 + w / 2);
-    if (pos === 5) cx = Math.min(fp.x, 46 - w / 2);
+    if (pos === 3) cx = Math.max(fp.x, 172 + w / 2);
+    if (pos === 5) cx = Math.min(fp.x, 28 - w / 2);
     cx = Math.min(198 - w / 2, Math.max(2 + w / 2, cx));
     return { cx, cy, w, label };
   };
@@ -94,6 +94,18 @@ export default function Diamond({
     if (s.side === offendingSide) recentOffSubKeys.add(key);
     else if (s.side === defendingSide) recentDefSubKeys.add(key);
   });
+  // 주자 배지 — 베이스 네모(15/200)와 같은 크기. 필드가 정사각형이라 %로 맞춤
+  const RUNNER_BOX: CSSProperties = {
+    width: pct(15),
+    height: pct(15),
+    minWidth: 0,
+    padding: 0,
+    borderRadius: 3,
+    fontSize: 10,
+    whiteSpace: 'nowrap',
+    overflow: 'hidden',
+    letterSpacing: '-0.04em',
+  };
   const SUB_COLOR = '#fbbf24'; // 대타·대주자·수비교체 강조 — 노랑
 
   const availBases = baseTargets.active ? getNextBases(baseTargets.fromBase) : [];
@@ -134,149 +146,34 @@ export default function Diamond({
           viewBox="0 0 200 200"
           preserveAspectRatio="none"
         >
-          <defs>
-            <radialGradient id="grassMain" cx="50%" cy="30%" r="80%">
-              <stop offset="0%" stopColor="#74b56d" />
-              <stop offset="55%" stopColor="#4f9450" />
-              <stop offset="100%" stopColor="#356b39" />
-            </radialGradient>
-            <radialGradient id="dirtMain" cx="45%" cy="35%" r="70%">
-              <stop offset="0%" stopColor="#e0bd8c" />
-              <stop offset="100%" stopColor="#ac7c50" />
-            </radialGradient>
-            <linearGradient id="infieldGrass" x1="0%" y1="0%" x2="100%" y2="100%">
-              <stop offset="0%" stopColor="#6bab63" />
-              <stop offset="100%" stopColor="#4c8a4d" />
-            </linearGradient>
-          </defs>
-          {/* Outfield */}
-          <path
-            d="M100,195 L0,70 Q100,2 200,70 Z"
-            fill="url(#grassMain)"
-            stroke="#2d5a2d"
-            strokeWidth="1"
+          {/* 그라운드 — ground.png 원본(잔디·흙·라인 포함). 베이스만 크게 덧그림 */}
+          <image
+            href={`${import.meta.env.BASE_URL}ground.png`}
+            x="0"
+            y="0"
+            width="200"
+            height="200"
+            preserveAspectRatio="xMidYMid slice"
           />
-          {/* Depth shadow overlays */}
-          <path d="M100,20 Q60,34 20,62 L45,72 Q75,45 100,36 Z" fill="#fff" opacity="0.05" />
-          <path d="M100,36 Q125,45 155,72 L180,62 Q140,34 100,20 Z" fill="#000" opacity="0.05" />
-          <path d="M45,72 Q20,95 12,128 L34,132 Q42,100 62,80 Z" fill="#000" opacity="0.04" />
-          <path d="M155,72 Q180,95 188,128 L166,132 Q158,100 138,80 Z" fill="#fff" opacity="0.04" />
-          {/* Infield dirt */}
-          <circle cx="100" cy="140" r="62" fill="url(#dirtMain)" />
-          {/* Infield grass */}
-          <polygon
-            points="100,85 145,130 100,175 55,130"
-            fill="url(#infieldGrass)"
-            stroke="#3c6b3c"
-            strokeWidth="0.6"
-          />
-          {/* Baselines */}
-          <line
-            x1="100"
-            y1="85"
-            x2="145"
-            y2="130"
-            stroke="#fdfaf3"
-            strokeWidth="1.6"
-            opacity="0.92"
-          />
-          <line
-            x1="145"
-            y1="130"
-            x2="100"
-            y2="175"
-            stroke="#fdfaf3"
-            strokeWidth="1.6"
-            opacity="0.92"
-          />
-          <line
-            x1="100"
-            y1="175"
-            x2="55"
-            y2="130"
-            stroke="#fdfaf3"
-            strokeWidth="1.6"
-            opacity="0.92"
-          />
-          <line
-            x1="55"
-            y1="130"
-            x2="100"
-            y2="85"
-            stroke="#fdfaf3"
-            strokeWidth="1.6"
-            opacity="0.92"
-          />
-          {/* Pitcher mound */}
-          <circle cx="100" cy="133" r="9" fill="#caa06e" stroke="#8a6238" strokeWidth="0.6" />
-          {/* Bases: home, 1B, 2B, 3B */}
-          <rect
-            x="92.5"
-            y="167.5"
-            width="15"
-            height="15"
-            rx="1.5"
-            fill="#fdfaf3"
-            stroke="#c9c2b4"
-            strokeWidth="0.5"
-          />
-          <rect
-            x="137.5"
-            y="122.5"
-            width="15"
-            height="15"
-            rx="1.5"
-            fill="#fdfaf3"
-            stroke="#c9c2b4"
-            strokeWidth="0.5"
-          />
-          <rect
-            x="92.5"
-            y="77.5"
-            width="15"
-            height="15"
-            rx="1.5"
-            fill="#fdfaf3"
-            stroke="#c9c2b4"
-            strokeWidth="0.5"
-          />
-          <rect
-            x="47.5"
-            y="122.5"
-            width="15"
-            height="15"
-            rx="1.5"
-            fill="#fdfaf3"
-            stroke="#c9c2b4"
-            strokeWidth="0.5"
-          />
-          {/* Foul lines */}
-          <line
-            x1="100"
-            y1="175"
-            x2="0"
-            y2="70"
-            stroke="#fff"
-            strokeWidth="1"
-            strokeDasharray="4,3"
-            opacity=".5"
-          />
-          <line
-            x1="100"
-            y1="175"
-            x2="200"
-            y2="70"
-            stroke="#fff"
-            strokeWidth="1"
-            strokeDasharray="4,3"
-            opacity=".5"
-          />
+          {Object.values(BASE_XY).map((b, i) => (
+            <rect
+              key={i}
+              x={b.x - 7.5}
+              y={b.y - 7.5}
+              width="15"
+              height="15"
+              rx="1.5"
+              fill="#fdfaf3"
+              stroke="#c9c2b4"
+              strokeWidth="0.5"
+            />
+          ))}{' '}
           {/* 수비수 칩 — 가로 필(번호 이름), 클릭=교체. 교체 투입 직후엔 노랑 강조 */}
           {defLU.map((p) => {
             if (p.pos < 1 || p.pos > 9) return null;
             const fp = FPOS_XY[p.pos];
             if (!fp) return null;
-            const { cx, cy, w, label } = chipGeom(p.num, p.name, p.pos);
+            const { cx, cy, label } = chipGeom(p.num, p.name, p.pos);
             const subbed = recentDefSubKeys.has(`${p.num}:${p.name}`);
             return (
               <g
@@ -288,23 +185,19 @@ export default function Diamond({
                   onFielderClick(e, p.pos);
                 }}
               >
-                <rect
-                  x={cx - w / 2}
-                  y={cy - CHIP_H / 2}
-                  width={w}
-                  height={CHIP_H}
-                  rx={CHIP_H / 2}
-                  fill={subbed ? SUB_COLOR : '#0C1524'}
-                  opacity={subbed ? 0.95 : 0.82}
-                />
                 <text
                   x={cx}
                   y={cy + 2.7}
                   textAnchor="middle"
                   fontSize="7.2"
                   fontWeight="700"
-                  fill={subbed ? '#111' : '#fff'}
-                  style={{ fontFamily: "'Noto Sans KR', sans-serif" }}
+                  fill={subbed ? SUB_COLOR : '#fff'}
+                  style={{
+                    fontFamily: "'Noto Sans KR', sans-serif",
+                    paintOrder: 'stroke',
+                    stroke: 'rgba(0,0,0,0.55)',
+                    strokeWidth: 1.4,
+                  }}
                 >
                   {label}
                 </text>
@@ -439,12 +332,7 @@ export default function Diamond({
               style={{
                 left: pct(pos.x),
                 top: pct(pos.y),
-                width: 'auto',
-                minWidth: 46,
-                padding: '0 7px',
-                borderRadius: 5,
-                fontSize: 12,
-                whiteSpace: 'nowrap',
+                ...RUNNER_BOX,
                 ...(runnerSubbed ? { color: SUB_COLOR, fontWeight: 700 } : {}),
               }}
               onClick={(e) => {
@@ -457,7 +345,7 @@ export default function Diamond({
                 onRunnerContextMenu?.(base);
               }}
             >
-              {r.num} {r.name}
+              {r.name}
             </div>
           );
         })}
@@ -484,13 +372,8 @@ export default function Diamond({
                 title={`${displayRunner.name} — 연결동작 클릭하여 전진`}
                 style={{
                   left: pct(pos.x),
-                  top: hasExisting ? `calc(${pct(pos.y)} - 36px)` : pct(pos.y),
-                  width: 'auto',
-                  minWidth: 46,
-                  padding: '0 7px',
-                  borderRadius: 5,
-                  fontSize: 12,
-                  whiteSpace: 'nowrap',
+                  top: hasExisting ? `calc(${pct(pos.y)} - 8.5%)` : pct(pos.y),
+                  ...RUNNER_BOX,
                   cursor: 'pointer',
                 }}
                 onClick={(e) => {
@@ -498,7 +381,7 @@ export default function Diamond({
                   onChainPendingClick?.();
                 }}
               >
-                {displayRunner.num} {displayRunner.name}
+                {displayRunner.name}
               </div>
             );
           })()}

@@ -74,14 +74,14 @@ export default function Scoreboard({
               </div>
             ))}
             {['R', 'H', 'E', 'B'].map((l) => (
-              <div key={l} className="sb-inn-cell hd" style={{ color: '#fbbf24' }}>
+              <div key={l} className={`sb-inn-cell hd rheb${l === 'R' ? ' rheb-first' : ''}`}>
                 {l}
               </div>
             ))}
           </div>
           {/* Away row */}
           <div className="sb-inn-row">
-            <div className="sb-inn-cell" style={{ fontSize: 9, color: '#94a3b8', fontWeight: 700 }}>
+            <div className="sb-inn-cell" style={{ fontSize: 9, color: '#6b7280', fontWeight: 700 }}>
               원
             </div>
             {inns.map((i) => {
@@ -98,14 +98,14 @@ export default function Scoreboard({
                 </div>
               );
             })}
-            <div className="sb-inn-cell score">{G.awayR}</div>
-            <div className="sb-inn-cell score">{G.awayH}</div>
-            <div className="sb-inn-cell score">{awayE}</div>
-            <div className="sb-inn-cell score">{awayBB}</div>
+            <div className="sb-inn-cell score rheb rheb-first">{G.awayR}</div>
+            <div className="sb-inn-cell score rheb">{G.awayH}</div>
+            <div className="sb-inn-cell score rheb">{awayE}</div>
+            <div className="sb-inn-cell score rheb">{awayBB}</div>
           </div>
           {/* Home row */}
           <div className="sb-inn-row">
-            <div className="sb-inn-cell" style={{ fontSize: 9, color: '#94a3b8', fontWeight: 700 }}>
+            <div className="sb-inn-cell" style={{ fontSize: 9, color: '#6b7280', fontWeight: 700 }}>
               홈
             </div>
             {inns.map((i) => {
@@ -122,10 +122,10 @@ export default function Scoreboard({
                 </div>
               );
             })}
-            <div className="sb-inn-cell score">{G.homeR}</div>
-            <div className="sb-inn-cell score">{G.homeH}</div>
-            <div className="sb-inn-cell score">{homeE}</div>
-            <div className="sb-inn-cell score">{homeBB}</div>
+            <div className="sb-inn-cell score rheb rheb-first">{G.homeR}</div>
+            <div className="sb-inn-cell score rheb">{G.homeH}</div>
+            <div className="sb-inn-cell score rheb">{homeE}</div>
+            <div className="sb-inn-cell score rheb">{homeBB}</div>
           </div>
         </div>
       </div>
