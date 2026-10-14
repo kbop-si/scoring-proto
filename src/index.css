@@ -2,6 +2,25 @@
 @tailwind components;
 @tailwind utilities;
 
+@font-face {
+  font-family: 'KBO Dia Gothic';
+  src: url('./assets/fonts/KBO-Dia-Gothic_light.woff') format('woff');
+  font-weight: 300;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'KBO Dia Gothic';
+  src: url('./assets/fonts/KBO-Dia-Gothic_medium.woff') format('woff');
+  font-weight: 400 500;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'KBO Dia Gothic';
+  src: url('./assets/fonts/KBO-Dia-Gothic_bold.woff') format('woff');
+  font-weight: 600 900;
+  font-display: swap;
+}
+
 /* ── 기존 CSS 원본 유지 ─────────────────────────────────────────────────── */
 :root {
   /* ── ui_개선 디자인 토큰 ─────────────────────────
@@ -35,7 +54,7 @@
   --text2: #374151;
   --text3: #6b7280;
   --shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
-  font-family: 'Noto Sans KR', sans-serif;
+  font-family: 'KBO Dia Gothic', 'Noto Sans KR', sans-serif;
   font-feature-settings: 'tnum';
 }
 *,
@@ -1019,7 +1038,7 @@ button {
 .mini-name {
   font-size: 18px;
   color: var(--text);
-  font-family: 'Noto Sans KR', sans-serif;
+  font-family: 'KBO Dia Gothic', 'Noto Sans KR', sans-serif;
 }
 .mini-count {
   font-size: 11px;

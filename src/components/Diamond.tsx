@@ -193,7 +193,7 @@ export default function Diamond({
                   fontWeight="700"
                   fill={subbed ? SUB_COLOR : '#fff'}
                   style={{
-                    fontFamily: "'Noto Sans KR', sans-serif",
+                    fontFamily: "'KBO Dia Gothic', 'Noto Sans KR', sans-serif",
                     paintOrder: 'stroke',
                     stroke: 'rgba(0,0,0,0.55)',
                     strokeWidth: 1.4,
